@@ -42,6 +42,7 @@ Out of scope:
 4. Decide the owner/department and routing team for each inbox.
 5. Prepare credential records:
    - `chatwoot_admin_api_access_token`
+   - `chatwoot_smtp_paddock`
    - `meta_whatsapp_cloud_paddock`
    - `meta_facebook_paddock`
    - `meta_instagram_paddock`

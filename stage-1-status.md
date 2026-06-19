@@ -51,6 +51,11 @@ The first WAHA Chatwoot inbox is linked and ready for basic incoming/outgoing te
 - `CHATWOOT_API_INBOX_IDENTIFIER`: `96PH4XJqEApi6PfAMbkx5ANF`
 - Chatwoot account token for WAHA app: configured server-side; do not store in this repo
 
+### Chatwoot Email
+
+- SMTP configuration for agent invites and password recovery: not configured yet
+- New operators will need an email invite flow before they can set or reset a password
+
 ### Official Meta
 
 WhatsApp Cloud:
@@ -119,6 +124,7 @@ Instagram:
 - `risk`: Meta production usage may require App Review or advanced permissions.
 - `risk`: WAHA personal-number integration is not the official WhatsApp Business API path.
 - `risk`: WAHA Chatwoot app needs Redis/background jobs.
+- `risk`: Chatwoot agent onboarding and password recovery depend on SMTP; until mail is configured, new operators will not receive invite or reset emails.
 - `risk`: using a human admin token as long-lived integration credential is operationally fragile; prefer a dedicated integration user/token where possible.
 - `risk`: WAHA Core supports only the `default` session. For multiple personal WhatsApp numbers, use WAHA Plus or separate WAHA instances.
 
