@@ -25,6 +25,16 @@
   - Webhook URL: `https://waha.fleexa-group.com/webhooks/chatwoot/default/chatwoot_paddock_poc_default`
   - Status: `WORKING`
   - Linked WhatsApp account: `79153057966@c.us`
+- Configured Chatwoot system email delivery:
+  - SMTP provider: Brevo
+  - Sender: `Fleexa <noreply@fleexa-group.com>`
+  - SMTP relay: `smtp-relay.brevo.com`
+  - SMTP port: `2525`
+  - Verification: direct Chatwoot mailer test sent successfully
+- Fixed Chatwoot reverse-proxy routing after container recreation:
+  - `chatwoot-rails-1` is attached to `server_external`
+  - `server_external` alias: `chatwoot-rails`
+  - Chatwoot agents page returned HTTP 200 after nginx restart
 
 ## Current State
 
@@ -53,8 +63,14 @@ The first WAHA Chatwoot inbox is linked and ready for basic incoming/outgoing te
 
 ### Chatwoot Email
 
-- SMTP configuration for agent invites and password recovery: not configured yet
-- New operators will need an email invite flow before they can set or reset a password
+- SMTP configuration for agent invites and password recovery: configured via Brevo
+- `MAILER_SENDER_EMAIL`: `Fleexa <noreply@fleexa-group.com>`
+- `SMTP_ADDRESS`: `smtp-relay.brevo.com`
+- `SMTP_PORT`: `2525`
+- `SMTP_USERNAME`: configured server-side; do not store in this repo
+- `SMTP_PASSWORD`: configured server-side; do not store in this repo
+- `FRONTEND_URL`: `https://chat.fleexa-group.com`
+- New operators should use the Chatwoot invitation/password reset link to set their own password
 
 ### Official Meta
 
@@ -124,7 +140,8 @@ Instagram:
 - `risk`: Meta production usage may require App Review or advanced permissions.
 - `risk`: WAHA personal-number integration is not the official WhatsApp Business API path.
 - `risk`: WAHA Chatwoot app needs Redis/background jobs.
-- `risk`: Chatwoot agent onboarding and password recovery depend on SMTP; until mail is configured, new operators will not receive invite or reset emails.
+- `risk`: Chatwoot agent onboarding and password recovery depend on Brevo SMTP; rotate exposed SMTP/API keys and update server-side secrets if keys were shared outside the server.
+- `risk`: Chatwoot nginx routing depends on `chatwoot-rails` being reachable from `server_external`; keep the compose network alias in place for future container recreation.
 - `risk`: using a human admin token as long-lived integration credential is operationally fragile; prefer a dedicated integration user/token where possible.
 - `risk`: WAHA Core supports only the `default` session. For multiple personal WhatsApp numbers, use WAHA Plus or separate WAHA instances.
 
