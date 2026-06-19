@@ -1,0 +1,13 @@
+.DS_Store
+*.log
+
+# Local secrets and runtime state.
+.env
+.env.local
+waha-poc/.env
+waha-poc/sessions/
+waha-poc/media/
+
+# QR codes are short-lived auth artifacts and should never be committed.
+waha-poc/*qr*.png
+
