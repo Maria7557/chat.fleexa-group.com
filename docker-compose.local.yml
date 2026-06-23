@@ -1,0 +1,62 @@
+name: fleexa-chatwoot-local
+
+x-chatwoot-app: &chatwoot-app
+  build:
+    context: .
+    dockerfile: Dockerfile.chatwoot
+  image: fleexa-chatwoot:v4.14.2-patch1
+  platform: linux/amd64
+  env_file:
+    - ${CHATWOOT_ENV_FILE:-.env.local}
+  volumes:
+    - chatwoot_storage:/app/storage
+  depends_on:
+    postgres:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg15
+    environment:
+      POSTGRES_USER: ${POSTGRES_USERNAME:-chatwoot}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-chatwoot_dev_password}
+      POSTGRES_DB: ${POSTGRES_DB:-chatwoot_development}
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USERNAME:-chatwoot} -d ${POSTGRES_DB:-chatwoot_development}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "127.0.0.1:6380:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  rails:
+    <<: *chatwoot-app
+    command: ["bundle", "exec", "rails", "server", "-p", "3000", "-b", "0.0.0.0"]
+    ports:
+      - "127.0.0.1:3000:3000"
+
+  sidekiq:
+    <<: *chatwoot-app
+    command: ["bundle", "exec", "sidekiq", "-C", "config/sidekiq.yml"]
+
+volumes:
+  postgres_data:
+  redis_data:
+  chatwoot_storage:
