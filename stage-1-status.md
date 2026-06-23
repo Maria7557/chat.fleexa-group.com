@@ -20,11 +20,13 @@
   - `waha-poc/.env.example`
 - Deployed WAHA POC:
   - WAHA URL: `https://waha.fleexa-group.com`
+  - WAHA image: `devlikeapro/waha:latest`
+  - WAHA version: `2026.6.1` after refresh on `2026-06-22`
   - WAHA session: `default`
   - WAHA app id: `chatwoot_paddock_poc_default`
   - Webhook URL: `https://waha.fleexa-group.com/webhooks/chatwoot/default/chatwoot_paddock_poc_default`
   - Status: `WORKING`
-  - Linked WhatsApp account: `79153057966@c.us`
+  - Linked WhatsApp account: `971545265555@c.us`
 - Configured Chatwoot system email delivery:
   - SMTP provider: Brevo
   - Sender: `Fleexa <noreply@fleexa-group.com>`
@@ -35,6 +37,16 @@
   - `chatwoot-rails-1` is attached to `server_external`
   - `server_external` alias: `chatwoot-rails`
   - Chatwoot agents page returned HTTP 200 after nginx restart
+- Enabled Chatwoot Human Agent window for Instagram:
+  - Config key: `ENABLE_INSTAGRAM_CHANNEL_HUMAN_AGENT=true`
+  - Instagram inbox: `paddockrentacar`
+  - Instagram inbox id: `7`
+  - Instagram business account id: `17841403273948675`
+  - Verification: conversation display id `59` changed from `can_reply=false` to `can_reply=true` on `2026-06-22`
+  - Runtime patch: Instagram Human Agent window now uses the latest Instagram conversation activity, not only the latest incoming customer message
+  - Patch artifact: `chatwoot-patches/instagram-human-agent-activity-window.patch`
+  - Verification: conversation display id `61` changed to `can_reply=true` even though it has no incoming message in Chatwoot
+  - Caveat: the runtime patch is inside `chatwoot-rails-1` and `chatwoot-sidekiq-1`; make it durable in the Chatwoot image/compose before a full container recreate or image pull
 
 ## Current State
 
@@ -46,6 +58,7 @@ Stage 1 WAHA POC channel is linked. Work can continue in two tracks:
 The first WAHA Chatwoot inbox is linked and ready for basic incoming/outgoing testing:
 
 - WAHA public URL is reachable over HTTPS.
+- WAHA version is `2026.6.1`, which includes the old WAHA Plus media features in Core.
 - Chatwoot API inbox has WAHA webhook URL configured.
 - WAHA session `default` is `WORKING`.
 - The integration conversation is available in Chatwoot as display id `4`.
@@ -93,6 +106,8 @@ Instagram:
 - Instagram app id/secret or configured Chatwoot app config
 - Instagram professional account list
 - Instagram Business Account IDs if available
+- Human Agent is enabled in Chatwoot installation config, but delivery after 24 hours still depends on Meta approving the `human_agent` permission for the connected app.
+- Chatwoot was patched to let Instagram operators attempt replies within 7 days from the latest conversation activity; Meta may still reject specific conversations at send time.
 
 ### WAHA POC
 
@@ -100,7 +115,7 @@ Instagram:
 - `WAHA_API_KEY`: configured server-side; do not store in this repo
 - `WAHA_API_KEY_PLAIN`: configured server-side; do not store in this repo
 - `REDIS_URL`: configured server-side with generated Redis password; do not store in this repo
-- Personal WhatsApp number for first POC: `+79153057966`
+- Personal WhatsApp number for first POC: `+971545265555`
 - Owner/department/routing team for the POC inbox: owner pending, department `Paddock`, team `sales`
 - DNS/HTTPS route for WAHA public URL: done
 
@@ -129,7 +144,7 @@ Instagram:
 
 ## Next Actions After WAHA Linking
 
-1. Send an incoming WhatsApp message to `+79153057966` from another phone.
+1. Send an incoming WhatsApp message to `+971545265555` from another phone.
 2. Confirm a new customer conversation is created in `WAHA - Personal - POC - Paddock`.
 3. Reply from Chatwoot.
 4. Confirm the reply arrives in WhatsApp.
@@ -143,7 +158,8 @@ Instagram:
 - `risk`: Chatwoot agent onboarding and password recovery depend on Brevo SMTP; rotate exposed SMTP/API keys and update server-side secrets if keys were shared outside the server.
 - `risk`: Chatwoot nginx routing depends on `chatwoot-rails` being reachable from `server_external`; keep the compose network alias in place for future container recreation.
 - `risk`: using a human admin token as long-lived integration credential is operationally fragile; prefer a dedicated integration user/token where possible.
-- `risk`: WAHA Core supports only the `default` session. For multiple personal WhatsApp numbers, use WAHA Plus or separate WAHA instances.
+- `risk`: Docker will keep running a stale `devlikeapro/waha:latest` image until `docker compose pull waha` and recreate are run.
+- `risk`: each personal WhatsApp number should still have its own WAHA session and Chatwoot API inbox, even though WAHA Plus features are now included in Core.
 
 ## Known Uncertainties
 

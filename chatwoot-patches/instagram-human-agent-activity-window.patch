@@ -1,0 +1,36 @@
+diff --git a/app/services/conversations/message_window_service.rb b/app/services/conversations/message_window_service.rb
+index 0000000..0000000 100644
+--- a/app/services/conversations/message_window_service.rb
++++ b/app/services/conversations/message_window_service.rb
+@@ -32,9 +32,10 @@ class Conversations::MessageWindowService
+   end
+ 
+   def last_message_in_messaging_window?(time)
+-    return false if last_incoming_message.nil?
++    message = message_for_window
++    return false if message.nil?
+ 
+-    Time.current < last_incoming_message.created_at + time
++    Time.current < message.created_at + time
+   end
+ 
+   def api_messaging_window
+@@ -64,6 +65,18 @@ class Conversations::MessageWindowService
+     GlobalConfigService.load(config_key, nil) ? MESSAGING_WINDOW_7_DAYS : MESSAGING_WINDOW_24_HOURS
+   end
+ 
++  def message_for_window
++    instagram_human_agent_window? ? last_conversation_message : last_incoming_message
++  end
++
++  def instagram_human_agent_window?
++    @conversation.inbox.channel_type == 'Channel::Instagram' && GlobalConfigService.load('ENABLE_INSTAGRAM_CHANNEL_HUMAN_AGENT', nil)
++  end
++
++  def last_conversation_message
++    @last_conversation_message ||= @conversation.messages.where(account_id: @conversation.account_id).last
++  end
++
+   def last_incoming_message
+     @last_incoming_message ||= @conversation.messages.where(account_id: @conversation.account_id).incoming&.last
+   end

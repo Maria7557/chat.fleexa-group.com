@@ -108,15 +108,22 @@ Confirmed by official WAHA docs:
 cd /Users/Caro/Documents/Chat/waha-poc
 cp .env.example .env
 # edit .env: set WAHA_PUBLIC_URL, WAHA_API_KEY, WAHA_API_KEY_PLAIN, dashboard password
+docker compose pull waha
 docker compose up -d
 ```
 
 Health check:
 
 ```bash
+curl -sS "$WAHA_API_URL/api/version" \
+  -H "X-Api-Key: $WAHA_API_KEY"
+
 curl -sS "$WAHA_API_URL/api/sessions" \
   -H "X-Api-Key: $WAHA_API_KEY"
 ```
+
+For media on the GOWS engine, confirm WAHA is `2026.6.1` or newer. Docker does
+not automatically refresh an existing `devlikeapro/waha:latest` image.
 
 ## 5. Create WAHA POC Session
 

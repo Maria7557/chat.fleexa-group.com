@@ -13,7 +13,7 @@
 - WAHA session: `default`
 - WAHA app id: `chatwoot_paddock_poc_default`
 - WAHA webhook URL: `https://waha.fleexa-group.com/webhooks/chatwoot/default/chatwoot_paddock_poc_default`
-- Linked WhatsApp account: `79153057966@c.us`
+- Linked WhatsApp account: `971545265555@c.us`
 
 ## What is still pending
 
@@ -32,6 +32,17 @@ cp .env.example .env
 docker compose up -d
 ```
 
+## Update deployed WAHA image
+
+Docker does not refresh `devlikeapro/waha:latest` automatically. Pull the image
+before recreating WAHA, especially when media support depends on a newer release.
+
+```bash
+cd /opt/fleetly/waha
+docker compose pull waha
+docker compose up -d waha
+```
+
 ## QR flow
 
 Official WAHA docs support two practical QR paths:
@@ -41,6 +52,16 @@ Official WAHA docs support two practical QR paths:
 
 For this POC, QR linking is complete and WAHA reports session `default` as `WORKING`.
 
-## Core limitation
+## Core media and sessions
 
-The deployed image is WAHA Core. WAHA Core supports only the `default` session. For the future rule `1 personal number = 1 WAHA session`, use WAHA Plus or run separate WAHA instances per personal number.
+Since WAHA `2026.6.1`, the old WAHA Plus feature set is included in WAHA Core.
+Media messages on the GOWS engine require the deployed Core image to be
+`2026.6.1` or newer.
+
+On `2026-06-22`, the server was updated from WAHA `2026.5.1` to `2026.6.1`
+because image sending from Chatwoot failed with a Plus-only `422` response. After
+the update, session `default` was restarted and returned to `WORKING`.
+
+The POC still uses one personal number per WAHA session and one Chatwoot API
+inbox. For multiple personal numbers, create a separate WAHA session and API
+inbox for each number, then verify the routing behavior in Chatwoot.
