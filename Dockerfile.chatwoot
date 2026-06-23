@@ -1,0 +1,3 @@
+FROM chatwoot/chatwoot:v4.14.2
+COPY chatwoot-patches/instagram-human-agent-activity-window.patch /tmp/patch.patch
+RUN cd /app && git apply /tmp/patch.patch

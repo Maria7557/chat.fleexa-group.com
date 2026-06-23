@@ -46,7 +46,7 @@
   - Runtime patch: Instagram Human Agent window now uses the latest Instagram conversation activity, not only the latest incoming customer message
   - Patch artifact: `chatwoot-patches/instagram-human-agent-activity-window.patch`
   - Verification: conversation display id `61` changed to `can_reply=true` even though it has no incoming message in Chatwoot
-  - Caveat: the runtime patch is inside `chatwoot-rails-1` and `chatwoot-sidekiq-1`; make it durable in the Chatwoot image/compose before a full container recreate or image pull
+  - Patch is now durable via custom image `fleexa-chatwoot:v4.14.2-patch1` using `Dockerfile.chatwoot` and `docker-compose.chatwoot-override.yml`. Rebuild required on Chatwoot version upgrade.
 
 ## Current State
 

@@ -1,0 +1,12 @@
+services:
+  rails:
+    build:
+      context: .
+      dockerfile: Dockerfile.chatwoot
+    image: fleexa-chatwoot:v4.14.2-patch1
+
+  sidekiq:
+    build:
+      context: .
+      dockerfile: Dockerfile.chatwoot
+    image: fleexa-chatwoot:v4.14.2-patch1
