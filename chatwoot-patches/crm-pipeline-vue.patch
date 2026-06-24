@@ -3,7 +3,8 @@ new file mode 100644
 index 0000000..598b9e4
 --- /dev/null
 +++ b/app/javascript/dashboard/api/crmPipeline.js
-@@ -0,0 +1,30 @@
+@@ -0,0 +1,31 @@
++/* global axios */
 +import ApiClient from './ApiClient';
 +
 +class CrmPipelineAPI {
@@ -20,8 +21,8 @@ index 0000000..598b9e4
 +    return this.stages.get();
 +  }
 +
-+  getDeals() {
-+    return this.deals.get();
++  getDeals(params = {}) {
++    return axios.get(this.deals.url, { params });
 +  }
 +
 +  createDeal(data) {
@@ -34,6 +35,241 @@ index 0000000..598b9e4
 +}
 +
 +export default new CrmPipelineAPI();
+diff --git a/app/javascript/dashboard/routes/dashboard/conversation/CrmDealWidget.vue b/app/javascript/dashboard/routes/dashboard/conversation/CrmDealWidget.vue
+new file mode 100644
+index 0000000..8b76657
+--- /dev/null
++++ b/app/javascript/dashboard/routes/dashboard/conversation/CrmDealWidget.vue
+@@ -0,0 +1,207 @@
++<script setup>
++import { computed, ref, watch } from 'vue';
++import { useRouter } from 'vue-router';
++
++import CrmPipelineAPI from 'dashboard/api/crmPipeline';
++import Button from 'dashboard/components-next/button/Button.vue';
++import Spinner from 'dashboard/components-next/spinner/Spinner.vue';
++import { useAccount } from 'dashboard/composables/useAccount';
++
++const props = defineProps({
++  conversationId: {
++    type: [Number, String],
++    required: true,
++  },
++  contact: {
++    type: Object,
++    default: () => ({}),
++  },
++});
++
++const router = useRouter();
++const { accountId } = useAccount();
++
++const stages = ref([]);
++const linkedDeal = ref(null);
++const isLoading = ref(false);
++const isCreating = ref(false);
++const errorMessage = ref('');
++
++const moneyFormatter = new Intl.NumberFormat('en-AE', {
++  style: 'currency',
++  currency: 'AED',
++});
++
++const dateFormatter = new Intl.DateTimeFormat('en-GB', {
++  day: '2-digit',
++  month: 'short',
++  year: 'numeric',
++});
++
++const orderedStages = computed(() => {
++  return [...stages.value].sort((a, b) => a.position - b.position);
++});
++
++const defaultStage = computed(() => {
++  return (
++    orderedStages.value.find(stage => stage.slug === 'unassigned') ||
++    orderedStages.value[0]
++  );
++});
++
++const stageName = computed(() => {
++  const stage = stages.value.find(item => item.id === linkedDeal.value?.stage_id);
++  return stage?.name || '';
++});
++
++const formatAmount = amount => {
++  if (amount === null || amount === undefined || amount === '') return '';
++  const value = Number(amount);
++  return Number.isFinite(value) ? moneyFormatter.format(value) : '';
++};
++
++const formatDate = value => {
++  if (!value) return '';
++  const date = new Date(value);
++  return Number.isNaN(date.getTime()) ? '' : dateFormatter.format(date);
++};
++
++const rentalPeriod = computed(() => {
++  const start = formatDate(linkedDeal.value?.rental_start);
++  const end = formatDate(linkedDeal.value?.rental_end);
++
++  if (start && end) return `${start} - ${end}`;
++  return start || end;
++});
++
++const setError = error => {
++  errorMessage.value = error?.response?.data?.error || error?.message || 'Request failed';
++};
++
++const loadDeal = async () => {
++  if (!props.conversationId) return;
++
++  isLoading.value = true;
++  errorMessage.value = '';
++
++  try {
++    const [stageResponse, dealResponse] = await Promise.all([
++      CrmPipelineAPI.getStages(),
++      CrmPipelineAPI.getDeals({ conversation_id: props.conversationId }),
++    ]);
++
++    stages.value = stageResponse.data || [];
++    linkedDeal.value = dealResponse.data?.[0] || null;
++  } catch (error) {
++    setError(error);
++  } finally {
++    isLoading.value = false;
++  }
++};
++
++const openDeal = () => {
++  router.push({
++    name: 'crm_pipeline_index',
++    params: { accountId: accountId.value },
++    query: linkedDeal.value ? { deal_id: linkedDeal.value.id } : {},
++  });
++};
++
++const createDeal = async () => {
++  if (!props.conversationId || !defaultStage.value) return;
++
++  isCreating.value = true;
++  errorMessage.value = '';
++
++  const deal = {
++    title: props.contact?.name || `Conversation #${props.conversationId}`,
++    stage_id: defaultStage.value.id,
++    conversation_id: props.conversationId,
++  };
++
++  if (props.contact?.id) deal.contact_id = props.contact.id;
++  if (props.contact?.phone_number) deal.client_phone = props.contact.phone_number;
++
++  try {
++    const response = await CrmPipelineAPI.createDeal({ deal });
++    linkedDeal.value = response.data;
++  } catch (error) {
++    setError(error);
++  } finally {
++    isCreating.value = false;
++  }
++};
++
++watch(() => props.conversationId, loadDeal, { immediate: true });
++</script>
++
++<template>
++  <section class="rounded-lg border border-n-weak bg-n-surface-2 p-3">
++    <div class="mb-3 flex items-center justify-between gap-2">
++      <div class="flex min-w-0 items-center gap-2">
++        <i class="i-lucide-briefcase h-4 w-4 shrink-0 text-n-slate-11" />
++        <h3 class="m-0 truncate text-sm font-medium text-n-slate-12">
++          CRM Deal
++        </h3>
++      </div>
++      <Spinner v-if="isLoading" :size="16" />
++    </div>
++
++    <div v-if="errorMessage" class="rounded-md bg-n-ruby-3 px-2 py-1.5 text-xs text-n-ruby-11">
++      {{ errorMessage }}
++    </div>
++
++    <div v-else-if="linkedDeal" class="grid gap-3">
++      <div class="min-w-0">
++        <div class="truncate text-sm font-medium text-n-slate-12">
++          {{ linkedDeal.title }}
++        </div>
++        <div v-if="stageName" class="mt-1 text-xs text-n-slate-11">
++          {{ stageName }}
++        </div>
++      </div>
++
++      <div class="grid gap-1.5 text-xs text-n-slate-11">
++        <div v-if="linkedDeal.car_model" class="flex min-w-0 items-center gap-1.5">
++          <i class="i-lucide-car h-3.5 w-3.5 shrink-0" />
++          <span class="truncate">{{ linkedDeal.car_model }}</span>
++        </div>
++        <div v-if="rentalPeriod" class="flex min-w-0 items-center gap-1.5">
++          <i class="i-lucide-calendar h-3.5 w-3.5 shrink-0" />
++          <span class="truncate">{{ rentalPeriod }}</span>
++        </div>
++        <div v-if="linkedDeal.booking_id" class="flex min-w-0 items-center gap-1.5">
++          <i class="i-lucide-ticket h-3.5 w-3.5 shrink-0" />
++          <span class="truncate">{{ linkedDeal.booking_id }}</span>
++        </div>
++      </div>
++
++      <div class="flex items-center justify-between gap-2">
++        <span class="truncate text-sm font-semibold text-n-slate-12">
++          {{ formatAmount(linkedDeal.amount) || 'AED 0.00' }}
++        </span>
++        <Button
++          label="Open deal"
++          icon="i-lucide-arrow-up-right"
++          size="xs"
++          slate
++          faded
++          @click="openDeal"
++        />
++      </div>
++    </div>
++
++    <div v-else class="grid gap-3">
++      <div class="text-sm text-n-slate-11">
++        No linked CRM deal
++      </div>
++      <Button
++        label="Create deal from conversation"
++        icon="i-lucide-plus"
++        size="xs"
++        :is-loading="isCreating"
++        @click="createDeal"
++      />
++    </div>
++  </section>
++</template>
+diff --git a/app/javascript/dashboard/routes/dashboard/conversation/ContactPanel.vue b/app/javascript/dashboard/routes/dashboard/conversation/ContactPanel.vue
+index 07789a1..91db2e1 100644
+--- a/app/javascript/dashboard/routes/dashboard/conversation/ContactPanel.vue
++++ b/app/javascript/dashboard/routes/dashboard/conversation/ContactPanel.vue
+@@ -12,6 +12,7 @@ import ContactInfo from './contact/ContactInfo.vue';
+ import ContactNotes from './contact/ContactNotes.vue';
+ import ConversationInfo from './ConversationInfo.vue';
+ import CustomAttributes from './customAttributes/CustomAttributes.vue';
++import CrmDealWidget from './CrmDealWidget.vue';
+ import SharedFiles from './SharedFiles.vue';
+ import Draggable from 'vuedraggable';
+ import MacrosList from './Macros/List.vue';
+@@ -140,6 +141,9 @@ onMounted(() => {
+       @close="closeContactPanel"
+     />
+     <ContactInfo :contact="contact" :channel-type="channelType" />
++    <div class="px-2 pb-3">
++      <CrmDealWidget :conversation-id="conversationId" :contact="contact" />
++    </div>
+     <div class="px-2 pb-8 list-group">
+       <Draggable
+         :list="conversationSidebarItems"
 diff --git a/app/javascript/dashboard/routes/dashboard/crm/Pipeline.vue b/app/javascript/dashboard/routes/dashboard/crm/Pipeline.vue
 new file mode 100644
 index 0000000..a574cb2
