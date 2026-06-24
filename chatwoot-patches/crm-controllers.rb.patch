@@ -125,24 +125,26 @@ index 0000000..553a24c
 +end
 diff --git a/app/controllers/api/v1/accounts/crm/deals_controller.rb b/app/controllers/api/v1/accounts/crm/deals_controller.rb
 new file mode 100644
-index 0000000..d0ac98d
+index 0000000..ad35c89
 --- /dev/null
 +++ b/app/controllers/api/v1/accounts/crm/deals_controller.rb
-@@ -0,0 +1,103 @@
+@@ -0,0 +1,162 @@
 +class Api::V1::Accounts::Crm::DealsController < Api::V1::Accounts::BaseController
 +  before_action :check_authorization
 +  before_action :set_deal, only: [:show, :update, :destroy]
 +
 +  def index
-+    deals = deal_scope.order(created_at: :desc)
++    deals = deal_scope.includes(:contact, :conversation, :assignee).order(created_at: :desc)
 +    deals = deals.where(stage_id: params[:stage_id]) if params[:stage_id].present?
 +    deals = deals.where(assigned_to: params[:assigned_to]) if params[:assigned_to].present?
++    deals = deals.where(conversation_id: params[:conversation_id]) if params[:conversation_id].present?
++    deals = deals.where(contact_id: params[:contact_id]) if params[:contact_id].present?
 +
-+    render json: deals
++    render json: deals.map { |deal| deal_payload(deal) }
 +  end
 +
 +  def show
-+    render json: @deal
++    render json: deal_payload(@deal)
 +  end
 +
 +  def create
@@ -154,7 +156,7 @@ index 0000000..d0ac98d
 +      create_activity(@deal, activity_type: 'created')
 +    end
 +
-+    render json: @deal
++    render json: deal_payload(@deal.reload)
 +  end
 +
 +  def update
@@ -168,7 +170,7 @@ index 0000000..d0ac98d
 +      create_stage_change_activity(@deal, old_stage_id) if @deal.stage_id != old_stage_id
 +    end
 +
-+    render json: @deal
++    render json: deal_payload(@deal.reload)
 +  end
 +
 +  def destroy
@@ -188,7 +190,7 @@ index 0000000..d0ac98d
 +  end
 +
 +  def set_deal
-+    @deal = deal_scope.find(params[:id])
++    @deal = deal_scope.includes(:contact, :conversation, :assignee).find(params[:id])
 +  end
 +
 +  def deal_params
@@ -207,6 +209,63 @@ index 0000000..d0ac98d
 +      :amount,
 +      :debt_amount
 +    )
++  end
++
++  def deal_payload(deal)
++    {
++      id: deal.id,
++      title: deal.title,
++      stage_id: deal.stage_id,
++      contact_id: deal.contact_id,
++      conversation_id: deal.conversation_id,
++      assigned_to: deal.assigned_to,
++      booking_id: deal.booking_id,
++      car_model: deal.car_model,
++      client_phone: deal.client_phone,
++      rental_start: deal.rental_start,
++      rental_end: deal.rental_end,
++      amount: deal.amount,
++      debt_amount: deal.debt_amount,
++      fleet_sync_status: deal.fleet_sync_status,
++      rotting_since: deal.rotting_since,
++      contact: contact_payload(deal.contact),
++      conversation: conversation_payload(deal.conversation),
++      assigned_user: assigned_user_payload(deal.assignee)
++    }
++  end
++
++  def contact_payload(contact)
++    return unless contact
++
++    {
++      id: contact.id,
++      name: contact.name,
++      email: contact.email,
++      phone_number: contact.phone_number,
++      thumbnail: contact.avatar_url
++    }
++  end
++
++  def conversation_payload(conversation)
++    return unless conversation
++
++    {
++      id: conversation.id,
++      display_id: conversation.display_id,
++      inbox_id: conversation.inbox_id,
++      status: conversation.status
++    }
++  end
++
++  def assigned_user_payload(user)
++    return unless user
++
++    {
++      id: user.id,
++      name: user.name,
++      email: user.email,
++      avatar_url: user.avatar_url
++    }
 +  end
 +
 +  def create_stage_change_activity(deal, old_stage_id)

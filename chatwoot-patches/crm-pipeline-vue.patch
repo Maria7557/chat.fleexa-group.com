@@ -36,12 +36,13 @@ index 0000000..598b9e4
 +export default new CrmPipelineAPI();
 diff --git a/app/javascript/dashboard/routes/dashboard/crm/Pipeline.vue b/app/javascript/dashboard/routes/dashboard/crm/Pipeline.vue
 new file mode 100644
-index 0000000..9ff1179
+index 0000000..a574cb2
 --- /dev/null
 +++ b/app/javascript/dashboard/routes/dashboard/crm/Pipeline.vue
-@@ -0,0 +1,283 @@
+@@ -0,0 +1,668 @@
 +<script setup>
 +import { computed, onMounted, ref, watch } from 'vue';
++import { useRouter } from 'vue-router';
 +
 +import CrmPipelineAPI from 'dashboard/api/crmPipeline';
 +import Button from 'dashboard/components-next/button/Button.vue';
@@ -49,19 +50,46 @@ index 0000000..9ff1179
 +import { useAccount } from 'dashboard/composables/useAccount';
 +
 +const { accountId } = useAccount();
++const router = useRouter();
++
++const buildDealForm = () => ({
++  title: '',
++  client_phone: '',
++  car_model: '',
++  rental_start: '',
++  rental_end: '',
++  amount: '',
++  booking_id: '',
++});
++
++const optionalDealFields = [
++  'client_phone',
++  'car_model',
++  'rental_start',
++  'rental_end',
++  'amount',
++  'booking_id',
++];
 +
 +const stages = ref([]);
 +const deals = ref([]);
 +const isLoading = ref(false);
 +const errorMessage = ref('');
 +const activeStageId = ref(null);
-+const newDealTitle = ref('');
++const newDealForm = ref(buildDealForm());
 +const savingStageId = ref(null);
 +const draggingDealId = ref(null);
++const selectedDeal = ref(null);
 +
 +const moneyFormatter = new Intl.NumberFormat('en-AE', {
 +  style: 'currency',
 +  currency: 'AED',
++});
++
++const dateFormatter = new Intl.DateTimeFormat('en-GB', {
++  day: '2-digit',
++  month: 'short',
++  year: 'numeric',
 +});
 +
 +const orderedStages = computed(() => {
@@ -78,6 +106,26 @@ index 0000000..9ff1179
 +});
 +
 +const dealsForStage = stageId => dealsByStage.value[stageId] || [];
++
++const amountValue = amount => {
++  if (amount === null || amount === undefined || amount === '') return 0;
++  const value = Number(amount);
++  return Number.isFinite(value) ? value : 0;
++};
++
++const stageTotal = stageId => {
++  return dealsForStage(stageId).reduce((sum, deal) => {
++    return sum + amountValue(deal.amount);
++  }, 0);
++};
++
++const stageName = stageId => {
++  return stages.value.find(stage => stage.id === stageId)?.name || '';
++};
++
++const selectedStageName = computed(() => {
++  return selectedDeal.value ? stageName(selectedDeal.value.stage_id) : '';
++});
 +
 +const setError = error => {
 +  errorMessage.value = error?.response?.data?.error || error?.message || 'Request failed';
@@ -104,28 +152,42 @@ index 0000000..9ff1179
 +
 +const openNewDealForm = stageId => {
 +  activeStageId.value = stageId;
-+  newDealTitle.value = '';
++  newDealForm.value = buildDealForm();
 +};
 +
 +const closeNewDealForm = () => {
 +  activeStageId.value = null;
-+  newDealTitle.value = '';
++  newDealForm.value = buildDealForm();
++};
++
++const dealPayloadFromForm = stage => {
++  const title = newDealForm.value.title.trim();
++  if (!title) return null;
++
++  const deal = {
++    title,
++    stage_id: stage.id,
++  };
++
++  optionalDealFields.forEach(field => {
++    const value = newDealForm.value[field];
++    if (value !== null && value !== undefined && String(value).trim() !== '') {
++      deal[field] = value;
++    }
++  });
++
++  return deal;
 +};
 +
 +const createDeal = async stage => {
-+  const title = newDealTitle.value.trim();
-+  if (!title) return;
++  const deal = dealPayloadFromForm(stage);
++  if (!deal) return;
 +
 +  savingStageId.value = stage.id;
 +  errorMessage.value = '';
 +
 +  try {
-+    const response = await CrmPipelineAPI.createDeal({
-+      deal: {
-+        title,
-+        stage_id: stage.id,
-+      },
-+    });
++    const response = await CrmPipelineAPI.createDeal({ deal });
 +
 +    deals.value = [response.data, ...deals.value];
 +    closeNewDealForm();
@@ -144,6 +206,16 @@ index 0000000..9ff1179
 +  draggingDealId.value = null;
 +};
 +
++const updateLocalDeal = updatedDeal => {
++  deals.value = deals.value.map(item =>
++    item.id === updatedDeal.id ? { ...item, ...updatedDeal } : item
++  );
++
++  if (selectedDeal.value?.id === updatedDeal.id) {
++    selectedDeal.value = { ...selectedDeal.value, ...updatedDeal };
++  }
++};
++
 +const onDrop = async stage => {
 +  const deal = deals.value.find(item => item.id === draggingDealId.value);
 +  if (!deal || deal.stage_id === stage.id) {
@@ -158,9 +230,7 @@ index 0000000..9ff1179
 +      deal: { stage_id: stage.id },
 +    });
 +
-+    deals.value = deals.value.map(item =>
-+      item.id === deal.id ? { ...item, ...response.data } : item
-+    );
++    updateLocalDeal(response.data);
 +  } catch (error) {
 +    setError(error);
 +  } finally {
@@ -172,6 +242,20 @@ index 0000000..9ff1179
 +  if (amount === null || amount === undefined || amount === '') return '';
 +  const value = Number(amount);
 +  return Number.isFinite(value) ? moneyFormatter.format(value) : '';
++};
++
++const formatDate = value => {
++  if (!value) return '';
++  const date = new Date(value);
++  return Number.isNaN(date.getTime()) ? '' : dateFormatter.format(date);
++};
++
++const formatRentalPeriod = deal => {
++  const start = formatDate(deal.rental_start);
++  const end = formatDate(deal.rental_end);
++
++  if (start && end) return `${start} - ${end}`;
++  return start || end;
 +};
 +
 +const rottingMinutes = rottingSince => {
@@ -186,6 +270,39 @@ index 0000000..9ff1179
 +    : 'bg-n-amber-3 text-n-amber-11';
 +};
 +
++const contactName = deal => deal.contact?.name || deal.title;
++const phoneNumber = deal => deal.contact?.phone_number || deal.client_phone;
++const assignedName = deal => deal.assigned_user?.name || '';
++const conversationDisplayId = deal => {
++  return deal.conversation?.display_id || deal.conversation_id;
++};
++
++const conversationLabel = deal => {
++  const displayId = conversationDisplayId(deal);
++  return displayId ? `#${displayId}` : 'Linked';
++};
++
++const openDeal = deal => {
++  selectedDeal.value = deal;
++};
++
++const closeDealDrawer = () => {
++  selectedDeal.value = null;
++};
++
++const openConversation = deal => {
++  const conversationId = conversationDisplayId(deal);
++  if (!conversationId) return;
++
++  router.push({
++    name: 'inbox_conversation',
++    params: {
++      accountId: accountId.value,
++      conversation_id: conversationId,
++    },
++  });
++};
++
 +watch(accountId, fetchPipeline);
 +onMounted(fetchPipeline);
 +</script>
@@ -194,11 +311,10 @@ index 0000000..9ff1179
 +  <section class="flex h-full min-w-0 flex-1 flex-col bg-n-surface-1">
 +    <header class="border-b border-n-weak px-6 py-4">
 +      <div class="flex items-center justify-between gap-3">
-+        <div>
-+          <h1 class="m-0 text-xl font-medium text-n-slate-12">Pipeline</h1>
-+          <p class="m-0 mt-1 text-sm text-n-slate-11">
-+            CRM deals grouped by pipeline stage.
-+          </p>
++        <div class="min-w-0">
++          <h1 class="m-0 truncate text-xl font-medium text-n-slate-12">
++            Pipeline
++          </h1>
 +        </div>
 +        <Button
 +          label="Refresh"
@@ -212,34 +328,51 @@ index 0000000..9ff1179
 +      </div>
 +    </header>
 +
-+    <div v-if="errorMessage" class="mx-6 mt-4 rounded-lg border border-n-ruby-7 bg-n-ruby-3 px-4 py-3 text-sm text-n-ruby-11">
++    <div
++      v-if="errorMessage"
++      class="mx-6 mt-4 rounded-lg border border-n-ruby-7 bg-n-ruby-3 px-4 py-3 text-sm text-n-ruby-11"
++    >
 +      {{ errorMessage }}
 +    </div>
 +
-+    <div v-if="isLoading && !stages.length" class="grid flex-1 place-items-center text-n-slate-11">
++    <div
++      v-if="isLoading && !stages.length"
++      class="grid flex-1 place-items-center text-n-slate-11"
++    >
 +      <Spinner :size="28" />
 +    </div>
 +
 +    <div v-else class="min-h-0 flex-1 overflow-x-auto px-6 py-5">
 +      <div
 +        v-if="orderedStages.length"
-+        class="grid h-full min-w-max auto-cols-[minmax(17rem,19rem)] grid-flow-col gap-4"
++        class="grid h-full min-w-max auto-cols-[minmax(19rem,21rem)] grid-flow-col gap-4"
 +      >
 +        <section
 +          v-for="stage in orderedStages"
 +          :key="stage.id"
 +          class="flex min-h-0 flex-col rounded-lg border border-n-weak bg-n-surface-2"
-+          :style="{ borderTopColor: stage.color || '#6B7280', borderTopWidth: '4px' }"
 +          @dragover.prevent
 +          @drop="onDrop(stage)"
 +        >
-+          <header class="flex items-center justify-between gap-3 border-b border-n-weak px-3 py-3">
-+            <h2 class="m-0 truncate text-sm font-medium text-n-slate-12">
-+              {{ stage.name }}
-+            </h2>
-+            <span class="rounded-full bg-n-alpha-2 px-2 py-0.5 text-xs text-n-slate-11">
-+              {{ dealsForStage(stage.id).length }}
-+            </span>
++          <header class="border-b border-n-weak px-3 py-3">
++            <div class="flex items-start justify-between gap-3">
++              <div class="min-w-0">
++                <div class="flex min-w-0 items-center gap-2">
++                  <span
++                    class="h-2.5 w-2.5 shrink-0 rounded-full"
++                    :style="{ backgroundColor: stage.color || '#6B7280' }"
++                  />
++                  <h2 class="m-0 truncate text-sm font-medium text-n-slate-12">
++                    {{ stage.name }}
++                  </h2>
++                </div>
++                <div class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-n-slate-11">
++                  <span>{{ dealsForStage(stage.id).length }} deals</span>
++                  <span class="h-1 w-1 rounded-full bg-n-slate-7" />
++                  <span>{{ formatAmount(stageTotal(stage.id)) }}</span>
++                </div>
++              </div>
++            </div>
 +          </header>
 +
 +          <div class="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-3">
@@ -247,41 +380,142 @@ index 0000000..9ff1179
 +              v-for="deal in dealsForStage(stage.id)"
 +              :key="deal.id"
 +              draggable="true"
-+              class="cursor-grab rounded-lg border border-n-weak bg-n-surface-1 p-3 shadow-sm active:cursor-grabbing"
++              role="button"
++              tabindex="0"
++              class="cursor-grab rounded-lg border border-n-weak bg-n-surface-1 p-3 shadow-sm outline-none transition hover:border-n-slate-7 hover:shadow-md focus-visible:border-n-brand active:cursor-grabbing"
 +              :class="{ 'opacity-50': draggingDealId === deal.id }"
++              @click="openDeal(deal)"
++              @keyup.enter="openDeal(deal)"
 +              @dragstart="onDragStart(deal)"
 +              @dragend="onDragEnd"
 +            >
-+              <div class="text-sm font-medium text-n-slate-12">
-+                {{ deal.title }}
++              <div class="flex items-start justify-between gap-3">
++                <div class="min-w-0">
++                  <h3 class="m-0 truncate text-sm font-medium text-n-slate-12">
++                    {{ contactName(deal) }}
++                  </h3>
++                  <div
++                    v-if="phoneNumber(deal)"
++                    class="mt-1 flex min-w-0 items-center gap-1.5 text-xs text-n-slate-11"
++                  >
++                    <i class="i-lucide-phone h-3.5 w-3.5 shrink-0" />
++                    <span class="truncate">{{ phoneNumber(deal) }}</span>
++                  </div>
++                </div>
++                <div
++                  v-if="formatAmount(deal.amount)"
++                  class="shrink-0 text-right text-sm font-semibold text-n-slate-12"
++                >
++                  {{ formatAmount(deal.amount) }}
++                </div>
 +              </div>
-+              <div v-if="deal.client_phone" class="mt-1 text-xs text-n-slate-11">
-+                {{ deal.client_phone }}
++
++              <div class="mt-3 grid gap-2 text-xs text-n-slate-11">
++                <div
++                  v-if="deal.car_model"
++                  class="flex min-w-0 items-center gap-1.5"
++                >
++                  <i class="i-lucide-car h-3.5 w-3.5 shrink-0" />
++                  <span class="truncate">{{ deal.car_model }}</span>
++                </div>
++                <div
++                  v-if="formatRentalPeriod(deal)"
++                  class="flex min-w-0 items-center gap-1.5"
++                >
++                  <i class="i-lucide-calendar h-3.5 w-3.5 shrink-0" />
++                  <span class="truncate">{{ formatRentalPeriod(deal) }}</span>
++                </div>
++                <div
++                  v-if="deal.booking_id"
++                  class="flex min-w-0 items-center gap-1.5"
++                >
++                  <i class="i-lucide-ticket h-3.5 w-3.5 shrink-0" />
++                  <span class="truncate">Booking {{ deal.booking_id }}</span>
++                </div>
 +              </div>
-+              <div v-if="formatAmount(deal.amount)" class="mt-2 text-sm font-medium text-n-slate-12">
-+                {{ formatAmount(deal.amount) }}
++
++              <div class="mt-3 flex flex-wrap items-center gap-2">
++                <span
++                  v-if="assignedName(deal)"
++                  class="inline-flex min-w-0 items-center gap-1 rounded-md bg-n-alpha-2 px-2 py-1 text-xs text-n-slate-11"
++                >
++                  <i class="i-lucide-user h-3.5 w-3.5 shrink-0" />
++                  <span class="truncate">{{ assignedName(deal) }}</span>
++                </span>
++                <span
++                  v-if="deal.conversation_id"
++                  class="inline-flex items-center gap-1 rounded-md bg-n-teal-3 px-2 py-1 text-xs font-medium text-n-teal-11"
++                >
++                  <i class="i-lucide-message-circle h-3.5 w-3.5" />
++                  {{ conversationLabel(deal) }}
++                </span>
++                <span
++                  v-if="deal.rotting_since"
++                  class="inline-flex rounded-md px-2 py-1 text-xs font-medium"
++                  :class="rottingBadgeClass(deal)"
++                >
++                  Rotting {{ rottingMinutes(deal.rotting_since) }}m
++                </span>
 +              </div>
-+              <span
-+                v-if="deal.rotting_since"
-+                class="mt-3 inline-flex rounded-md px-2 py-0.5 text-xs font-medium"
-+                :class="rottingBadgeClass(deal)"
-+              >
-+                Rotting {{ rottingMinutes(deal.rotting_since) }}m
-+              </span>
 +            </article>
++
++            <div
++              v-if="!dealsForStage(stage.id).length && activeStageId !== stage.id"
++              class="rounded-lg border border-dashed border-n-weak px-3 py-6 text-center text-sm text-n-slate-10"
++            >
++              No deals
++            </div>
 +
 +            <form
 +              v-if="activeStageId === stage.id"
-+              class="rounded-lg border border-n-weak bg-n-surface-1 p-3"
++              class="rounded-lg border border-n-weak bg-n-surface-1 p-3 shadow-sm"
 +              @submit.prevent="createDeal(stage)"
 +            >
-+              <input
-+                v-model="newDealTitle"
-+                class="h-9 w-full rounded-md border border-n-weak bg-n-background px-3 text-sm text-n-slate-12 outline-none focus:border-n-brand"
-+                placeholder="Deal title"
-+                type="text"
-+                autofocus
-+              />
++              <div class="grid grid-cols-2 gap-2">
++                <input
++                  v-model="newDealForm.title"
++                  class="col-span-2 h-9 w-full rounded-md border border-n-weak bg-n-background px-3 text-sm text-n-slate-12 outline-none focus:border-n-brand"
++                  placeholder="Deal title"
++                  type="text"
++                  autofocus
++                />
++                <input
++                  v-model="newDealForm.client_phone"
++                  class="h-9 w-full rounded-md border border-n-weak bg-n-background px-3 text-sm text-n-slate-12 outline-none focus:border-n-brand"
++                  placeholder="Phone"
++                  type="tel"
++                />
++                <input
++                  v-model="newDealForm.car_model"
++                  class="h-9 w-full rounded-md border border-n-weak bg-n-background px-3 text-sm text-n-slate-12 outline-none focus:border-n-brand"
++                  placeholder="Car model"
++                  type="text"
++                />
++                <input
++                  v-model="newDealForm.rental_start"
++                  class="h-9 w-full rounded-md border border-n-weak bg-n-background px-3 text-sm text-n-slate-12 outline-none focus:border-n-brand"
++                  type="date"
++                />
++                <input
++                  v-model="newDealForm.rental_end"
++                  class="h-9 w-full rounded-md border border-n-weak bg-n-background px-3 text-sm text-n-slate-12 outline-none focus:border-n-brand"
++                  type="date"
++                />
++                <input
++                  v-model="newDealForm.amount"
++                  class="h-9 w-full rounded-md border border-n-weak bg-n-background px-3 text-sm text-n-slate-12 outline-none focus:border-n-brand"
++                  min="0"
++                  placeholder="Amount"
++                  step="0.01"
++                  type="number"
++                />
++                <input
++                  v-model="newDealForm.booking_id"
++                  class="h-9 w-full rounded-md border border-n-weak bg-n-background px-3 text-sm text-n-slate-12 outline-none focus:border-n-brand"
++                  placeholder="Booking ID"
++                  type="text"
++                />
++              </div>
 +              <div class="mt-3 flex items-center gap-2">
 +                <Button
 +                  label="Save"
@@ -303,7 +537,8 @@ index 0000000..9ff1179
 +
 +          <footer class="border-t border-n-weak p-3">
 +            <Button
-+              label="+ New Deal"
++              label="New Deal"
++              icon="i-lucide-plus"
 +              size="sm"
 +              slate
 +              faded
@@ -320,6 +555,156 @@ index 0000000..9ff1179
 +      >
 +        No pipeline stages found.
 +      </div>
++    </div>
++
++    <div
++      v-if="selectedDeal"
++      class="fixed inset-0 z-50 flex justify-end bg-n-slate-12/40"
++      @click.self="closeDealDrawer"
++    >
++      <aside class="flex h-full w-full max-w-[32rem] flex-col bg-n-surface-1 shadow-2xl">
++        <header class="flex items-start justify-between gap-4 border-b border-n-weak px-6 py-5">
++          <div class="min-w-0">
++            <div class="text-xs font-medium uppercase text-n-slate-10">
++              Deal
++            </div>
++            <h2 class="m-0 mt-1 truncate text-xl font-semibold text-n-slate-12">
++              {{ selectedDeal.title }}
++            </h2>
++            <div class="mt-2 flex flex-wrap items-center gap-2 text-xs text-n-slate-11">
++              <span>{{ selectedStageName }}</span>
++              <span v-if="selectedDeal.conversation_id" class="inline-flex items-center gap-1 rounded-md bg-n-teal-3 px-2 py-1 font-medium text-n-teal-11">
++                <i class="i-lucide-message-circle h-3.5 w-3.5" />
++                {{ conversationLabel(selectedDeal) }}
++              </span>
++            </div>
++          </div>
++          <Button
++            icon="i-lucide-x"
++            size="sm"
++            slate
++            ghost
++            type="button"
++            aria-label="Close deal drawer"
++            @click="closeDealDrawer"
++          />
++        </header>
++
++        <div class="min-h-0 flex-1 overflow-y-auto px-6 py-5">
++          <section class="border-b border-n-weak pb-5">
++            <h3 class="m-0 text-sm font-medium text-n-slate-12">
++              Client
++            </h3>
++            <div class="mt-3 flex items-center gap-3">
++              <img
++                v-if="selectedDeal.contact?.thumbnail"
++                :src="selectedDeal.contact.thumbnail"
++                class="h-10 w-10 rounded-full object-cover"
++                alt=""
++              />
++              <div
++                v-else
++                class="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-n-alpha-2 text-sm font-medium text-n-slate-11"
++              >
++                {{ contactName(selectedDeal).slice(0, 1).toUpperCase() }}
++              </div>
++              <div class="min-w-0">
++                <div class="truncate text-sm font-medium text-n-slate-12">
++                  {{ contactName(selectedDeal) }}
++                </div>
++                <div v-if="selectedDeal.contact?.email" class="truncate text-xs text-n-slate-11">
++                  {{ selectedDeal.contact.email }}
++                </div>
++                <div v-if="phoneNumber(selectedDeal)" class="truncate text-xs text-n-slate-11">
++                  {{ phoneNumber(selectedDeal) }}
++                </div>
++              </div>
++            </div>
++          </section>
++
++          <section class="grid gap-4 border-b border-n-weak py-5">
++            <div class="grid grid-cols-2 gap-4">
++              <div>
++                <div class="text-xs text-n-slate-10">Car</div>
++                <div class="mt-1 text-sm text-n-slate-12">
++                  {{ selectedDeal.car_model || '-' }}
++                </div>
++              </div>
++              <div>
++                <div class="text-xs text-n-slate-10">Booking</div>
++                <div class="mt-1 text-sm text-n-slate-12">
++                  {{ selectedDeal.booking_id || '-' }}
++                </div>
++              </div>
++              <div>
++                <div class="text-xs text-n-slate-10">Rental start</div>
++                <div class="mt-1 text-sm text-n-slate-12">
++                  {{ formatDate(selectedDeal.rental_start) || '-' }}
++                </div>
++              </div>
++              <div>
++                <div class="text-xs text-n-slate-10">Rental end</div>
++                <div class="mt-1 text-sm text-n-slate-12">
++                  {{ formatDate(selectedDeal.rental_end) || '-' }}
++                </div>
++              </div>
++              <div>
++                <div class="text-xs text-n-slate-10">Amount</div>
++                <div class="mt-1 text-sm font-medium text-n-slate-12">
++                  {{ formatAmount(selectedDeal.amount) || '-' }}
++                </div>
++              </div>
++              <div>
++                <div class="text-xs text-n-slate-10">Debt</div>
++                <div class="mt-1 text-sm font-medium text-n-slate-12">
++                  {{ formatAmount(selectedDeal.debt_amount) || '-' }}
++                </div>
++              </div>
++            </div>
++          </section>
++
++          <section class="grid gap-4 py-5">
++            <div>
++              <div class="text-xs text-n-slate-10">Assigned manager</div>
++              <div class="mt-1 text-sm text-n-slate-12">
++                {{ assignedName(selectedDeal) || '-' }}
++              </div>
++            </div>
++            <div v-if="selectedDeal.fleet_sync_status && selectedDeal.fleet_sync_status !== 'none'">
++              <div class="text-xs text-n-slate-10">Fleet sync</div>
++              <div class="mt-1 text-sm text-n-slate-12">
++                {{ selectedDeal.fleet_sync_status }}
++              </div>
++            </div>
++            <div v-if="selectedDeal.rotting_since">
++              <div class="text-xs text-n-slate-10">Rotting</div>
++              <span
++                class="mt-1 inline-flex rounded-md px-2 py-1 text-xs font-medium"
++                :class="rottingBadgeClass(selectedDeal)"
++              >
++                {{ rottingMinutes(selectedDeal.rotting_since) }}m
++              </span>
++            </div>
++          </section>
++        </div>
++
++        <footer class="flex items-center justify-end gap-2 border-t border-n-weak px-6 py-4">
++          <Button
++            v-if="selectedDeal.conversation_id"
++            label="Open conversation"
++            icon="i-lucide-message-circle"
++            size="sm"
++            @click="openConversation(selectedDeal)"
++          />
++          <Button
++            label="Close"
++            size="sm"
++            slate
++            ghost
++            @click="closeDealDrawer"
++          />
++        </footer>
++      </aside>
 +    </div>
 +  </section>
 +</template>
