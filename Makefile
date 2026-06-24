@@ -3,7 +3,7 @@ ENV_FILE := .env.local
 COMPOSE := docker compose --env-file $(ENV_FILE) -f $(COMPOSE_FILE)
 COMPOSE_NO_ENV := docker compose -f $(COMPOSE_FILE)
 
-.PHONY: setup up down logs migrate seed shell verify-patch ensure-env
+.PHONY: setup up down logs migrate seed shell verify-patch ensure-env crm-apply crm-migrate crm-seed
 
 ensure-env:
 	@test -f $(ENV_FILE) || (echo "$(ENV_FILE) is missing. Run: make setup"; exit 1)
@@ -32,3 +32,18 @@ shell: ensure-env
 
 verify-patch: ensure-env
 	$(COMPOSE) exec rails grep -n "message_for_window" /app/app/services/conversations/message_window_service.rb
+
+crm-apply: ensure-env
+	$(COMPOSE) cp chatwoot-patches/crm-pipeline-migration.sql postgres:/tmp/crm-pipeline-migration.sql
+	$(COMPOSE) exec postgres psql -U chatwoot -d chatwoot_production -f /tmp/crm-pipeline-migration.sql
+	@echo "CRM tables applied"
+
+crm-migrate: ensure-env
+	$(COMPOSE) cp chatwoot-patches/crm-pipeline-migration.sql postgres:/tmp/crm-pipeline-migration.sql
+	$(COMPOSE) exec postgres psql -U chatwoot -d chatwoot_production -f /tmp/crm-pipeline-migration.sql
+	@echo "CRM migration complete"
+
+crm-seed:
+	@test -n "$(ACCOUNT_ID)" || (echo "Usage: ACCOUNT_ID=1 make crm-seed" && exit 1)
+	sed "s/ACCOUNT_ID/$(ACCOUNT_ID)/g" chatwoot-patches/crm-pipeline-seed.sql | $(COMPOSE) exec -T postgres psql -U chatwoot -d chatwoot_production
+	@echo "CRM seed complete"
