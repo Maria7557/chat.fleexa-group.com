@@ -3,7 +3,7 @@ ENV_FILE := .env.local
 COMPOSE := docker compose --env-file $(ENV_FILE) -f $(COMPOSE_FILE)
 COMPOSE_NO_ENV := docker compose -f $(COMPOSE_FILE)
 
-.PHONY: setup up down logs migrate seed shell verify-patch ensure-env crm-apply crm-migrate crm-seed crm-copy-patches crm-patch-check crm-patch crm-install
+.PHONY: setup up down logs migrate seed shell verify-patch ensure-env crm-apply crm-migrate crm-seed crm-copy-patches crm-patch-check crm-patch crm-install crm-vue-copy crm-vue-check crm-vue-patch
 
 ensure-env:
 	@test -f $(ENV_FILE) || (echo "$(ENV_FILE) is missing. Run: make setup"; exit 1)
@@ -68,3 +68,15 @@ crm-patch:
 
 crm-install: crm-copy-patches crm-patch
 	@echo "CRM backend installed in Rails container"
+
+crm-vue-copy: ensure-env
+	$(COMPOSE) cp chatwoot-patches/crm-pipeline-vue.patch rails:/tmp/crm-pipeline-vue.patch
+	@echo "CRM Vue patch copied to Rails container"
+
+crm-vue-check: crm-vue-copy
+	$(COMPOSE) exec rails sh -lc "cd /app && git apply --check /tmp/crm-pipeline-vue.patch"
+	@echo "CRM Vue patch validated"
+
+crm-vue-patch: crm-vue-copy
+	$(COMPOSE) exec rails sh -lc "cd /app && git apply /tmp/crm-pipeline-vue.patch"
+	@echo "CRM Vue patch applied"

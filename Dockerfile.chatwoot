@@ -1,10 +1,31 @@
+FROM chatwoot/chatwoot:v4.14.2 AS frontend-builder
+
+RUN apk add --no-cache npm && npm install -g pnpm@10.2.0
+
+COPY chatwoot-patches/crm-pipeline-vue.patch /tmp/crm-pipeline-vue.patch
+
+RUN cd /app && \
+    git apply /tmp/crm-pipeline-vue.patch && \
+    pnpm install --frozen-lockfile && \
+    (node node_modules/esbuild/install.js 2>/dev/null || true)
+
+RUN cd /app && \
+    SECRET_KEY_BASE=build_dummy_key_not_used_in_production \
+    bundle exec rake vite:build_all
+
 FROM chatwoot/chatwoot:v4.14.2
+
+COPY --from=frontend-builder /app/public/vite /app/public/vite
+
 COPY chatwoot-patches/instagram-human-agent-activity-window.patch /tmp/patch.patch
 COPY chatwoot-patches/crm-models.rb.patch /tmp/crm-models.rb.patch
 COPY chatwoot-patches/crm-controllers.rb.patch /tmp/crm-controllers.rb.patch
 COPY chatwoot-patches/crm-routes.rb.patch /tmp/crm-routes.rb.patch
+COPY chatwoot-patches/crm-pipeline-vue.patch /tmp/crm-pipeline-vue.patch
+
 RUN cd /app && \
     git apply /tmp/patch.patch && \
     git apply /tmp/crm-models.rb.patch && \
     git apply /tmp/crm-controllers.rb.patch && \
-    git apply /tmp/crm-routes.rb.patch
+    git apply /tmp/crm-routes.rb.patch && \
+    git apply /tmp/crm-pipeline-vue.patch

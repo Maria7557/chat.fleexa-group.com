@@ -1,0 +1,380 @@
+diff --git a/app/javascript/dashboard/api/crmPipeline.js b/app/javascript/dashboard/api/crmPipeline.js
+new file mode 100644
+index 0000000..598b9e4
+--- /dev/null
++++ b/app/javascript/dashboard/api/crmPipeline.js
+@@ -0,0 +1,30 @@
++import ApiClient from './ApiClient';
++
++class CrmPipelineAPI {
++  constructor() {
++    this.stages = new ApiClient('crm/pipeline_stages', {
++      accountScoped: true,
++    });
++    this.deals = new ApiClient('crm/deals', {
++      accountScoped: true,
++    });
++  }
++
++  getStages() {
++    return this.stages.get();
++  }
++
++  getDeals() {
++    return this.deals.get();
++  }
++
++  createDeal(data) {
++    return this.deals.create(data);
++  }
++
++  updateDeal(id, data) {
++    return this.deals.update(id, data);
++  }
++}
++
++export default new CrmPipelineAPI();
+diff --git a/app/javascript/dashboard/routes/dashboard/crm/Pipeline.vue b/app/javascript/dashboard/routes/dashboard/crm/Pipeline.vue
+new file mode 100644
+index 0000000..9ff1179
+--- /dev/null
++++ b/app/javascript/dashboard/routes/dashboard/crm/Pipeline.vue
+@@ -0,0 +1,283 @@
++<script setup>
++import { computed, onMounted, ref, watch } from 'vue';
++
++import CrmPipelineAPI from 'dashboard/api/crmPipeline';
++import Button from 'dashboard/components-next/button/Button.vue';
++import Spinner from 'dashboard/components-next/spinner/Spinner.vue';
++import { useAccount } from 'dashboard/composables/useAccount';
++
++const { accountId } = useAccount();
++
++const stages = ref([]);
++const deals = ref([]);
++const isLoading = ref(false);
++const errorMessage = ref('');
++const activeStageId = ref(null);
++const newDealTitle = ref('');
++const savingStageId = ref(null);
++const draggingDealId = ref(null);
++
++const moneyFormatter = new Intl.NumberFormat('en-AE', {
++  style: 'currency',
++  currency: 'AED',
++});
++
++const orderedStages = computed(() => {
++  return [...stages.value].sort((a, b) => a.position - b.position);
++});
++
++const dealsByStage = computed(() => {
++  return deals.value.reduce((memo, deal) => {
++    const stageDeals = memo[deal.stage_id] || [];
++    stageDeals.push(deal);
++    memo[deal.stage_id] = stageDeals;
++    return memo;
++  }, {});
++});
++
++const dealsForStage = stageId => dealsByStage.value[stageId] || [];
++
++const setError = error => {
++  errorMessage.value = error?.response?.data?.error || error?.message || 'Request failed';
++};
++
++const fetchPipeline = async () => {
++  isLoading.value = true;
++  errorMessage.value = '';
++
++  try {
++    const [stageResponse, dealResponse] = await Promise.all([
++      CrmPipelineAPI.getStages(),
++      CrmPipelineAPI.getDeals(),
++    ]);
++
++    stages.value = stageResponse.data || [];
++    deals.value = dealResponse.data || [];
++  } catch (error) {
++    setError(error);
++  } finally {
++    isLoading.value = false;
++  }
++};
++
++const openNewDealForm = stageId => {
++  activeStageId.value = stageId;
++  newDealTitle.value = '';
++};
++
++const closeNewDealForm = () => {
++  activeStageId.value = null;
++  newDealTitle.value = '';
++};
++
++const createDeal = async stage => {
++  const title = newDealTitle.value.trim();
++  if (!title) return;
++
++  savingStageId.value = stage.id;
++  errorMessage.value = '';
++
++  try {
++    const response = await CrmPipelineAPI.createDeal({
++      deal: {
++        title,
++        stage_id: stage.id,
++      },
++    });
++
++    deals.value = [response.data, ...deals.value];
++    closeNewDealForm();
++  } catch (error) {
++    setError(error);
++  } finally {
++    savingStageId.value = null;
++  }
++};
++
++const onDragStart = deal => {
++  draggingDealId.value = deal.id;
++};
++
++const onDragEnd = () => {
++  draggingDealId.value = null;
++};
++
++const onDrop = async stage => {
++  const deal = deals.value.find(item => item.id === draggingDealId.value);
++  if (!deal || deal.stage_id === stage.id) {
++    draggingDealId.value = null;
++    return;
++  }
++
++  errorMessage.value = '';
++
++  try {
++    const response = await CrmPipelineAPI.updateDeal(deal.id, {
++      deal: { stage_id: stage.id },
++    });
++
++    deals.value = deals.value.map(item =>
++      item.id === deal.id ? { ...item, ...response.data } : item
++    );
++  } catch (error) {
++    setError(error);
++  } finally {
++    draggingDealId.value = null;
++  }
++};
++
++const formatAmount = amount => {
++  if (amount === null || amount === undefined || amount === '') return '';
++  const value = Number(amount);
++  return Number.isFinite(value) ? moneyFormatter.format(value) : '';
++};
++
++const rottingMinutes = rottingSince => {
++  const startedAt = new Date(rottingSince).getTime();
++  if (Number.isNaN(startedAt)) return 0;
++  return Math.max(0, Math.floor((Date.now() - startedAt) / 60000));
++};
++
++const rottingBadgeClass = deal => {
++  return rottingMinutes(deal.rotting_since) >= 60
++    ? 'bg-n-ruby-3 text-n-ruby-11'
++    : 'bg-n-amber-3 text-n-amber-11';
++};
++
++watch(accountId, fetchPipeline);
++onMounted(fetchPipeline);
++</script>
++
++<template>
++  <section class="flex h-full min-w-0 flex-1 flex-col bg-n-surface-1">
++    <header class="border-b border-n-weak px-6 py-4">
++      <div class="flex items-center justify-between gap-3">
++        <div>
++          <h1 class="m-0 text-xl font-medium text-n-slate-12">Pipeline</h1>
++          <p class="m-0 mt-1 text-sm text-n-slate-11">
++            CRM deals grouped by pipeline stage.
++          </p>
++        </div>
++        <Button
++          label="Refresh"
++          icon="i-lucide-refresh-cw"
++          size="sm"
++          slate
++          faded
++          :is-loading="isLoading"
++          @click="fetchPipeline"
++        />
++      </div>
++    </header>
++
++    <div v-if="errorMessage" class="mx-6 mt-4 rounded-lg border border-n-ruby-7 bg-n-ruby-3 px-4 py-3 text-sm text-n-ruby-11">
++      {{ errorMessage }}
++    </div>
++
++    <div v-if="isLoading && !stages.length" class="grid flex-1 place-items-center text-n-slate-11">
++      <Spinner :size="28" />
++    </div>
++
++    <div v-else class="min-h-0 flex-1 overflow-x-auto px-6 py-5">
++      <div
++        v-if="orderedStages.length"
++        class="grid h-full min-w-max auto-cols-[minmax(17rem,19rem)] grid-flow-col gap-4"
++      >
++        <section
++          v-for="stage in orderedStages"
++          :key="stage.id"
++          class="flex min-h-0 flex-col rounded-lg border border-n-weak bg-n-surface-2"
++          :style="{ borderTopColor: stage.color || '#6B7280', borderTopWidth: '4px' }"
++          @dragover.prevent
++          @drop="onDrop(stage)"
++        >
++          <header class="flex items-center justify-between gap-3 border-b border-n-weak px-3 py-3">
++            <h2 class="m-0 truncate text-sm font-medium text-n-slate-12">
++              {{ stage.name }}
++            </h2>
++            <span class="rounded-full bg-n-alpha-2 px-2 py-0.5 text-xs text-n-slate-11">
++              {{ dealsForStage(stage.id).length }}
++            </span>
++          </header>
++
++          <div class="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-3">
++            <article
++              v-for="deal in dealsForStage(stage.id)"
++              :key="deal.id"
++              draggable="true"
++              class="cursor-grab rounded-lg border border-n-weak bg-n-surface-1 p-3 shadow-sm active:cursor-grabbing"
++              :class="{ 'opacity-50': draggingDealId === deal.id }"
++              @dragstart="onDragStart(deal)"
++              @dragend="onDragEnd"
++            >
++              <div class="text-sm font-medium text-n-slate-12">
++                {{ deal.title }}
++              </div>
++              <div v-if="deal.client_phone" class="mt-1 text-xs text-n-slate-11">
++                {{ deal.client_phone }}
++              </div>
++              <div v-if="formatAmount(deal.amount)" class="mt-2 text-sm font-medium text-n-slate-12">
++                {{ formatAmount(deal.amount) }}
++              </div>
++              <span
++                v-if="deal.rotting_since"
++                class="mt-3 inline-flex rounded-md px-2 py-0.5 text-xs font-medium"
++                :class="rottingBadgeClass(deal)"
++              >
++                Rotting {{ rottingMinutes(deal.rotting_since) }}m
++              </span>
++            </article>
++
++            <form
++              v-if="activeStageId === stage.id"
++              class="rounded-lg border border-n-weak bg-n-surface-1 p-3"
++              @submit.prevent="createDeal(stage)"
++            >
++              <input
++                v-model="newDealTitle"
++                class="h-9 w-full rounded-md border border-n-weak bg-n-background px-3 text-sm text-n-slate-12 outline-none focus:border-n-brand"
++                placeholder="Deal title"
++                type="text"
++                autofocus
++              />
++              <div class="mt-3 flex items-center gap-2">
++                <Button
++                  label="Save"
++                  size="sm"
++                  type="submit"
++                  :is-loading="savingStageId === stage.id"
++                />
++                <Button
++                  label="Cancel"
++                  size="sm"
++                  slate
++                  ghost
++                  type="button"
++                  @click="closeNewDealForm"
++                />
++              </div>
++            </form>
++          </div>
++
++          <footer class="border-t border-n-weak p-3">
++            <Button
++              label="+ New Deal"
++              size="sm"
++              slate
++              faded
++              class="w-full"
++              @click="openNewDealForm(stage.id)"
++            />
++          </footer>
++        </section>
++      </div>
++
++      <div
++        v-else
++        class="grid h-full place-items-center rounded-lg border border-dashed border-n-weak text-sm text-n-slate-11"
++      >
++        No pipeline stages found.
++      </div>
++    </div>
++  </section>
++</template>
+diff --git a/app/javascript/dashboard/routes/dashboard/crm/routes.js b/app/javascript/dashboard/routes/dashboard/crm/routes.js
+new file mode 100644
+index 0000000..251489d
+--- /dev/null
++++ b/app/javascript/dashboard/routes/dashboard/crm/routes.js
+@@ -0,0 +1,12 @@
++import { frontendURL } from 'dashboard/helper/URLHelper.js';
++
++export const routes = [
++  {
++    path: frontendURL('accounts/:accountId/pipeline'),
++    name: 'crm_pipeline_index',
++    meta: {
++      permissions: ['administrator'],
++    },
++    component: () => import('./Pipeline.vue'),
++  },
++];
+diff --git a/app/javascript/dashboard/routes/dashboard/dashboard.routes.js b/app/javascript/dashboard/routes/dashboard/dashboard.routes.js
+index 878b935..5287168 100644
+--- a/app/javascript/dashboard/routes/dashboard/dashboard.routes.js
++++ b/app/javascript/dashboard/routes/dashboard/dashboard.routes.js
+@@ -9,6 +9,7 @@ import { frontendURL } from '../../helper/URLHelper';
+ import helpcenterRoutes from './helpcenter/helpcenter.routes';
+ import campaignsRoutes from './campaigns/campaigns.routes';
+ import { routes as captainRoutes } from './captain/captain.routes';
++import { routes as crmRoutes } from './crm/routes';
+ import AppContainer from './Dashboard.vue';
+ import Suspended from './suspended/Index.vue';
+ import NoAccounts from './noAccounts/Index.vue';
+@@ -22,6 +23,7 @@ export default {
+         ...captainRoutes,
+         ...inboxRoutes,
+         ...conversation.routes,
++        ...crmRoutes,
+         ...settings.routes,
+         ...contactRoutes,
+         ...companyRoutes,
+diff --git a/app/javascript/dashboard/components-next/sidebar/Sidebar.vue b/app/javascript/dashboard/components-next/sidebar/Sidebar.vue
+index 28449df..3b5fc22 100644
+--- a/app/javascript/dashboard/components-next/sidebar/Sidebar.vue
++++ b/app/javascript/dashboard/components-next/sidebar/Sidebar.vue
+@@ -380,6 +380,12 @@ const menuItems = computed(() => {
+         },
+       ],
+     },
++    {
++      name: 'Pipeline',
++      label: 'Pipeline',
++      icon: 'i-lucide-table',
++      to: accountScopedRoute('crm_pipeline_index'),
++    },
+     {
+       name: 'Captain',
+       icon: 'i-woot-captain',
