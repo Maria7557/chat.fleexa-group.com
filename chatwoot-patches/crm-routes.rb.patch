@@ -1,0 +1,27 @@
+diff --git a/config/routes.rb b/config/routes.rb
+index eef08ab..fdcc1dd 100644
+--- a/config/routes.rb
++++ b/config/routes.rb
+@@ -108,12 +108,22 @@ Rails.application.routes.draw do
+           resources :callbacks, only: [] do
+             collection do
+               post :register_facebook_page
+               get :register_facebook_page
+               post :facebook_pages
+               post :reauthorize_page
+             end
+           end
++          namespace :crm do
++            resources :pipeline_stages, only: [:index, :create, :update, :destroy] do
++              member do
++                patch :reorder
++              end
++            end
++
++            resources :deals, only: [:index, :show, :create, :update, :destroy]
++            resources :loss_reasons, only: [:index, :create, :update]
++          end
+           resources :canned_responses, only: [:index, :create, :update, :destroy]
+           resources :automation_rules, only: [:index, :create, :show, :update, :destroy] do
+             post :clone
+           end

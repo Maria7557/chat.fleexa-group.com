@@ -1,3 +1,10 @@
 FROM chatwoot/chatwoot:v4.14.2
 COPY chatwoot-patches/instagram-human-agent-activity-window.patch /tmp/patch.patch
-RUN cd /app && git apply /tmp/patch.patch
+COPY chatwoot-patches/crm-models.rb.patch /tmp/crm-models.rb.patch
+COPY chatwoot-patches/crm-controllers.rb.patch /tmp/crm-controllers.rb.patch
+COPY chatwoot-patches/crm-routes.rb.patch /tmp/crm-routes.rb.patch
+RUN cd /app && \
+    git apply /tmp/patch.patch && \
+    git apply /tmp/crm-models.rb.patch && \
+    git apply /tmp/crm-controllers.rb.patch && \
+    git apply /tmp/crm-routes.rb.patch
