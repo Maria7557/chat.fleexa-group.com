@@ -1,0 +1,75 @@
+diff --git a/app/models/crm_pipeline_stage.rb b/app/models/crm_pipeline_stage.rb
+new file mode 100644
+index 0000000..0d4c4d1
+--- /dev/null
++++ b/app/models/crm_pipeline_stage.rb
+@@ -0,0 +1,18 @@
++class CrmPipelineStage < ApplicationRecord
++  belongs_to :account
++
++  has_many :crm_deals, foreign_key: :stage_id, dependent: :restrict_with_error
++  has_many :crm_deal_activities_from, class_name: 'CrmDealActivity', foreign_key: :from_stage_id
++  has_many :crm_deal_activities_to, class_name: 'CrmDealActivity', foreign_key: :to_stage_id
++
++  scope :ordered, -> { order(:position) }
++  scope :for_account, ->(account_id) { where(account_id: account_id) }
++
++  validates :slug, presence: true, uniqueness: { scope: :account_id }
++  validates :name, presence: true
++  validates :position, presence: true, uniqueness: { scope: :account_id }
++  validates :color, presence: true, format: { with: /\A#[0-9A-Fa-f]{6}\z/ }
++  validates :rotting_after_minutes,
++            numericality: { only_integer: true, greater_than: 0 },
++            allow_nil: true
++end
+diff --git a/app/models/crm_deal.rb b/app/models/crm_deal.rb
+new file mode 100644
+index 0000000..d6cce33
+--- /dev/null
++++ b/app/models/crm_deal.rb
+@@ -0,0 +1,16 @@
++class CrmDeal < ApplicationRecord
++  belongs_to :account
++  belongs_to :stage, class_name: 'CrmPipelineStage'
++  belongs_to :contact, optional: true
++  belongs_to :conversation, optional: true
++  belongs_to :assignee, class_name: 'User', foreign_key: :assigned_to, optional: true
++
++  has_many :crm_deal_activities, foreign_key: :deal_id, dependent: :destroy
++
++  scope :for_account, ->(account_id) { where(account_id: account_id) }
++
++  validates :title, presence: true
++  validates :fleet_sync_status, inclusion: {
++    in: %w[none linked syncing error]
++  }
++end
+diff --git a/app/models/crm_deal_activity.rb b/app/models/crm_deal_activity.rb
+new file mode 100644
+index 0000000..a8b6b89
+--- /dev/null
++++ b/app/models/crm_deal_activity.rb
+@@ -0,0 +1,9 @@
++class CrmDealActivity < ApplicationRecord
++  belongs_to :crm_deal, foreign_key: :deal_id
++  belongs_to :account
++  belongs_to :user, optional: true
++  belongs_to :from_stage, class_name: 'CrmPipelineStage', foreign_key: :from_stage_id, optional: true
++  belongs_to :to_stage, class_name: 'CrmPipelineStage', foreign_key: :to_stage_id, optional: true
++
++  validates :activity_type, presence: true
++end
+diff --git a/app/models/crm_loss_reason_option.rb b/app/models/crm_loss_reason_option.rb
+new file mode 100644
+index 0000000..ef4a105
+--- /dev/null
++++ b/app/models/crm_loss_reason_option.rb
+@@ -0,0 +1,8 @@
++class CrmLossReasonOption < ApplicationRecord
++  belongs_to :account
++
++  scope :for_account, ->(account_id) { where(account_id: account_id) }
++  scope :active, -> { where(is_active: true).order(:position) }
++
++  validates :label, presence: true
++end

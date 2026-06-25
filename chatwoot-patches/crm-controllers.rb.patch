@@ -1,0 +1,342 @@
+diff --git a/app/controllers/api/v1/accounts/crm/pipeline_stages_controller.rb b/app/controllers/api/v1/accounts/crm/pipeline_stages_controller.rb
+new file mode 100644
+index 0000000..553a24c
+--- /dev/null
++++ b/app/controllers/api/v1/accounts/crm/pipeline_stages_controller.rb
+@@ -0,0 +1,119 @@
++class Api::V1::Accounts::Crm::PipelineStagesController < Api::V1::Accounts::BaseController
++  before_action :check_authorization
++  before_action :set_pipeline_stage, only: [:update, :destroy, :reorder]
++
++  def index
++    render json: stage_scope.ordered
++  end
++
++  def create
++    position = stage_params[:position].to_i
++    return render_position_error unless valid_custom_position?(position)
++
++    @pipeline_stage = CrmPipelineStage.new(stage_params.merge(account: Current.account))
++    @pipeline_stage.save!
++
++    render json: @pipeline_stage
++  end
++
++  def update
++    return render_immutable_field_error if immutable_stage_params_present?
++    return render_system_stage_error if @pipeline_stage.is_system? && pipeline_stage_payload.key?(:name)
++
++    @pipeline_stage.update!(stage_update_params)
++
++    render json: @pipeline_stage
++  end
++
++  def destroy
++    return render_system_stage_error if @pipeline_stage.is_system?
++
++    fallback_stage = stage_scope.find(params.require(:fallback_stage_id))
++    return render_validation_error('fallback_stage_id must point to a different stage') if fallback_stage.id == @pipeline_stage.id
++
++    ActiveRecord::Base.transaction do
++      CrmDeal.for_account(Current.account.id).where(stage_id: @pipeline_stage.id).update_all(
++        stage_id: fallback_stage.id,
++        updated_at: Time.current
++      )
++      @pipeline_stage.destroy!
++    end
++
++    head :ok
++  end
++
++  def reorder
++    return render_system_stage_error if @pipeline_stage.is_system?
++
++    position = params[:position].to_i
++    return render_position_error unless valid_custom_position?(position)
++
++    @pipeline_stage.update!(position: position)
++
++    render json: @pipeline_stage
++  end
++
++  private
++
++  def stage_scope
++    CrmPipelineStage.for_account(Current.account.id)
++  end
++
++  def set_pipeline_stage
++    @pipeline_stage = stage_scope.find(params[:id])
++  end
++
++  def pipeline_stage_payload
++    params.require(:pipeline_stage)
++  end
++
++  def stage_params
++    pipeline_stage_payload.permit(
++      :slug,
++      :name,
++      :color,
++      :position,
++      :rotting_enabled,
++      :rotting_after_minutes,
++      :fleet_status_trigger
++    )
++  end
++
++  def stage_update_params
++    pipeline_stage_payload.permit(
++      :name,
++      :color,
++      :rotting_enabled,
++      :rotting_after_minutes,
++      :fleet_status_trigger
++    )
++  end
++
++  def immutable_stage_params_present?
++    %i[slug position is_system].any? { |key| pipeline_stage_payload.key?(key) }
++  end
++
++  def valid_custom_position?(position)
++    position > 1 && position < 999
++  end
++
++  def render_position_error
++    render_validation_error('position must be between 2 and 998')
++  end
++
++  def render_immutable_field_error
++    render_validation_error('slug, position, and is_system cannot be updated')
++  end
++
++  def render_system_stage_error
++    render_validation_error('system stages cannot be modified this way')
++  end
++
++  def render_validation_error(message)
++    render json: { error: message }, status: :unprocessable_entity
++  end
++
++  def check_authorization
++    raise Pundit::NotAuthorizedError unless Current.account_user.administrator?
++  end
++end
+diff --git a/app/controllers/api/v1/accounts/crm/deals_controller.rb b/app/controllers/api/v1/accounts/crm/deals_controller.rb
+new file mode 100644
+index 0000000..ad35c89
+--- /dev/null
++++ b/app/controllers/api/v1/accounts/crm/deals_controller.rb
+@@ -0,0 +1,162 @@
++class Api::V1::Accounts::Crm::DealsController < Api::V1::Accounts::BaseController
++  before_action :check_authorization
++  before_action :set_deal, only: [:show, :update, :destroy]
++
++  def index
++    deals = deal_scope.includes(:contact, :conversation, :assignee).order(created_at: :desc)
++    deals = deals.where(stage_id: params[:stage_id]) if params[:stage_id].present?
++    deals = deals.where(assigned_to: params[:assigned_to]) if params[:assigned_to].present?
++    deals = deals.where(conversation_id: params[:conversation_id]) if params[:conversation_id].present?
++    deals = deals.where(contact_id: params[:contact_id]) if params[:contact_id].present?
++
++    render json: deals.map { |deal| deal_payload(deal) }
++  end
++
++  def show
++    render json: deal_payload(@deal)
++  end
++
++  def create
++    attrs = deal_params
++    stage = stage_scope.find(attrs[:stage_id])
++
++    ActiveRecord::Base.transaction do
++      @deal = CrmDeal.create!(attrs.merge(account: Current.account, stage: stage))
++      create_activity(@deal, activity_type: 'created')
++    end
++
++    render json: deal_payload(@deal.reload)
++  end
++
++  def update
++    attrs = deal_params
++    old_stage_id = @deal.stage_id
++
++    stage_scope.find(attrs[:stage_id]) if attrs.key?(:stage_id)
++
++    ActiveRecord::Base.transaction do
++      @deal.update!(attrs)
++      create_stage_change_activity(@deal, old_stage_id) if @deal.stage_id != old_stage_id
++    end
++
++    render json: deal_payload(@deal.reload)
++  end
++
++  def destroy
++    @deal.destroy!
++
++    head :ok
++  end
++
++  private
++
++  def deal_scope
++    CrmDeal.for_account(Current.account.id)
++  end
++
++  def stage_scope
++    CrmPipelineStage.for_account(Current.account.id)
++  end
++
++  def set_deal
++    @deal = deal_scope.includes(:contact, :conversation, :assignee).find(params[:id])
++  end
++
++  def deal_params
++    params.require(:deal).permit(
++      :title,
++      :stage_id,
++      :contact_id,
++      :conversation_id,
++      :assigned_to,
++      :booking_id,
++      :fleet_sync_status,
++      :car_model,
++      :client_phone,
++      :rental_start,
++      :rental_end,
++      :amount,
++      :debt_amount
++    )
++  end
++
++  def deal_payload(deal)
++    {
++      id: deal.id,
++      title: deal.title,
++      stage_id: deal.stage_id,
++      contact_id: deal.contact_id,
++      conversation_id: deal.conversation_id,
++      assigned_to: deal.assigned_to,
++      booking_id: deal.booking_id,
++      car_model: deal.car_model,
++      client_phone: deal.client_phone,
++      rental_start: deal.rental_start,
++      rental_end: deal.rental_end,
++      amount: deal.amount,
++      debt_amount: deal.debt_amount,
++      fleet_sync_status: deal.fleet_sync_status,
++      rotting_since: deal.rotting_since,
++      contact: contact_payload(deal.contact),
++      conversation: conversation_payload(deal.conversation),
++      assigned_user: assigned_user_payload(deal.assignee)
++    }
++  end
++
++  def contact_payload(contact)
++    return unless contact
++
++    {
++      id: contact.id,
++      name: contact.name,
++      email: contact.email,
++      phone_number: contact.phone_number,
++      thumbnail: contact.avatar_url
++    }
++  end
++
++  def conversation_payload(conversation)
++    return unless conversation
++
++    {
++      id: conversation.id,
++      display_id: conversation.display_id,
++      inbox_id: conversation.inbox_id,
++      status: conversation.status
++    }
++  end
++
++  def assigned_user_payload(user)
++    return unless user
++
++    {
++      id: user.id,
++      name: user.name,
++      email: user.email,
++      avatar_url: user.avatar_url
++    }
++  end
++
++  def create_stage_change_activity(deal, old_stage_id)
++    create_activity(
++      deal,
++      activity_type: 'stage_changed',
++      from_stage_id: old_stage_id,
++      to_stage_id: deal.stage_id
++    )
++  end
++
++  def create_activity(deal, attrs)
++    CrmDealActivity.create!(
++      {
++        crm_deal: deal,
++        account: Current.account,
++        user: Current.user
++      }.merge(attrs)
++    )
++  end
++
++  def check_authorization
++    raise Pundit::NotAuthorizedError unless Current.account_user.administrator?
++  end
++end
+diff --git a/app/controllers/api/v1/accounts/crm/loss_reasons_controller.rb b/app/controllers/api/v1/accounts/crm/loss_reasons_controller.rb
+new file mode 100644
+index 0000000..82613dd
+--- /dev/null
++++ b/app/controllers/api/v1/accounts/crm/loss_reasons_controller.rb
+@@ -0,0 +1,43 @@
++class Api::V1::Accounts::Crm::LossReasonsController < Api::V1::Accounts::BaseController
++  before_action :check_authorization
++  before_action :set_loss_reason, only: [:update]
++
++  def index
++    render json: loss_reason_scope.active
++  end
++
++  def create
++    @loss_reason = CrmLossReasonOption.new(loss_reason_params.merge(account: Current.account))
++    @loss_reason.save!
++
++    render json: @loss_reason
++  end
++
++  def update
++    @loss_reason.update!(loss_reason_params)
++
++    render json: @loss_reason
++  end
++
++  private
++
++  def loss_reason_scope
++    CrmLossReasonOption.for_account(Current.account.id)
++  end
++
++  def set_loss_reason
++    @loss_reason = loss_reason_scope.find(params[:id])
++  end
++
++  def loss_reason_params
++    params.require(:loss_reason).permit(
++      :label,
++      :position,
++      :is_active
++    )
++  end
++
++  def check_authorization
++    raise Pundit::NotAuthorizedError unless Current.account_user.administrator?
++  end
++end
