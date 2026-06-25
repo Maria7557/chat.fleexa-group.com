@@ -202,7 +202,8 @@ crm-assets-install-local: ensure-env
 crm-assets-refresh-local: crm-assets-build-host crm-assets-install-local
 	@set -e; \
 	attempt=0; \
-	until curl -fsSI http://localhost:3000/app/accounts/1/pipeline > /tmp/fleexa-chatwoot-pipeline-headers; do \
+	until curl --max-time 5 -fsSI http://localhost:3000/app/accounts/1/pipeline > /tmp/fleexa-chatwoot-pipeline-headers || \
+			curl --max-time 5 -fsSI http://localhost:3000/ > /tmp/fleexa-chatwoot-pipeline-headers; do \
 		attempt=$$((attempt + 1)); \
 		if [ "$$attempt" -ge 30 ]; then exit 1; fi; \
 		sleep 2; \
