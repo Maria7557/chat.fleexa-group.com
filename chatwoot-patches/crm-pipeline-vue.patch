@@ -275,7 +275,7 @@ new file mode 100644
 index 0000000..a574cb2
 --- /dev/null
 +++ b/app/javascript/dashboard/routes/dashboard/crm/Pipeline.vue
-@@ -0,0 +1,668 @@
+@@ -0,0 +1,957 @@
 +<script setup>
 +import { computed, ref, watch } from 'vue';
 +import { useRouter } from 'vue-router';
@@ -327,7 +327,7 @@ index 0000000..a574cb2
 +const assigneeFilter = ref('all');
 +const channelFilter = ref('');
 +const inboxFilter = ref('');
-
++
 +const quickPresetFilters = [
 +  {
 +    key: 'all',
@@ -350,7 +350,7 @@ index 0000000..a574cb2
 +    build: () => ({ rental_end_to: new Date().toISOString().slice(0, 10) }),
 +  },
 +];
-
++
 +const dateRangeFilters = [
 +  { key: 'all', label: 'All dates', value: null },
 +  { key: 'today', label: 'Today', value: 'today' },
@@ -391,41 +391,41 @@ index 0000000..a574cb2
 +  const value = Number(amount);
 +  return Number.isFinite(value) ? value : 0;
 +};
-
++
 +const totalFromDeals = () => {
 +  return deals.value.reduce((sum, deal) => sum + amountValue(deal.amount), 0);
 +};
-
++
 +const pipelineTotalCount = computed(() => {
 +  return pipelineMeta.value?.total_count ?? deals.value.length;
 +});
-
++
 +const pipelineTotalAmount = computed(() => {
 +  return pipelineMeta.value?.total_amount ?? totalFromDeals();
 +});
-
++
 +const pipelineSummary = computed(() => {
 +  const amount = formatAmount(pipelineTotalAmount.value);
 +  return `${pipelineTotalCount.value} deals · ${amount || formatAmount(0)}`;
 +});
-
++
 +const quickFilterOptions = computed(() => {
 +  return quickPresetFilters;
 +});
-
++
 +const dateFilterOptions = computed(() => {
 +  return dateRangeFilters;
 +});
-
++
 +const assigneeFilterOptions = computed(() => {
 +  const users = new Map();
-
++
 +  deals.value.forEach(deal => {
 +    const user = deal.assigned_user;
 +    if (!user?.id) return;
 +    users.set(String(user.id), user.name || user.email || `#${user.id}`);
 +  });
-
++
 +  return [
 +    { value: 'all', label: 'All assignees' },
 +    { value: 'me', label: 'My deals' },
@@ -436,64 +436,64 @@ index 0000000..a574cb2
 +    })),
 +  ];
 +});
-
++
 +const inboxFilterOptions = computed(() => {
 +  const inboxes = new Set();
-
++
 +  deals.value.forEach(deal => {
 +    const inboxId = deal.conversation?.inbox_id;
 +    if (inboxId) inboxes.add(String(inboxId));
 +  });
-
++
 +  return [...inboxes]
 +    .sort((left, right) => Number(left) - Number(right))
 +    .map(inboxId => ({ value: inboxId, label: `Inbox #${inboxId}` }));
 +});
-
++
 +const channelFilterOptions = computed(() => {
 +  const channels = new Set();
-
++
 +  deals.value.forEach(deal => {
 +    const channel = deal.conversation?.channel_id;
 +    if (channel) channels.add(String(channel));
 +  });
-
++
 +  return [...channels]
 +    .sort()
 +    .map(channelId => ({ value: channelId, label: `Channel ${channelId}` }));
 +});
-
++
 +const quickFilterPayload = computed(() => {
 +  const active = quickFilterOptions.value.find(item => item.key === quickFilter.value);
 +  return active?.build ? active.build() : {};
 +});
-
++
 +const dateFilterPayload = computed(() => {
 +  const range = dateFilterOptions.value.find(item => item.key === dateRangeFilter.value);
 +  return range?.value ? { created_at_preset: range.value } : {};
 +});
-
++
 +const dealRequestParams = computed(() => {
 +  const params = {
 +    include_meta: 1,
 +    per_page: 100,
 +  };
-
++
 +  const q = searchQuery.value.trim();
 +  if (q) params.q = q;
-
++
 +  const quickPayload = quickFilterPayload.value;
 +  Object.entries(quickPayload).forEach(([key, value]) => {
 +    if (value === undefined || value === null || value === '') return;
 +    params[key] = value;
 +  });
-
++
 +  const datePayload = dateFilterPayload.value;
 +  Object.entries(datePayload).forEach(([key, value]) => {
 +    if (value === undefined || value === null || value === '') return;
 +    params[key] = value;
 +  });
-
++
 +  if (assigneeFilter.value === 'me') {
 +    params.assigned_to = 'me';
 +  } else if (assigneeFilter.value === 'unassigned') {
@@ -501,17 +501,17 @@ index 0000000..a574cb2
 +  } else if (assigneeFilter.value && assigneeFilter.value !== 'all') {
 +    params.assigned_to = assigneeFilter.value;
 +  }
-
++
 +  if (channelFilter.value) params.channel_id = channelFilter.value;
 +  if (inboxFilter.value) params.inbox_id = inboxFilter.value;
-
++
 +  return params;
 +});
-
++
 +const applyQuickFilter = preset => {
 +  quickFilter.value = preset;
 +};
-
++
 +const resetFilters = () => {
 +  searchQuery.value = '';
 +  quickFilter.value = 'all';
@@ -520,7 +520,7 @@ index 0000000..a574cb2
 +  channelFilter.value = '';
 +  inboxFilter.value = '';
 +};
-
++
 +const stageTotal = stageId => {
 +  return dealsForStage(stageId).reduce((sum, deal) => {
 +    return sum + amountValue(deal.amount);
@@ -542,13 +542,13 @@ index 0000000..a574cb2
 +const fetchPipeline = async () => {
 +  isLoading.value = true;
 +  errorMessage.value = '';
-
++
 +  try {
 +    const [stageResponse, dealResponse] = await Promise.all([
 +      CrmPipelineAPI.getStages(),
 +      CrmPipelineAPI.getDeals(dealRequestParams.value),
 +    ]);
-
++
 +    stages.value = stageResponse.data || [];
 +    const payload = dealResponse.data || {};
 +    if (Array.isArray(payload)) {
@@ -560,7 +560,7 @@ index 0000000..a574cb2
 +      };
 +      return;
 +    }
-
++
 +    deals.value = payload.data || [];
 +    pipelineMeta.value = {
 +      total_count: payload?.meta?.total_count ?? deals.value.length,
@@ -778,7 +778,7 @@ index 0000000..a574cb2
 +          />
 +        </div>
 +      </div>
-
++
 +      <div class="mt-3 flex flex-wrap items-center gap-2">
 +        <button
 +          v-for="preset in quickFilterOptions"
@@ -792,7 +792,7 @@ index 0000000..a574cb2
 +        >
 +          {{ preset.label }}
 +        </button>
-
++
 +        <select
 +          v-model="dateRangeFilter"
 +          class="rounded-md border border-n-weak bg-n-background px-2 py-2 text-xs text-n-slate-11 outline-none focus:border-n-brand"
@@ -805,7 +805,7 @@ index 0000000..a574cb2
 +            {{ item.label }}
 +          </option>
 +        </select>
-
++
 +        <select
 +          v-model="assigneeFilter"
 +          class="rounded-md border border-n-weak bg-n-background px-2 py-2 text-xs text-n-slate-11 outline-none focus:border-n-brand"
@@ -818,7 +818,7 @@ index 0000000..a574cb2
 +            {{ item.label }}
 +          </option>
 +        </select>
-
++
 +        <select
 +          v-model="inboxFilter"
 +          class="rounded-md border border-n-weak bg-n-background px-2 py-2 text-xs text-n-slate-11 outline-none focus:border-n-brand"
@@ -834,7 +834,7 @@ index 0000000..a574cb2
 +            {{ item.label }}
 +          </option>
 +        </select>
-
++
 +        <select
 +          v-model="channelFilter"
 +          class="rounded-md border border-n-weak bg-n-background px-2 py-2 text-xs text-n-slate-11 outline-none focus:border-n-brand"
