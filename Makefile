@@ -56,6 +56,7 @@ crm-copy-patches: ensure-env
 	$(COMPOSE) cp chatwoot-patches/crm-controllers.rb.patch rails:/tmp/crm-controllers.rb.patch
 	$(COMPOSE) cp chatwoot-patches/crm-routes.rb.patch rails:/tmp/crm-routes.rb.patch
 	$(COMPOSE) cp chatwoot-patches/crm-deal-fields-backend.patch rails:/tmp/crm-deal-fields-backend.patch
+	$(COMPOSE) cp chatwoot-patches/crm-deal-query-backend.patch rails:/tmp/crm-deal-query-backend.patch
 	@echo "CRM patch files copied to Rails container"
 
 crm-patch-check: crm-copy-patches
@@ -63,6 +64,7 @@ crm-patch-check: crm-copy-patches
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply --check /tmp/crm-controllers.rb.patch"
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply --check /tmp/crm-routes.rb.patch"
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply --check /tmp/crm-deal-fields-backend.patch"
+	$(COMPOSE) exec rails sh -lc "cd /app && git apply --check /tmp/crm-deal-query-backend.patch"
 	@echo "CRM patches validated"
 
 crm-patch:
@@ -70,6 +72,7 @@ crm-patch:
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply /tmp/crm-controllers.rb.patch"
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply /tmp/crm-routes.rb.patch"
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply /tmp/crm-deal-fields-backend.patch"
+	$(COMPOSE) exec rails sh -lc "cd /app && git apply /tmp/crm-deal-query-backend.patch"
 	@echo "CRM patches applied to Rails container"
 
 crm-install: crm-copy-patches crm-patch
@@ -82,6 +85,8 @@ crm-vue-copy: ensure-env
 	$(COMPOSE) cp chatwoot-patches/crm-deal-workspace-inbox-chat-vue.patch rails:/tmp/crm-deal-workspace-inbox-chat-vue.patch
 	$(COMPOSE) cp chatwoot-patches/crm-deal-workspace-sidebar-style-vue.patch rails:/tmp/crm-deal-workspace-sidebar-style-vue.patch
 	$(COMPOSE) cp chatwoot-patches/crm-deal-workspace-emoji-picker-vue.patch rails:/tmp/crm-deal-workspace-emoji-picker-vue.patch
+	$(COMPOSE) cp chatwoot-patches/crm-deal-workspace-tabs-vue.patch rails:/tmp/crm-deal-workspace-tabs-vue.patch
+	$(COMPOSE) cp chatwoot-patches/crm-deal-workspace-native-sidebar-vue.patch rails:/tmp/crm-deal-workspace-native-sidebar-vue.patch
 	@echo "CRM Vue patch copied to Rails container"
 
 crm-vue-check: crm-vue-copy
@@ -91,6 +96,8 @@ crm-vue-check: crm-vue-copy
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply --check /tmp/crm-deal-workspace-inbox-chat-vue.patch"
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply --check /tmp/crm-deal-workspace-sidebar-style-vue.patch"
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply --check /tmp/crm-deal-workspace-emoji-picker-vue.patch"
+	$(COMPOSE) exec rails sh -lc "cd /app && git apply --check /tmp/crm-deal-workspace-tabs-vue.patch"
+	$(COMPOSE) exec rails sh -lc "cd /app && git apply --check /tmp/crm-deal-workspace-native-sidebar-vue.patch"
 	@echo "CRM Vue patch validated"
 
 crm-vue-patch: crm-vue-copy
@@ -100,6 +107,8 @@ crm-vue-patch: crm-vue-copy
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply /tmp/crm-deal-workspace-inbox-chat-vue.patch"
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply /tmp/crm-deal-workspace-sidebar-style-vue.patch"
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply /tmp/crm-deal-workspace-emoji-picker-vue.patch"
+	$(COMPOSE) exec rails sh -lc "cd /app && git apply /tmp/crm-deal-workspace-tabs-vue.patch"
+	$(COMPOSE) exec rails sh -lc "cd /app && git apply /tmp/crm-deal-workspace-native-sidebar-vue.patch"
 	@echo "CRM Vue patch applied"
 
 crm-assets-build-host:
@@ -114,30 +123,41 @@ crm-assets-build-host:
 	docker rm -f "$$copy_container" >/dev/null; \
 	trap - EXIT; \
 	cd "$$build_dir"; \
+	perl -0pi -e "s/import \\{ colors \\} from '\\.\\/theme\\/colors';/const { colors } = require('.\\/theme\\/colors.js');/; s/import \\{ icons \\} from '\\.\\/theme\\/icons';/const { icons } = require('.\\/theme\\/icons.js');/" tailwind.config.js; \
 	git apply "$(CURDIR)/chatwoot-patches/instagram-human-agent-activity-window.patch"; \
 	git apply "$(CURDIR)/chatwoot-patches/crm-models.rb.patch"; \
 	git apply "$(CURDIR)/chatwoot-patches/crm-controllers.rb.patch"; \
 	git apply "$(CURDIR)/chatwoot-patches/crm-routes.rb.patch"; \
 	git apply "$(CURDIR)/chatwoot-patches/crm-deal-fields-backend.patch"; \
+	git apply "$(CURDIR)/chatwoot-patches/crm-deal-query-backend.patch"; \
 	git apply "$(CURDIR)/chatwoot-patches/crm-pipeline-vue.patch"; \
 	git apply "$(CURDIR)/chatwoot-patches/crm-deal-workspace-vue.patch"; \
 	git apply "$(CURDIR)/chatwoot-patches/crm-deal-fields-vue.patch"; \
 	git apply "$(CURDIR)/chatwoot-patches/crm-deal-workspace-inbox-chat-vue.patch"; \
 	git apply "$(CURDIR)/chatwoot-patches/crm-deal-workspace-sidebar-style-vue.patch"; \
 	git apply "$(CURDIR)/chatwoot-patches/crm-deal-workspace-emoji-picker-vue.patch"; \
+	git apply "$(CURDIR)/chatwoot-patches/crm-deal-workspace-tabs-vue.patch"; \
+	git apply "$(CURDIR)/chatwoot-patches/crm-deal-workspace-native-sidebar-vue.patch"; \
 	grep -n "ConversationBox" app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue; \
 	grep -n "CRM Deal" app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue; \
 	grep -n "isDealEditing" app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue; \
 	grep -n "crm-deal-chat-shell" app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue; \
 	grep -n "emoji-dialog" app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue; \
+	grep -n "activeSidebarTab" app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue; \
+	grep -n "Show tracking" app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue; \
+	grep -n "ContactInfo" app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue; \
+	grep -n "dealTitle" app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue; \
+	grep -n "visibleConfigFields" app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue; \
 	if grep -n "Reply to client" app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue; then exit 1; fi; \
+	if grep -nE ">Title<|Title \\*" app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue; then exit 1; fi; \
 	npx --yes pnpm@10.2.0 install --frozen-lockfile; \
 	(node node_modules/esbuild/install.js 2>/dev/null || true); \
 	NODE_OPTIONS=--max-old-space-size=4096 npx --yes pnpm@10.2.0 exec vite build --mode production; \
 	test -d public/vite/assets; \
 	test -f public/vite/.vite/manifest.json; \
-	grep -R "Pipeline\|crm_pipeline_index\|crm_deal_workspace" public/vite/.vite public/vite/assets >/dev/null; \
-	grep -R "CRM Deal\|Create deal from conversation\|Open deal\|Field setup\|Required fields for stage\|Conversation could not be loaded\|Conversation request failed" public/vite/.vite public/vite/assets >/dev/null; \
+	ls public/vite/assets/DealWorkspace-*.js >/dev/null; \
+	grep -E "CRM Deal|Field setup" public/vite/assets/DealWorkspace-*.js >/dev/null; \
+	grep -E "Pipeline|crm_pipeline_index|crm_deal_workspace" public/vite/.vite/manifest.json public/vite/assets/Pipeline-*.js >/dev/null; \
 	echo "CRM host assets built"
 
 crm-assets-install-local: ensure-env
@@ -167,14 +187,20 @@ crm-assets-install-local: ensure-env
 	docker exec "$$install_container" sh -lc "rm -rf /app/public/vite && mkdir -p /app/public"; \
 	docker cp "$(CRM_ASSETS_BUILD_DIR)/public/vite" "$$install_container:/app/public/vite"; \
 	docker exec "$$install_container" sh -lc "test -d /app/public/vite/assets && test -f /app/public/vite/.vite/manifest.json"; \
-	docker exec "$$install_container" sh -lc "grep -n 'where(conversation_id: params\[:conversation_id\])' /app/app/controllers/api/v1/accounts/crm/deals_controller.rb"; \
+	docker exec "$$install_container" sh -lc "grep -n 'deals_index_response' /app/app/controllers/api/v1/accounts/crm/deals_controller.rb"; \
 	docker exec "$$install_container" sh -lc "grep -n 'Required deal fields are missing for this stage' /app/app/controllers/api/v1/accounts/crm/deals_controller.rb"; \
 	docker exec "$$install_container" sh -lc "grep -n 'ConversationBox' /app/app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue"; \
 	docker exec "$$install_container" sh -lc "grep -n 'CRM Deal' /app/app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue"; \
 	docker exec "$$install_container" sh -lc "grep -n 'isDealEditing' /app/app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue"; \
 	docker exec "$$install_container" sh -lc "grep -n 'crm-deal-chat-shell' /app/app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue"; \
 	docker exec "$$install_container" sh -lc "grep -n 'emoji-dialog' /app/app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue"; \
+	docker exec "$$install_container" sh -lc "grep -n 'activeSidebarTab' /app/app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue"; \
+	docker exec "$$install_container" sh -lc "grep -n 'Show tracking' /app/app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue"; \
+	docker exec "$$install_container" sh -lc "grep -n 'ContactInfo' /app/app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue"; \
+	docker exec "$$install_container" sh -lc "grep -n 'dealTitle' /app/app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue"; \
+	docker exec "$$install_container" sh -lc "grep -n 'visibleConfigFields' /app/app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue"; \
 	docker exec "$$install_container" sh -lc "if grep -n 'Reply to client' /app/app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue; then exit 1; fi"; \
+	docker exec "$$install_container" sh -lc "if grep -nE '>Title<|Title \\*' /app/app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue; then exit 1; fi"; \
 	docker commit "$$install_container" "$(CHATWOOT_LOCAL_IMAGE)" >/dev/null; \
 	docker rm -f "$$install_container" >/dev/null; \
 	trap - EXIT; \
@@ -190,13 +216,19 @@ crm-assets-refresh-local: crm-assets-build-host crm-assets-install-local
 		sleep 2; \
 	done; \
 	head /tmp/fleexa-chatwoot-pipeline-headers; \
-	$(COMPOSE) exec -T rails sh -lc "grep -n 'where(conversation_id: params\[:conversation_id\])' /app/app/controllers/api/v1/accounts/crm/deals_controller.rb"; \
+	$(COMPOSE) exec -T rails sh -lc "grep -n 'deals_index_response' /app/app/controllers/api/v1/accounts/crm/deals_controller.rb"; \
 	$(COMPOSE) exec -T rails sh -lc "grep -n 'Required deal fields are missing for this stage' /app/app/controllers/api/v1/accounts/crm/deals_controller.rb"; \
 	$(COMPOSE) exec -T rails sh -lc "grep -n 'ConversationBox' /app/app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue"; \
 	$(COMPOSE) exec -T rails sh -lc "grep -n 'CRM Deal' /app/app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue"; \
 	$(COMPOSE) exec -T rails sh -lc "grep -n 'isDealEditing' /app/app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue"; \
 	$(COMPOSE) exec -T rails sh -lc "grep -n 'crm-deal-chat-shell' /app/app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue"; \
 	$(COMPOSE) exec -T rails sh -lc "grep -n 'emoji-dialog' /app/app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue"; \
+	$(COMPOSE) exec -T rails sh -lc "grep -n 'activeSidebarTab' /app/app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue"; \
+	$(COMPOSE) exec -T rails sh -lc "grep -n 'Show tracking' /app/app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue"; \
+	$(COMPOSE) exec -T rails sh -lc "grep -n 'ContactInfo' /app/app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue"; \
+	$(COMPOSE) exec -T rails sh -lc "grep -n 'dealTitle' /app/app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue"; \
+	$(COMPOSE) exec -T rails sh -lc "grep -n 'visibleConfigFields' /app/app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue"; \
 	$(COMPOSE) exec -T rails sh -lc "if grep -n 'Reply to client' /app/app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue; then exit 1; fi"; \
-	$(COMPOSE) exec -T rails sh -lc "test -d /app/public/vite/assets && grep -R 'Pipeline\|CRM Deal\|Create deal from conversation\|Open deal\|crm_deal_workspace\|Field setup\|Required fields for stage\|Conversation could not be loaded\|Conversation request failed' /app/public/vite/.vite /app/public/vite/assets >/dev/null"; \
+	$(COMPOSE) exec -T rails sh -lc "if grep -nE '>Title<|Title \\*' /app/app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue; then exit 1; fi"; \
+	$(COMPOSE) exec -T rails sh -lc "test -d /app/public/vite/assets && test -f /app/public/vite/.vite/manifest.json && ls /app/public/vite/assets/DealWorkspace-*.js >/dev/null && grep -E 'CRM Deal|Field setup' /app/public/vite/assets/DealWorkspace-*.js >/dev/null"; \
 	echo "CRM local frontend assets refreshed"
