@@ -1,0 +1,492 @@
+diff --git a/app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue b/app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue
+index 4111bf8..b0e5393 100644
+--- a/app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue
++++ b/app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue
+@@ -30,6 +30,7 @@ const showFieldConfig = ref(false);
+ const fieldConfigError = ref('');
+ const fieldConfigMessage = ref('');
+ const missingRequiredKeys = ref([]);
++const isDealEditing = ref(false);
+ const newFieldForm = ref({
+   label: '',
+   key: '',
+@@ -61,8 +62,10 @@ const orderedStages = computed(() => {
+   return [...stages.value].sort((a, b) => a.position - b.position);
+ });
+ 
+-const activeStage = computed(() => {
+-  return stages.value.find(stage => stage.id === deal.value?.stage_id);
++const selectedStage = computed(() => {
++  return orderedStages.value.find(
++    stage => String(stage.id) === String(dealForm.value.stage_id || deal.value?.stage_id)
++  );
+ });
+ 
+ const activeStageId = computed(() => {
+@@ -96,6 +99,16 @@ const contactName = computed(() => contact.value?.name || deal.value?.title || '
+ const contactPhone = computed(() => contact.value?.phone_number || deal.value?.client_phone || '');
+ const contactEmail = computed(() => contact.value?.email || '');
+ const contactInitial = computed(() => contactName.value.slice(0, 1).toUpperCase());
++const contactInitials = computed(() => {
++  const parts = contactName.value.trim().split(/\s+/).filter(Boolean);
++  return (parts.length > 1 ? `${parts[0][0]}${parts[1][0]}` : contactInitial.value).toUpperCase();
++});
++const contactIdentifier = computed(() => {
++  return contact.value?.identifier || contact.value?.additional_attributes?.identifier || '';
++});
++const contactCompany = computed(() => {
++  return contact.value?.additional_attributes?.company_name || contact.value?.company_name || 'Not Available';
++});
+ const conversationDisplayId = computed(() => deal.value?.conversation?.display_id);
+ const hasConversation = computed(() => !!conversationDisplayId.value);
+ const activeChatId = computed(() => Number(conversationDisplayId.value || 0));
+@@ -115,6 +128,9 @@ const canReply = computed(() => {
+ const fieldClass =
+   'h-9 w-full rounded-md border border-n-weak bg-n-background px-3 text-sm text-n-slate-12 outline-none focus:border-n-brand';
+ 
++const compactFieldClass =
++  'h-9 w-full rounded-lg border border-n-weak bg-n-alpha-1 px-3 text-sm text-n-slate-12 outline-none focus:border-n-brand';
++
+ const fieldTypes = [
+   { value: 'text', label: 'Text' },
+   { value: 'number', label: 'Number' },
+@@ -199,6 +215,14 @@ const fieldOptions = field => {
+   return Array.isArray(field.options) ? field.options : [];
+ };
+ 
++const displayValueForField = field => {
++  const value = valueForField(field);
++
++  if (field.field_type === 'boolean') return value ? 'Yes' : 'No';
++  if (field.field_type === 'date') return formatDate(value) || '...';
++  return value === null || value === undefined || value === '' ? '...' : value;
++};
++
+ const optionListFromText = value => {
+   return value
+     .split(',')
+@@ -342,6 +366,7 @@ const saveDeal = async () => {
+     deal.value = response.data;
+     dealForm.value = buildDealForm(deal.value);
+     saveMessage.value = 'Saved';
++    isDealEditing.value = false;
+   } catch (error) {
+     setError(error);
+   } finally {
+@@ -471,13 +496,28 @@ onUnmounted(() => {
+               <h1 class="m-0 truncate text-xl font-semibold text-n-slate-12">
+                 {{ deal?.title || 'Deal' }}
+               </h1>
+-              <span
+-                v-if="activeStage"
+-                class="shrink-0 rounded-md px-2 py-1 text-xs font-medium text-white"
+-                :style="{ backgroundColor: activeStage.color || '#6B7280' }"
++              <label
++                v-if="selectedStage"
++                class="relative shrink-0"
++                aria-label="Deal stage"
+               >
+-                {{ activeStage.name }}
+-              </span>
++                <select
++                  v-model="dealForm.stage_id"
++                  class="h-8 max-w-[9rem] appearance-none rounded-md border-0 py-1 pl-2 pr-6 text-xs font-medium text-white outline-none focus:ring-2 focus:ring-n-brand/30"
++                  :style="{ backgroundColor: selectedStage.color || '#6B7280' }"
++                  @change="saveDeal"
++                >
++                  <option
++                    v-for="stage in orderedStages"
++                    :key="stage.id"
++                    :value="stage.id"
++                    class="bg-n-background text-n-slate-12"
++                  >
++                    {{ stage.name }}
++                  </option>
++                </select>
++                <i class="i-lucide-chevron-down pointer-events-none absolute right-1.5 top-1/2 size-3 -translate-y-1/2 text-white" />
++              </label>
+             </div>
+             <div class="mt-1 flex flex-wrap items-center gap-2 text-xs text-n-slate-11">
+               <span v-if="deal?.booking_id">Booking {{ deal.booking_id }}</span>
+@@ -568,170 +608,270 @@ onUnmounted(() => {
+         </ConversationBox>
+       </main>
+ 
+-      <aside class="min-h-0 overflow-y-auto bg-n-surface-1 px-5 py-4">
+-        <div class="grid gap-5">
+-          <form class="grid gap-3" @submit.prevent="saveDeal">
+-            <div class="flex items-center justify-between gap-3">
+-              <h2 class="m-0 text-sm font-semibold text-n-slate-12">
+-                Deal fields
+-              </h2>
+-              <span
+-                v-if="saveMessage"
+-                class="rounded-md bg-n-teal-3 px-2 py-1 text-xs font-medium text-n-teal-11"
++      <aside class="min-h-0 overflow-y-auto bg-n-surface-1 px-4 py-4">
++        <div class="grid gap-4">
++          <section class="rounded-xl border border-n-weak bg-n-background p-4">
++            <div class="flex items-start gap-3">
++              <div
++                class="grid size-14 shrink-0 place-items-center rounded-xl bg-n-indigo-3 text-lg font-semibold text-n-indigo-11"
+               >
+-                {{ saveMessage }}
+-              </span>
+-            </div>
+-
+-            <label class="grid gap-1 text-xs font-medium text-n-slate-11">
+-              Stage
+-              <select v-model="dealForm.stage_id" :class="fieldClass">
+-                <option
+-                  v-for="stage in orderedStages"
+-                  :key="stage.id"
+-                  :value="stage.id"
+-                >
+-                  {{ stage.name }}
+-                </option>
+-              </select>
+-            </label>
++                {{ contactInitials }}
++              </div>
++              <div class="min-w-0 flex-1">
++                <div class="flex items-center justify-between gap-2">
++                  <h2 class="m-0 truncate text-base font-semibold text-n-slate-12">
++                    {{ contactName }}
++                  </h2>
++                  <div class="flex shrink-0 items-center gap-1">
++                    <Button
++                      v-if="conversationDisplayId"
++                      icon="i-lucide-message-circle"
++                      size="xs"
++                      slate
++                      faded
++                      type="button"
++                      aria-label="Open conversation"
++                      @click="openInboxConversation"
++                    />
++                    <Button
++                      icon="i-lucide-pencil"
++                      size="xs"
++                      slate
++                      faded
++                      type="button"
++                      aria-label="Edit deal"
++                      @click="isDealEditing = !isDealEditing"
++                    />
++                  </div>
++                </div>
+ 
+-            <div v-if="isLoadingFields" class="grid place-items-center py-4 text-n-slate-11">
+-              <Spinner :size="18" />
++                <div class="mt-3 grid gap-2 text-sm text-n-slate-11">
++                  <div v-if="contactEmail" class="flex min-w-0 items-center gap-2">
++                    <i class="i-lucide-mail size-4 shrink-0" />
++                    <span class="truncate">{{ contactEmail }}</span>
++                  </div>
++                  <div v-if="contactPhone" class="flex min-w-0 items-center gap-2">
++                    <i class="i-lucide-phone size-4 shrink-0" />
++                    <span class="truncate">{{ contactPhone }}</span>
++                  </div>
++                  <div v-if="contactIdentifier" class="flex min-w-0 items-center gap-2">
++                    <i class="i-lucide-users size-4 shrink-0" />
++                    <span class="truncate">{{ contactIdentifier }}</span>
++                  </div>
++                  <div class="flex min-w-0 items-center gap-2">
++                    <i class="i-lucide-building-2 size-4 shrink-0" />
++                    <span class="truncate">{{ contactCompany }}</span>
++                  </div>
++                </div>
++              </div>
+             </div>
++          </section>
+ 
+-            <div v-else class="grid gap-3">
+-              <label
+-                v-for="field in visibleFields"
+-                :key="field.key"
+-                class="grid gap-1 text-xs font-medium text-n-slate-11"
+-              >
+-                <span class="flex items-center justify-between gap-2">
+-                  <span>
+-                    {{ field.label }}
+-                    <span v-if="isFieldRequired(field)" class="text-n-ruby-10">*</span>
+-                  </span>
+-                  <span
+-                    v-if="isCustomField(field)"
+-                    class="rounded-md bg-n-alpha-2 px-1.5 py-0.5 text-[11px] font-medium text-n-slate-10"
+-                  >
+-                    Custom
+-                  </span>
++          <form
++            class="rounded-xl border border-n-weak bg-n-background p-4"
++            @submit.prevent="saveDeal"
++          >
++            <div class="flex items-center justify-between gap-3">
++              <div class="flex min-w-0 items-center gap-2">
++                <i class="i-lucide-briefcase size-4 shrink-0 text-n-slate-11" />
++                <h2 class="m-0 truncate text-base font-semibold text-n-slate-12">
++                  CRM Deal
++                </h2>
++              </div>
++              <div class="flex shrink-0 items-center gap-2">
++                <span
++                  v-if="saveMessage"
++                  class="rounded-md bg-n-teal-3 px-2 py-1 text-xs font-medium text-n-teal-11"
++                >
++                  {{ saveMessage }}
+                 </span>
++                <Button
++                  v-if="isDealEditing"
++                  label="Save"
++                  icon="i-lucide-save"
++                  size="xs"
++                  type="submit"
++                  :is-loading="isSaving"
++                />
++                <Button
++                  v-else
++                  icon="i-lucide-pencil"
++                  size="xs"
++                  slate
++                  faded
++                  type="button"
++                  aria-label="Edit deal fields"
++                  @click="isDealEditing = true"
++                />
++              </div>
++            </div>
+ 
++            <div class="mt-3 rounded-lg border border-n-weak bg-n-surface-1">
++              <div class="flex items-center justify-between gap-3 px-3 py-2 text-sm">
++                <span class="text-n-slate-11">Stage</span>
+                 <select
+-                  v-if="field.field_type === 'select'"
+-                  :value="valueForField(field)"
+-                  :class="[fieldClass, { 'border-n-ruby-8': isFieldMissing(field) }]"
+-                  @change="setFieldValue(field, $event.target.value)"
++                  v-if="isDealEditing"
++                  v-model="dealForm.stage_id"
++                  :class="compactFieldClass"
+                 >
+-                  <option value="">Select</option>
+                   <option
+-                    v-for="option in fieldOptions(field)"
+-                    :key="option"
+-                    :value="option"
++                    v-for="stage in orderedStages"
++                    :key="stage.id"
++                    :value="stage.id"
+                   >
+-                    {{ option }}
++                    {{ stage.name }}
+                   </option>
+                 </select>
+-
+-                <label
+-                  v-else-if="field.field_type === 'boolean'"
+-                  class="flex h-9 items-center gap-2 rounded-md border border-n-weak bg-n-background px-3 text-sm text-n-slate-12"
+-                  :class="{ 'border-n-ruby-8': isFieldMissing(field) }"
++                <span
++                  v-else-if="selectedStage"
++                  class="rounded-md px-2 py-1 text-xs font-medium text-white"
++                  :style="{ backgroundColor: selectedStage.color || '#6B7280' }"
+                 >
+-                  <input
+-                    :checked="!!valueForField(field)"
+-                    type="checkbox"
+-                    @change="setFieldValue(field, $event.target.checked)"
+-                  />
+-                  Enabled
+-                </label>
++                  {{ selectedStage.name }}
++                </span>
++                <span v-else class="text-n-slate-10">...</span>
++              </div>
+ 
+-                <input
+-                  v-else
+-                  :value="valueForField(field)"
+-                  :class="[fieldClass, { 'border-n-ruby-8': isFieldMissing(field) }]"
+-                  :min="field.field_type === 'number' ? 0 : undefined"
+-                  :step="field.field_type === 'number' ? '0.01' : undefined"
+-                  :type="inputTypeFor(field)"
+-                  @input="setFieldValue(field, $event.target.value)"
+-                />
+-              </label>
+-            </div>
++              <div v-if="isLoadingFields" class="grid place-items-center py-4 text-n-slate-11">
++                <Spinner :size="18" />
++              </div>
+ 
+-            <Button
+-              label="Save deal"
+-              icon="i-lucide-save"
+-              size="sm"
+-              type="submit"
+-              :is-loading="isSaving"
+-            />
++              <template v-else>
++                <div
++                  v-for="field in visibleFields"
++                  :key="field.key"
++                  class="border-t border-n-weak px-3 py-2"
++                >
++                  <div class="flex items-start justify-between gap-3">
++                    <div class="min-w-0 pt-1">
++                      <div class="flex min-w-0 items-center gap-1.5">
++                        <span class="truncate text-sm text-n-slate-11">
++                          {{ field.label }}
++                          <span v-if="isFieldRequired(field)" class="text-n-ruby-10">*</span>
++                        </span>
++                        <span
++                          v-if="isCustomField(field)"
++                          class="rounded-md bg-n-alpha-2 px-1.5 py-0.5 text-[11px] font-medium text-n-slate-10"
++                        >
++                          Custom
++                        </span>
++                      </div>
++                    </div>
++
++                    <div v-if="!isDealEditing" class="min-w-0 max-w-[11rem] text-right text-sm text-n-slate-12">
++                      <span
++                        class="block truncate"
++                        :class="{ 'text-n-slate-10': displayValueForField(field) === '...' }"
++                      >
++                        {{ displayValueForField(field) }}
++                      </span>
++                    </div>
++
++                    <div v-else class="min-w-[10.5rem] max-w-[12rem] flex-1">
++                      <select
++                        v-if="field.field_type === 'select'"
++                        :value="valueForField(field)"
++                        :class="[compactFieldClass, { 'border-n-ruby-8': isFieldMissing(field) }]"
++                        @change="setFieldValue(field, $event.target.value)"
++                      >
++                        <option value="">Select</option>
++                        <option
++                          v-for="option in fieldOptions(field)"
++                          :key="option"
++                          :value="option"
++                        >
++                          {{ option }}
++                        </option>
++                      </select>
++
++                      <label
++                        v-else-if="field.field_type === 'boolean'"
++                        class="flex h-9 items-center gap-2 rounded-lg border border-n-weak bg-n-alpha-1 px-3 text-sm text-n-slate-12"
++                        :class="{ 'border-n-ruby-8': isFieldMissing(field) }"
++                      >
++                        <input
++                          :checked="!!valueForField(field)"
++                          type="checkbox"
++                          @change="setFieldValue(field, $event.target.checked)"
++                        />
++                        Enabled
++                      </label>
++
++                      <input
++                        v-else
++                        :value="valueForField(field)"
++                        :class="[compactFieldClass, { 'border-n-ruby-8': isFieldMissing(field) }]"
++                        :min="field.field_type === 'number' ? 0 : undefined"
++                        :step="field.field_type === 'number' ? '0.01' : undefined"
++                        :type="inputTypeFor(field)"
++                        @input="setFieldValue(field, $event.target.value)"
++                      />
++                    </div>
++                  </div>
++                </div>
++              </template>
++            </div>
+           </form>
+ 
+-          <section class="border-t border-n-weak pt-5">
+-            <h2 class="m-0 text-sm font-semibold text-n-slate-12">
++          <section class="rounded-xl border border-n-weak bg-n-background p-4">
++            <h2 class="m-0 text-base font-semibold text-n-slate-12">
+               Client
+             </h2>
+-            <div class="mt-3 grid gap-3">
+-              <div>
+-                <div class="text-xs font-medium text-n-slate-11">Name</div>
+-                <div class="mt-1 truncate text-sm text-n-slate-12">
+-                  {{ contactName }}
+-                </div>
++            <div class="mt-3 grid gap-2 text-sm">
++              <div class="flex items-center justify-between gap-3">
++                <span class="text-n-slate-11">Name</span>
++                <span class="min-w-0 truncate text-right text-n-slate-12">{{ contactName }}</span>
+               </div>
+-              <div v-if="contactEmail">
+-                <div class="text-xs font-medium text-n-slate-11">Email</div>
+-                <div class="mt-1 truncate text-sm text-n-slate-12">
+-                  {{ contactEmail }}
+-                </div>
++              <div v-if="contactEmail" class="flex items-center justify-between gap-3">
++                <span class="text-n-slate-11">Email</span>
++                <span class="min-w-0 truncate text-right text-n-slate-12">{{ contactEmail }}</span>
+               </div>
+             </div>
+           </section>
+ 
+-          <section class="border-t border-n-weak pt-5">
+-            <h2 class="m-0 text-sm font-semibold text-n-slate-12">
++          <section class="rounded-xl border border-n-weak bg-n-background p-4">
++            <h2 class="m-0 text-base font-semibold text-n-slate-12">
+               Conversation
+             </h2>
+-            <div class="mt-3 grid gap-2 text-sm text-n-slate-12">
++            <div class="mt-3 grid gap-2 text-sm">
+               <div class="flex items-center justify-between gap-3">
+                 <span class="text-n-slate-11">Display ID</span>
+-                <span>{{ conversationDisplayId ? `#${conversationDisplayId}` : '-' }}</span>
++                <span class="text-n-slate-12">{{ conversationDisplayId ? `#${conversationDisplayId}` : '-' }}</span>
+               </div>
+               <div class="flex items-center justify-between gap-3">
+                 <span class="text-n-slate-11">Inbox</span>
+-                <span>{{ deal?.conversation?.inbox_id || '-' }}</span>
++                <span class="text-n-slate-12">{{ deal?.conversation?.inbox_id || '-' }}</span>
+               </div>
+               <div class="flex items-center justify-between gap-3">
+                 <span class="text-n-slate-11">Status</span>
+-                <span class="capitalize">{{ conversationStatus || '-' }}</span>
++                <span class="capitalize text-n-slate-12">{{ conversationStatus || '-' }}</span>
+               </div>
+               <div class="flex items-center justify-between gap-3">
+                 <span class="text-n-slate-11">Reply</span>
+-                <span>{{ canReply ? 'Available' : 'Unavailable' }}</span>
++                <span class="text-n-slate-12">{{ canReply ? 'Available' : 'Unavailable' }}</span>
+               </div>
+             </div>
+           </section>
+ 
+-          <section class="border-t border-n-weak pt-5">
+-            <h2 class="m-0 text-sm font-semibold text-n-slate-12">
++          <section class="rounded-xl border border-n-weak bg-n-background p-4">
++            <h2 class="m-0 text-base font-semibold text-n-slate-12">
+               Value
+             </h2>
+-            <div class="mt-3 grid gap-2 text-sm text-n-slate-12">
++            <div class="mt-3 grid gap-2 text-sm">
+               <div class="flex items-center justify-between gap-3">
+                 <span class="text-n-slate-11">Amount</span>
+-                <span>{{ formatAmount(deal?.amount) || '-' }}</span>
++                <span class="font-medium text-n-slate-12">{{ formatAmount(deal?.amount) || '-' }}</span>
+               </div>
+               <div class="flex items-center justify-between gap-3">
+                 <span class="text-n-slate-11">Debt</span>
+-                <span>{{ formatAmount(deal?.debt_amount) || '-' }}</span>
++                <span class="font-medium text-n-slate-12">{{ formatAmount(deal?.debt_amount) || '-' }}</span>
+               </div>
+             </div>
+           </section>
+ 
+-          <section class="border-t border-n-weak pt-5">
++          <section class="rounded-xl border border-n-weak bg-n-background p-4">
+             <div class="flex items-center justify-between gap-3">
+-              <h2 class="m-0 text-sm font-semibold text-n-slate-12">
++              <h2 class="m-0 text-base font-semibold text-n-slate-12">
+                 Field setup
+               </h2>
+               <Button
