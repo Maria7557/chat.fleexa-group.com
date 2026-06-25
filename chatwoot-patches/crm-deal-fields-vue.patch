@@ -1,0 +1,643 @@
+diff --git a/app/javascript/dashboard/api/crmPipeline.js b/app/javascript/dashboard/api/crmPipeline.js
+index ef0ad2d..0a624fc 100644
+--- a/app/javascript/dashboard/api/crmPipeline.js
++++ b/app/javascript/dashboard/api/crmPipeline.js
+@@ -9,6 +9,9 @@ class CrmPipelineAPI {
+     this.deals = new ApiClient('crm/deals', {
+       accountScoped: true,
+     });
++    this.dealFields = new ApiClient('crm/deal_fields', {
++      accountScoped: true,
++    });
+   }
+ 
+   getStages() {
+@@ -48,6 +51,26 @@ class CrmPipelineAPI {
+   sendConversationMessage(conversationDisplayId, data) {
+     return axios.post(`${this.conversationUrl(conversationDisplayId)}/messages`, data);
+   }
++
++  getDealFields() {
++    return this.dealFields.get();
++  }
++
++  createDealField(data) {
++    return this.dealFields.create(data);
++  }
++
++  updateDealField(id, data) {
++    return this.dealFields.update(id, data);
++  }
++
++  deleteDealField(id) {
++    return this.dealFields.delete(id);
++  }
++
++  updateStageRequiredFields(data) {
++    return axios.patch(`${this.dealFields.url}/stage_requirements`, data);
++  }
+ }
+ 
+ export default new CrmPipelineAPI();
+diff --git a/app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue b/app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue
+index ad84ff0..c35a517 100644
+--- a/app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue
++++ b/app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue
+@@ -17,12 +17,29 @@ const stages = ref([]);
+ const conversation = ref(null);
+ const messages = ref([]);
+ const dealForm = ref({});
++const fieldDefinitions = ref([]);
++const fieldRequirements = ref({});
++const requiredDraftKeys = ref([]);
++const requiredConfigStageId = ref('');
++const showFieldConfig = ref(false);
++const fieldConfigError = ref('');
++const fieldConfigMessage = ref('');
++const missingRequiredKeys = ref([]);
++const newFieldForm = ref({
++  label: '',
++  key: '',
++  field_type: 'text',
++  options: '',
++});
+ const replyText = ref('');
+ const errorMessage = ref('');
+ const messageError = ref('');
+ const saveMessage = ref('');
+ const isLoading = ref(false);
+ const isSaving = ref(false);
++const isLoadingFields = ref(false);
++const isSavingField = ref(false);
++const isSavingRequirements = ref(false);
+ const isLoadingMessages = ref(false);
+ const isLoadingEarlier = ref(false);
+ const isSendingReply = ref(false);
+@@ -54,6 +71,32 @@ const activeStage = computed(() => {
+   return stages.value.find(stage => stage.id === deal.value?.stage_id);
+ });
+ 
++const activeStageId = computed(() => {
++  return Number(dealForm.value.stage_id || deal.value?.stage_id || 0);
++});
++
++const visibleFields = computed(() => {
++  return [...fieldDefinitions.value]
++    .filter(field => field.is_active !== false)
++    .sort((a, b) => a.position - b.position);
++});
++
++const customFields = computed(() => {
++  return visibleFields.value.filter(field => isCustomField(field));
++});
++
++const activeRequiredKeys = computed(() => {
++  return new Set(fieldRequirements.value[String(activeStageId.value)] || []);
++});
++
++const configuredStage = computed(() => {
++  return orderedStages.value.find(stage => String(stage.id) === String(requiredConfigStageId.value));
++});
++
++const configuredRequiredKeys = computed(() => {
++  return new Set(requiredDraftKeys.value);
++});
++
+ const contact = computed(() => deal.value?.contact || {});
+ const contactName = computed(() => contact.value?.name || deal.value?.title || 'Client');
+ const contactPhone = computed(() => contact.value?.phone_number || deal.value?.client_phone || '');
+@@ -77,6 +120,14 @@ const replyDisabled = computed(() => {
+ const fieldClass =
+   'h-9 w-full rounded-md border border-n-weak bg-n-background px-3 text-sm text-n-slate-12 outline-none focus:border-n-brand';
+ 
++const fieldTypes = [
++  { value: 'text', label: 'Text' },
++  { value: 'number', label: 'Number' },
++  { value: 'date', label: 'Date' },
++  { value: 'boolean', label: 'Checkbox' },
++  { value: 'select', label: 'Select' },
++];
++
+ const buildDealForm = source => ({
+   title: source?.title || '',
+   stage_id: source?.stage_id || '',
+@@ -87,16 +138,91 @@ const buildDealForm = source => ({
+   rental_end: source?.rental_end || '',
+   amount: source?.amount ?? '',
+   debt_amount: source?.debt_amount ?? '',
++  custom_attributes: { ...(source?.custom_attributes || {}) },
+ });
+ 
+ const setError = error => {
+   errorMessage.value = error?.response?.data?.error || error?.message || 'Request failed';
++  missingRequiredKeys.value = error?.response?.data?.missing_required_fields?.map(field => field.key) || [];
+ };
+ 
+ const setMessageError = error => {
+   messageError.value = error?.response?.data?.error || error?.message || 'Message request failed';
+ };
+ 
++const applyFieldConfig = data => {
++  fieldDefinitions.value = data?.fields || [];
++  fieldRequirements.value = data?.requirements || {};
++
++  if (!requiredConfigStageId.value && activeStageId.value) {
++    requiredConfigStageId.value = String(activeStageId.value);
++  }
++};
++
++const syncRequiredDraft = () => {
++  const stageId = String(requiredConfigStageId.value || activeStageId.value || '');
++  requiredDraftKeys.value = [...(fieldRequirements.value[stageId] || [])];
++};
++
++const isFieldRequired = field => {
++  return field.key === 'title' || activeRequiredKeys.value.has(field.key);
++};
++
++const isFieldMissing = field => {
++  return missingRequiredKeys.value.includes(field.key);
++};
++
++const isSystemField = field => {
++  return field.storage_type === 'system_column' || field.source === 'system';
++};
++
++const isCustomField = field => {
++  return field.storage_type === 'custom_attribute' || field.source === 'custom';
++};
++
++const inputTypeFor = field => {
++  if (field.field_type === 'date') return 'date';
++  if (field.field_type === 'number') return 'number';
++  return 'text';
++};
++
++const valueForField = field => {
++  if (isSystemField(field)) return dealForm.value[field.key] ?? '';
++  return dealForm.value.custom_attributes?.[field.key] ?? '';
++};
++
++const setFieldValue = (field, value) => {
++  if (isSystemField(field)) {
++    dealForm.value[field.key] = value;
++  } else {
++    dealForm.value.custom_attributes = {
++      ...(dealForm.value.custom_attributes || {}),
++      [field.key]: value,
++    };
++  }
++
++  missingRequiredKeys.value = missingRequiredKeys.value.filter(key => key !== field.key);
++};
++
++const fieldOptions = field => {
++  return Array.isArray(field.options) ? field.options : [];
++};
++
++const optionListFromText = value => {
++  return value
++    .split(',')
++    .map(option => option.trim())
++    .filter(Boolean);
++};
++
++const generatedFieldKey = value => {
++  return value
++    .trim()
++    .toLowerCase()
++    .replace(/[^a-z0-9]+/g, '_')
++    .replace(/^_+|_+$/g, '');
++};
++
+ const formatAmount = amount => {
+   if (amount === null || amount === undefined || amount === '') return '';
+   const value = Number(amount);
+@@ -161,23 +287,29 @@ const loadWorkspace = async () => {
+   if (!route.params.dealId) return;
+ 
+   isLoading.value = true;
++  isLoadingFields.value = true;
+   errorMessage.value = '';
+   saveMessage.value = '';
++  missingRequiredKeys.value = [];
+ 
+   try {
+-    const [stageResponse, dealResponse] = await Promise.all([
++    const [stageResponse, dealResponse, fieldResponse] = await Promise.all([
+       CrmPipelineAPI.getStages(),
+       CrmPipelineAPI.getDeal(route.params.dealId),
++      CrmPipelineAPI.getDealFields(),
+     ]);
+ 
+     stages.value = stageResponse.data || [];
+     deal.value = dealResponse.data;
+     dealForm.value = buildDealForm(deal.value);
++    applyFieldConfig(fieldResponse.data);
++    syncRequiredDraft();
+     await loadConversation();
+   } catch (error) {
+     setError(error);
+   } finally {
+     isLoading.value = false;
++    isLoadingFields.value = false;
+   }
+ };
+ 
+@@ -210,6 +342,7 @@ const dealPayload = () => ({
+   rental_end: dealForm.value.rental_end,
+   amount: dealForm.value.amount,
+   debt_amount: dealForm.value.debt_amount,
++  custom_attributes: dealForm.value.custom_attributes || {},
+ });
+ 
+ const saveDeal = async () => {
+@@ -218,6 +351,7 @@ const saveDeal = async () => {
+   isSaving.value = true;
+   errorMessage.value = '';
+   saveMessage.value = '';
++  missingRequiredKeys.value = [];
+ 
+   try {
+     const response = await CrmPipelineAPI.updateDeal(deal.value.id, {
+@@ -311,7 +445,101 @@ const attachmentLabel = message => {
+   return count === 1 ? '1 attachment' : `${count} attachments`;
+ };
+ 
++const resetNewFieldForm = () => {
++  newFieldForm.value = {
++    label: '',
++    key: '',
++    field_type: 'text',
++    options: '',
++  };
++};
++
++const createField = async () => {
++  const label = newFieldForm.value.label.trim();
++  if (!label) return;
++
++  isSavingField.value = true;
++  fieldConfigError.value = '';
++  fieldConfigMessage.value = '';
++
++  const key = newFieldForm.value.key.trim() || generatedFieldKey(label);
++  const dealField = {
++    label,
++    key,
++    field_type: newFieldForm.value.field_type,
++    options: newFieldForm.value.field_type === 'select'
++      ? optionListFromText(newFieldForm.value.options)
++      : [],
++  };
++
++  try {
++    await CrmPipelineAPI.createDealField({ deal_field: dealField });
++    const response = await CrmPipelineAPI.getDealFields();
++    applyFieldConfig(response.data);
++    syncRequiredDraft();
++    resetNewFieldForm();
++    fieldConfigMessage.value = 'Field added';
++  } catch (error) {
++    fieldConfigError.value = error?.response?.data?.error || error?.message || 'Field request failed';
++  } finally {
++    isSavingField.value = false;
++  }
++};
++
++const deleteField = async field => {
++  if (!field.id || isSystemField(field)) return;
++
++  isSavingField.value = true;
++  fieldConfigError.value = '';
++  fieldConfigMessage.value = '';
++
++  try {
++    await CrmPipelineAPI.deleteDealField(field.id);
++    const response = await CrmPipelineAPI.getDealFields();
++    applyFieldConfig(response.data);
++    syncRequiredDraft();
++    fieldConfigMessage.value = 'Field hidden';
++  } catch (error) {
++    fieldConfigError.value = error?.response?.data?.error || error?.message || 'Field request failed';
++  } finally {
++    isSavingField.value = false;
++  }
++};
++
++const toggleRequiredDraft = field => {
++  const keys = new Set(requiredDraftKeys.value);
++  if (keys.has(field.key)) {
++    keys.delete(field.key);
++  } else {
++    keys.add(field.key);
++  }
++  requiredDraftKeys.value = [...keys];
++};
++
++const saveStageRequirements = async () => {
++  if (!requiredConfigStageId.value) return;
++
++  isSavingRequirements.value = true;
++  fieldConfigError.value = '';
++  fieldConfigMessage.value = '';
++
++  try {
++    const response = await CrmPipelineAPI.updateStageRequiredFields({
++      stage_id: requiredConfigStageId.value,
++      required_field_keys: requiredDraftKeys.value,
++    });
++    applyFieldConfig(response.data);
++    syncRequiredDraft();
++    fieldConfigMessage.value = 'Requirements saved';
++  } catch (error) {
++    fieldConfigError.value = error?.response?.data?.error || error?.message || 'Requirement request failed';
++  } finally {
++    isSavingRequirements.value = false;
++  }
++};
++
+ watch(() => route.params.dealId, loadWorkspace, { immediate: true });
++watch(requiredConfigStageId, syncRequiredDraft);
+ </script>
+ 
+ <template>
+@@ -532,8 +760,8 @@ watch(() => route.params.dealId, loadWorkspace, { immediate: true });
+       </main>
+ 
+       <aside class="min-h-0 overflow-y-auto bg-n-surface-1 px-5 py-4">
+-        <form class="grid gap-5" @submit.prevent="saveDeal">
+-          <section class="grid gap-3">
++        <div class="grid gap-5">
++          <form class="grid gap-3" @submit.prevent="saveDeal">
+             <div class="flex items-center justify-between gap-3">
+               <h2 class="m-0 text-sm font-semibold text-n-slate-12">
+                 Deal fields
+@@ -546,11 +774,6 @@ watch(() => route.params.dealId, loadWorkspace, { immediate: true });
+               </span>
+             </div>
+ 
+-            <label class="grid gap-1 text-xs font-medium text-n-slate-11">
+-              Title
+-              <input v-model="dealForm.title" :class="fieldClass" type="text" />
+-            </label>
+-
+             <label class="grid gap-1 text-xs font-medium text-n-slate-11">
+               Stage
+               <select v-model="dealForm.stage_id" :class="fieldClass">
+@@ -564,36 +787,67 @@ watch(() => route.params.dealId, loadWorkspace, { immediate: true });
+               </select>
+             </label>
+ 
+-            <div class="grid grid-cols-2 gap-3">
+-              <label class="grid gap-1 text-xs font-medium text-n-slate-11">
+-                Car
+-                <input v-model="dealForm.car_model" :class="fieldClass" type="text" />
+-              </label>
+-              <label class="grid gap-1 text-xs font-medium text-n-slate-11">
+-                Booking
+-                <input v-model="dealForm.booking_id" :class="fieldClass" type="text" />
+-              </label>
++            <div v-if="isLoadingFields" class="grid place-items-center py-4 text-n-slate-11">
++              <Spinner :size="18" />
+             </div>
+ 
+-            <div class="grid grid-cols-2 gap-3">
+-              <label class="grid gap-1 text-xs font-medium text-n-slate-11">
+-                Rental start
+-                <input v-model="dealForm.rental_start" :class="fieldClass" type="date" />
+-              </label>
+-              <label class="grid gap-1 text-xs font-medium text-n-slate-11">
+-                Rental end
+-                <input v-model="dealForm.rental_end" :class="fieldClass" type="date" />
+-              </label>
+-            </div>
++            <div v-else class="grid gap-3">
++              <label
++                v-for="field in visibleFields"
++                :key="field.key"
++                class="grid gap-1 text-xs font-medium text-n-slate-11"
++              >
++                <span class="flex items-center justify-between gap-2">
++                  <span>
++                    {{ field.label }}
++                    <span v-if="isFieldRequired(field)" class="text-n-ruby-10">*</span>
++                  </span>
++                  <span
++                    v-if="isCustomField(field)"
++                    class="rounded-md bg-n-alpha-2 px-1.5 py-0.5 text-[11px] font-medium text-n-slate-10"
++                  >
++                    Custom
++                  </span>
++                </span>
+ 
+-            <div class="grid grid-cols-2 gap-3">
+-              <label class="grid gap-1 text-xs font-medium text-n-slate-11">
+-                Amount
+-                <input v-model="dealForm.amount" :class="fieldClass" min="0" step="0.01" type="number" />
+-              </label>
+-              <label class="grid gap-1 text-xs font-medium text-n-slate-11">
+-                Debt
+-                <input v-model="dealForm.debt_amount" :class="fieldClass" min="0" step="0.01" type="number" />
++                <select
++                  v-if="field.field_type === 'select'"
++                  :value="valueForField(field)"
++                  :class="[fieldClass, { 'border-n-ruby-8': isFieldMissing(field) }]"
++                  @change="setFieldValue(field, $event.target.value)"
++                >
++                  <option value="">Select</option>
++                  <option
++                    v-for="option in fieldOptions(field)"
++                    :key="option"
++                    :value="option"
++                  >
++                    {{ option }}
++                  </option>
++                </select>
++
++                <label
++                  v-else-if="field.field_type === 'boolean'"
++                  class="flex h-9 items-center gap-2 rounded-md border border-n-weak bg-n-background px-3 text-sm text-n-slate-12"
++                  :class="{ 'border-n-ruby-8': isFieldMissing(field) }"
++                >
++                  <input
++                    :checked="!!valueForField(field)"
++                    type="checkbox"
++                    @change="setFieldValue(field, $event.target.checked)"
++                  />
++                  Enabled
++                </label>
++
++                <input
++                  v-else
++                  :value="valueForField(field)"
++                  :class="[fieldClass, { 'border-n-ruby-8': isFieldMissing(field) }]"
++                  :min="field.field_type === 'number' ? 0 : undefined"
++                  :step="field.field_type === 'number' ? '0.01' : undefined"
++                  :type="inputTypeFor(field)"
++                  @input="setFieldValue(field, $event.target.value)"
++                />
+               </label>
+             </div>
+ 
+@@ -604,17 +858,13 @@ watch(() => route.params.dealId, loadWorkspace, { immediate: true });
+               type="submit"
+               :is-loading="isSaving"
+             />
+-          </section>
++          </form>
+ 
+           <section class="border-t border-n-weak pt-5">
+             <h2 class="m-0 text-sm font-semibold text-n-slate-12">
+               Client
+             </h2>
+             <div class="mt-3 grid gap-3">
+-              <label class="grid gap-1 text-xs font-medium text-n-slate-11">
+-                Phone
+-                <input v-model="dealForm.client_phone" :class="fieldClass" type="tel" />
+-              </label>
+               <div>
+                 <div class="text-xs font-medium text-n-slate-11">Name</div>
+                 <div class="mt-1 truncate text-sm text-n-slate-12">
+@@ -669,7 +919,140 @@ watch(() => route.params.dealId, loadWorkspace, { immediate: true });
+               </div>
+             </div>
+           </section>
+-        </form>
++
++          <section class="border-t border-n-weak pt-5">
++            <div class="flex items-center justify-between gap-3">
++              <h2 class="m-0 text-sm font-semibold text-n-slate-12">
++                Field setup
++              </h2>
++              <Button
++                :label="showFieldConfig ? 'Hide' : 'Configure'"
++                icon="i-lucide-sliders-horizontal"
++                size="xs"
++                slate
++                faded
++                type="button"
++                @click="showFieldConfig = !showFieldConfig"
++              />
++            </div>
++
++            <div v-if="showFieldConfig" class="mt-3 grid gap-4">
++              <div
++                v-if="fieldConfigError"
++                class="rounded-md bg-n-ruby-3 px-3 py-2 text-sm text-n-ruby-11"
++              >
++                {{ fieldConfigError }}
++              </div>
++              <div
++                v-if="fieldConfigMessage"
++                class="rounded-md bg-n-teal-3 px-3 py-2 text-sm text-n-teal-11"
++              >
++                {{ fieldConfigMessage }}
++              </div>
++
++              <form class="grid gap-2" @submit.prevent="createField">
++                <input
++                  v-model="newFieldForm.label"
++                  :class="fieldClass"
++                  placeholder="New field label"
++                  type="text"
++                />
++                <div class="grid grid-cols-2 gap-2">
++                  <input
++                    v-model="newFieldForm.key"
++                    :class="fieldClass"
++                    placeholder="field_key"
++                    type="text"
++                  />
++                  <select v-model="newFieldForm.field_type" :class="fieldClass">
++                    <option
++                      v-for="type in fieldTypes"
++                      :key="type.value"
++                      :value="type.value"
++                    >
++                      {{ type.label }}
++                    </option>
++                  </select>
++                </div>
++                <input
++                  v-if="newFieldForm.field_type === 'select'"
++                  v-model="newFieldForm.options"
++                  :class="fieldClass"
++                  placeholder="Option A, Option B"
++                  type="text"
++                />
++                <Button
++                  label="Add field"
++                  icon="i-lucide-plus"
++                  size="sm"
++                  type="submit"
++                  :is-loading="isSavingField"
++                />
++              </form>
++
++              <div class="grid gap-2">
++                <label class="grid gap-1 text-xs font-medium text-n-slate-11">
++                  Required fields for stage
++                  <select v-model="requiredConfigStageId" :class="fieldClass">
++                    <option
++                      v-for="stage in orderedStages"
++                      :key="stage.id"
++                      :value="String(stage.id)"
++                    >
++                      {{ stage.name }}
++                    </option>
++                  </select>
++                </label>
++
++                <div class="grid gap-2 rounded-lg border border-n-weak bg-n-surface-2 p-3">
++                  <label
++                    v-for="field in visibleFields"
++                    :key="`required-${field.key}`"
++                    class="flex items-center justify-between gap-3 text-sm text-n-slate-12"
++                  >
++                    <span class="min-w-0 truncate">{{ field.label }}</span>
++                    <input
++                      :checked="configuredRequiredKeys.has(field.key)"
++                      type="checkbox"
++                      @change="toggleRequiredDraft(field)"
++                    />
++                  </label>
++                </div>
++
++                <Button
++                  :label="configuredStage ? `Save ${configuredStage.name}` : 'Save requirements'"
++                  icon="i-lucide-check"
++                  size="sm"
++                  type="button"
++                  :is-loading="isSavingRequirements"
++                  @click="saveStageRequirements"
++                />
++              </div>
++
++              <div v-if="customFields.length" class="grid gap-2">
++                <div class="text-xs font-medium text-n-slate-11">
++                  Custom fields
++                </div>
++                <div
++                  v-for="field in customFields"
++                  :key="field.id"
++                  class="flex items-center justify-between gap-3 rounded-md bg-n-alpha-2 px-3 py-2 text-sm text-n-slate-12"
++                >
++                  <span class="min-w-0 truncate">{{ field.label }}</span>
++                  <Button
++                    icon="i-lucide-trash-2"
++                    size="xs"
++                    ruby
++                    ghost
++                    type="button"
++                    aria-label="Hide custom field"
++                    @click="deleteField(field)"
++                  />
++                </div>
++              </div>
++            </div>
++          </section>
++        </div>
+       </aside>
+     </div>
+   </section>

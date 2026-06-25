@@ -55,18 +55,21 @@ crm-copy-patches: ensure-env
 	$(COMPOSE) cp chatwoot-patches/crm-models.rb.patch rails:/tmp/crm-models.rb.patch
 	$(COMPOSE) cp chatwoot-patches/crm-controllers.rb.patch rails:/tmp/crm-controllers.rb.patch
 	$(COMPOSE) cp chatwoot-patches/crm-routes.rb.patch rails:/tmp/crm-routes.rb.patch
+	$(COMPOSE) cp chatwoot-patches/crm-deal-fields-backend.patch rails:/tmp/crm-deal-fields-backend.patch
 	@echo "CRM patch files copied to Rails container"
 
 crm-patch-check: crm-copy-patches
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply --check /tmp/crm-models.rb.patch"
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply --check /tmp/crm-controllers.rb.patch"
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply --check /tmp/crm-routes.rb.patch"
+	$(COMPOSE) exec rails sh -lc "cd /app && git apply --check /tmp/crm-deal-fields-backend.patch"
 	@echo "CRM patches validated"
 
 crm-patch:
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply /tmp/crm-models.rb.patch"
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply /tmp/crm-controllers.rb.patch"
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply /tmp/crm-routes.rb.patch"
+	$(COMPOSE) exec rails sh -lc "cd /app && git apply /tmp/crm-deal-fields-backend.patch"
 	@echo "CRM patches applied to Rails container"
 
 crm-install: crm-copy-patches crm-patch
@@ -75,16 +78,19 @@ crm-install: crm-copy-patches crm-patch
 crm-vue-copy: ensure-env
 	$(COMPOSE) cp chatwoot-patches/crm-pipeline-vue.patch rails:/tmp/crm-pipeline-vue.patch
 	$(COMPOSE) cp chatwoot-patches/crm-deal-workspace-vue.patch rails:/tmp/crm-deal-workspace-vue.patch
+	$(COMPOSE) cp chatwoot-patches/crm-deal-fields-vue.patch rails:/tmp/crm-deal-fields-vue.patch
 	@echo "CRM Vue patch copied to Rails container"
 
 crm-vue-check: crm-vue-copy
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply --check /tmp/crm-pipeline-vue.patch"
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply --check /tmp/crm-deal-workspace-vue.patch"
+	$(COMPOSE) exec rails sh -lc "cd /app && git apply --check /tmp/crm-deal-fields-vue.patch"
 	@echo "CRM Vue patch validated"
 
 crm-vue-patch: crm-vue-copy
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply /tmp/crm-pipeline-vue.patch"
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply /tmp/crm-deal-workspace-vue.patch"
+	$(COMPOSE) exec rails sh -lc "cd /app && git apply /tmp/crm-deal-fields-vue.patch"
 	@echo "CRM Vue patch applied"
 
 crm-assets-build-host:
@@ -103,15 +109,17 @@ crm-assets-build-host:
 	git apply "$(CURDIR)/chatwoot-patches/crm-models.rb.patch"; \
 	git apply "$(CURDIR)/chatwoot-patches/crm-controllers.rb.patch"; \
 	git apply "$(CURDIR)/chatwoot-patches/crm-routes.rb.patch"; \
+	git apply "$(CURDIR)/chatwoot-patches/crm-deal-fields-backend.patch"; \
 	git apply "$(CURDIR)/chatwoot-patches/crm-pipeline-vue.patch"; \
 	git apply "$(CURDIR)/chatwoot-patches/crm-deal-workspace-vue.patch"; \
+	git apply "$(CURDIR)/chatwoot-patches/crm-deal-fields-vue.patch"; \
 	npx --yes pnpm@10.2.0 install --frozen-lockfile; \
 	(node node_modules/esbuild/install.js 2>/dev/null || true); \
 	NODE_OPTIONS=--max-old-space-size=4096 npx --yes pnpm@10.2.0 exec vite build --mode production; \
 	test -d public/vite/assets; \
 	test -f public/vite/.vite/manifest.json; \
 	grep -R "Pipeline\|crm_pipeline_index\|crm_deal_workspace" public/vite/.vite public/vite/assets >/dev/null; \
-	grep -R "CRM Deal\|Create deal from conversation\|Open deal\|Deal fields\|Reply to client" public/vite/.vite public/vite/assets >/dev/null; \
+	grep -R "CRM Deal\|Create deal from conversation\|Open deal\|Deal fields\|Field setup\|Required fields for stage\|Reply to client" public/vite/.vite public/vite/assets >/dev/null; \
 	echo "CRM host assets built"
 
 crm-assets-install-local: ensure-env
@@ -126,8 +134,10 @@ crm-assets-install-local: ensure-env
 	docker cp "$(CRM_ASSETS_BUILD_DIR)/app/controllers/api/v1/accounts/crm" "$$install_container:/app/app/controllers/api/v1/accounts/"; \
 	docker cp "$(CRM_ASSETS_BUILD_DIR)/app/models/crm_deal.rb" "$$install_container:/app/app/models/crm_deal.rb"; \
 	docker cp "$(CRM_ASSETS_BUILD_DIR)/app/models/crm_deal_activity.rb" "$$install_container:/app/app/models/crm_deal_activity.rb"; \
+	docker cp "$(CRM_ASSETS_BUILD_DIR)/app/models/crm_deal_field_definition.rb" "$$install_container:/app/app/models/crm_deal_field_definition.rb"; \
 	docker cp "$(CRM_ASSETS_BUILD_DIR)/app/models/crm_loss_reason_option.rb" "$$install_container:/app/app/models/crm_loss_reason_option.rb"; \
 	docker cp "$(CRM_ASSETS_BUILD_DIR)/app/models/crm_pipeline_stage.rb" "$$install_container:/app/app/models/crm_pipeline_stage.rb"; \
+	docker cp "$(CRM_ASSETS_BUILD_DIR)/app/models/crm_pipeline_stage_required_field.rb" "$$install_container:/app/app/models/crm_pipeline_stage_required_field.rb"; \
 	docker cp "$(CRM_ASSETS_BUILD_DIR)/config/routes.rb" "$$install_container:/app/config/routes.rb"; \
 	docker cp "$(CRM_ASSETS_BUILD_DIR)/app/services/conversations/message_window_service.rb" "$$install_container:/app/app/services/conversations/message_window_service.rb"; \
 	docker cp "$(CRM_ASSETS_BUILD_DIR)/app/javascript/dashboard/api/crmPipeline.js" "$$install_container:/app/app/javascript/dashboard/api/crmPipeline.js"; \
@@ -140,6 +150,7 @@ crm-assets-install-local: ensure-env
 	docker cp "$(CRM_ASSETS_BUILD_DIR)/public/vite" "$$install_container:/app/public/vite"; \
 	docker exec "$$install_container" sh -lc "test -d /app/public/vite/assets && test -f /app/public/vite/.vite/manifest.json"; \
 	docker exec "$$install_container" sh -lc "grep -n 'where(conversation_id: params\[:conversation_id\])' /app/app/controllers/api/v1/accounts/crm/deals_controller.rb"; \
+	docker exec "$$install_container" sh -lc "grep -n 'Required deal fields are missing for this stage' /app/app/controllers/api/v1/accounts/crm/deals_controller.rb"; \
 	docker commit "$$install_container" "$(CHATWOOT_LOCAL_IMAGE)" >/dev/null; \
 	docker rm -f "$$install_container" >/dev/null; \
 	trap - EXIT; \
@@ -156,5 +167,6 @@ crm-assets-refresh-local: crm-assets-build-host crm-assets-install-local
 	done; \
 	head /tmp/fleexa-chatwoot-pipeline-headers; \
 	$(COMPOSE) exec -T rails sh -lc "grep -n 'where(conversation_id: params\[:conversation_id\])' /app/app/controllers/api/v1/accounts/crm/deals_controller.rb"; \
-	$(COMPOSE) exec -T rails sh -lc "test -d /app/public/vite/assets && grep -R 'Pipeline\|CRM Deal\|Create deal from conversation\|Open deal\|crm_deal_workspace\|Deal fields\|Reply to client' /app/public/vite/.vite /app/public/vite/assets >/dev/null"; \
+	$(COMPOSE) exec -T rails sh -lc "grep -n 'Required deal fields are missing for this stage' /app/app/controllers/api/v1/accounts/crm/deals_controller.rb"; \
+	$(COMPOSE) exec -T rails sh -lc "test -d /app/public/vite/assets && grep -R 'Pipeline\|CRM Deal\|Create deal from conversation\|Open deal\|crm_deal_workspace\|Deal fields\|Field setup\|Required fields for stage\|Reply to client' /app/public/vite/.vite /app/public/vite/assets >/dev/null"; \
 	echo "CRM local frontend assets refreshed"

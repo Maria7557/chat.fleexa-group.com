@@ -1,0 +1,437 @@
+diff --git a/app/controllers/api/v1/accounts/crm/deal_fields_controller.rb b/app/controllers/api/v1/accounts/crm/deal_fields_controller.rb
+new file mode 100644
+index 0000000..50d6f85
+--- /dev/null
++++ b/app/controllers/api/v1/accounts/crm/deal_fields_controller.rb
+@@ -0,0 +1,164 @@
++class Api::V1::Accounts::Crm::DealFieldsController < Api::V1::Accounts::BaseController
++  before_action :check_authorization
++  before_action :set_field_definition, only: [:update, :destroy]
++
++  def index
++    render json: fields_payload
++  end
++
++  def create
++    attrs = field_params.merge(
++      account: Current.account,
++      is_system: false,
++      storage_type: 'custom_attribute'
++    )
++    attrs[:options] = [] if attrs[:field_type] != 'select'
++    field = field_scope.new(attrs)
++    field.key = generated_field_key(field.label) if field.key.blank?
++    field.position = next_position if field.position.blank? || field.position.zero?
++    field.save!
++
++    render json: field_payload(field)
++  end
++
++  def update
++    return render_validation_error('system fields cannot be updated') if @field_definition.is_system?
++
++    @field_definition.update!(field_update_params)
++
++    render json: field_payload(@field_definition)
++  end
++
++  def destroy
++    return render_validation_error('system fields cannot be deleted') if @field_definition.is_system?
++
++    ActiveRecord::Base.transaction do
++      stage_required_field_scope.where(field_definition_id: @field_definition.id).delete_all
++      @field_definition.update!(is_active: false)
++    end
++
++    head :ok
++  end
++
++  def stage_requirements
++    stage = stage_scope.find(params.require(:stage_id))
++    fields = required_field_definitions
++    return if performed?
++
++    ActiveRecord::Base.transaction do
++      stage_required_field_scope.where(stage_id: stage.id).delete_all
++      fields.each do |field|
++        CrmPipelineStageRequiredField.create!(
++          account: Current.account,
++          stage: stage,
++          field_definition: field
++        )
++      end
++    end
++
++    render json: fields_payload
++  end
++
++  private
++
++  def field_scope
++    CrmDealFieldDefinition.for_account(Current.account.id)
++  end
++
++  def stage_scope
++    CrmPipelineStage.for_account(Current.account.id)
++  end
++
++  def stage_required_field_scope
++    CrmPipelineStageRequiredField.for_account(Current.account.id)
++  end
++
++  def set_field_definition
++    @field_definition = field_scope.find(params[:id])
++  end
++
++  def field_params
++    params.require(:deal_field).permit(
++      :key,
++      :label,
++      :field_type,
++      :position,
++      :is_active,
++      options: []
++    )
++  end
++
++  def field_update_params
++    field_params.except(:key, :is_active).tap do |attrs|
++      attrs[:options] = [] if attrs.key?(:field_type) && attrs[:field_type] != 'select'
++    end
++  end
++
++  def fields_payload
++    {
++      fields: all_fields.map { |field| field_payload(field) },
++      requirements: requirements_payload
++    }
++  end
++
++  def all_fields
++    field_scope.active
++  end
++
++  def field_payload(field)
++    {
++      id: field.id,
++      key: field.key,
++      label: field.label,
++      field_type: field.field_type,
++      storage_type: field.storage_type,
++      position: field.position,
++      options: field.options || [],
++      source: source_for(field),
++      is_system: field.is_system,
++      is_active: field.is_active,
++      required_by_stage_ids: required_stage_ids_for(field)
++    }
++  end
++
++  def source_for(field)
++    field.storage_type == 'system_column' ? 'system' : 'custom'
++  end
++
++  def requirements_payload
++    stage_required_field_scope.includes(:field_definition).group_by(&:stage_id).transform_values do |requirements|
++      requirements.map { |requirement| requirement.field_definition.key }
++    end
++  end
++
++  def required_stage_ids_for(field)
++    stage_required_field_scope.select do |requirement|
++      requirement.field_definition_id == field.id
++    end.map(&:stage_id)
++  end
++
++  def required_field_definitions
++    requested_keys = Array(params[:required_field_keys]).map(&:to_s).uniq
++    fields_by_key = field_scope.active.where(key: requested_keys).index_by(&:key)
++    invalid_keys = requested_keys - fields_by_key.keys
++    return fields_by_key.values_at(*requested_keys) if invalid_keys.blank?
++
++    render_validation_error("unknown field keys: #{invalid_keys.join(', ')}")
++  end
++
++  def generated_field_key(label)
++    label.to_s.strip.downcase.gsub(/[^a-z0-9]+/, '_').gsub(/\A_+|_+\z/, '')
++  end
++
++  def next_position
++    (field_scope.maximum(:position) || 100) + 10
++  end
++
++  def render_validation_error(message)
++    render json: { error: message }, status: :unprocessable_entity
++  end
++
++  def check_authorization
++    raise Pundit::NotAuthorizedError unless Current.account_user.administrator?
++  end
++end
+diff --git a/app/controllers/api/v1/accounts/crm/deals_controller.rb b/app/controllers/api/v1/accounts/crm/deals_controller.rb
+index d9a531d..3d6d2a7 100644
+--- a/app/controllers/api/v1/accounts/crm/deals_controller.rb
++++ b/app/controllers/api/v1/accounts/crm/deals_controller.rb
+@@ -19,6 +19,8 @@ class Api::V1::Accounts::Crm::DealsController < Api::V1::Accounts::BaseControlle
+   def create
+     attrs = deal_params
+     stage = stage_scope.find(attrs[:stage_id])
++    missing_required_fields = missing_required_fields_for(stage, attrs)
++    return render_missing_required_fields(missing_required_fields) if missing_required_fields.any?
+ 
+     ActiveRecord::Base.transaction do
+       @deal = CrmDeal.create!(attrs.merge(account: Current.account, stage: stage))
+@@ -31,8 +33,9 @@ class Api::V1::Accounts::Crm::DealsController < Api::V1::Accounts::BaseControlle
+   def update
+     attrs = deal_params
+     old_stage_id = @deal.stage_id
+-
+-    stage_scope.find(attrs[:stage_id]) if attrs.key?(:stage_id)
++    target_stage = attrs.key?(:stage_id) ? stage_scope.find(attrs[:stage_id]) : @deal.stage
++    missing_required_fields = missing_required_fields_for(target_stage, merged_deal_attributes(@deal, attrs))
++    return render_missing_required_fields(missing_required_fields) if missing_required_fields.any?
+ 
+     ActiveRecord::Base.transaction do
+       @deal.update!(attrs)
+@@ -76,7 +79,8 @@ class Api::V1::Accounts::Crm::DealsController < Api::V1::Accounts::BaseControlle
+       :rental_start,
+       :rental_end,
+       :amount,
+-      :debt_amount
++      :debt_amount,
++      custom_attributes: {}
+     )
+   end
+ 
+@@ -95,6 +99,7 @@ class Api::V1::Accounts::Crm::DealsController < Api::V1::Accounts::BaseControlle
+       rental_end: deal.rental_end,
+       amount: deal.amount,
+       debt_amount: deal.debt_amount,
++      custom_attributes: deal.custom_attributes || {},
+       fleet_sync_status: deal.fleet_sync_status,
+       rotting_since: deal.rotting_since,
+       contact: contact_payload(deal.contact),
+@@ -137,6 +142,76 @@ class Api::V1::Accounts::Crm::DealsController < Api::V1::Accounts::BaseControlle
+     }
+   end
+ 
++  def merged_deal_attributes(deal, attrs)
++    deal.attributes.merge(attrs.to_h.stringify_keys).tap do |merged_attrs|
++      merged_attrs['custom_attributes'] = normalized_custom_attributes(attrs[:custom_attributes]) if attrs.key?(:custom_attributes)
++    end
++  end
++
++  def missing_required_fields_for(stage, attrs)
++    required_field_definitions_for(stage).filter_map do |field|
++      next if field_present?(attrs, field)
++
++      field_payload_for(field)
++    end
++  end
++
++  def required_field_definitions_for(stage)
++    CrmDealFieldDefinition
++      .for_account(Current.account.id)
++      .active
++      .joins(:crm_pipeline_stage_required_fields)
++      .where(crm_pipeline_stage_required_fields: {
++        account_id: Current.account.id,
++        stage_id: stage.id
++      })
++  end
++
++  def field_present?(attrs, field)
++    value = field_value(attrs, field)
++    return !value.nil? if value == false
++
++    value.present?
++  end
++
++  def field_value(attrs, field)
++    key = field.key.to_s
++    return attribute_value(attrs, key) if field.storage_type == 'system_column'
++
++    normalized_custom_attributes(attribute_value(attrs, 'custom_attributes'))[key]
++  end
++
++  def attribute_value(attrs, key)
++    return attrs[key] if attrs.respond_to?(:key?) && attrs.key?(key)
++    return attrs[key.to_sym] if attrs.respond_to?(:key?) && attrs.key?(key.to_sym)
++
++    nil
++  end
++
++  def field_payload_for(field)
++    {
++      id: field.id,
++      key: field.key,
++      label: field.label,
++      field_type: field.field_type,
++      storage_type: field.storage_type
++    }
++  end
++
++  def normalized_custom_attributes(custom_attributes)
++    return custom_attributes.to_h.stringify_keys if custom_attributes.respond_to?(:to_h)
++    return custom_attributes.stringify_keys if custom_attributes.is_a?(Hash)
++
++    {}
++  end
++
++  def render_missing_required_fields(missing_required_fields)
++    render json: {
++      error: 'Required deal fields are missing for this stage',
++      missing_required_fields: missing_required_fields
++    }, status: :unprocessable_entity
++  end
++
+   def create_stage_change_activity(deal, old_stage_id)
+     create_activity(
+       deal,
+diff --git a/app/models/crm_deal.rb b/app/models/crm_deal.rb
+index 7dfa2d8..57ad8ac 100644
+--- a/app/models/crm_deal.rb
++++ b/app/models/crm_deal.rb
+@@ -1,4 +1,15 @@
+ class CrmDeal < ApplicationRecord
++  SYSTEM_FIELD_KEYS = %w[
++    title
++    client_phone
++    car_model
++    booking_id
++    rental_start
++    rental_end
++    amount
++    debt_amount
++  ].freeze
++
+   belongs_to :account
+   belongs_to :stage, class_name: 'CrmPipelineStage'
+   belongs_to :contact, optional: true
+@@ -13,4 +24,24 @@ class CrmDeal < ApplicationRecord
+   validates :fleet_sync_status, inclusion: {
+     in: %w[none linked syncing error]
+   }
++
++  before_validation :ensure_custom_attributes
++
++  def self.system_field?(field_key)
++    SYSTEM_FIELD_KEYS.include?(field_key.to_s)
++  end
++
++  def field_value(field)
++    key = field.respond_to?(:key) ? field.key.to_s : field.to_s
++    storage_type = field.respond_to?(:storage_type) ? field.storage_type : nil
++    return public_send(key) if storage_type == 'system_column' || self.class.system_field?(key)
++
++    custom_attributes[key]
++  end
++
++  private
++
++  def ensure_custom_attributes
++    self.custom_attributes = {} unless custom_attributes.is_a?(Hash)
++  end
+ end
+diff --git a/app/models/crm_deal_field_definition.rb b/app/models/crm_deal_field_definition.rb
+new file mode 100644
+index 0000000..e8c3ab8
+--- /dev/null
++++ b/app/models/crm_deal_field_definition.rb
+@@ -0,0 +1,49 @@
++class CrmDealFieldDefinition < ApplicationRecord
++  FIELD_TYPES = %w[text number date boolean select].freeze
++  STORAGE_TYPES = %w[system_column custom_attribute].freeze
++
++  belongs_to :account
++  has_many :crm_pipeline_stage_required_fields,
++           foreign_key: :field_definition_id,
++           dependent: :destroy
++
++  scope :for_account, ->(account_id) { where(account_id: account_id) }
++  scope :active, -> { where(is_active: true).order(:position, :id) }
++
++  before_validation :normalize_key
++  before_validation :ensure_options
++  before_validation :ensure_storage_type
++
++  validates :key,
++            presence: true,
++            uniqueness: { scope: :account_id },
++            format: { with: /\A[a-z][a-z0-9_]*\z/ },
++            exclusion: { in: CrmDeal::SYSTEM_FIELD_KEYS },
++            unless: :is_system?
++  validates :label, presence: true
++  validates :field_type, inclusion: { in: FIELD_TYPES }
++  validates :storage_type, inclusion: { in: STORAGE_TYPES }
++  validate :storage_type_matches_system_flag
++
++  private
++
++  def normalize_key
++    self.key = key.to_s.strip.downcase.gsub(/[^a-z0-9_]+/, '_').gsub(/\A_+|_+\z/, '') if key.present?
++  end
++
++  def ensure_options
++    self.options = [] unless options.is_a?(Array)
++  end
++
++  def ensure_storage_type
++    self.storage_type ||= is_system? ? 'system_column' : 'custom_attribute'
++  end
++
++  def storage_type_matches_system_flag
++    if is_system? && storage_type != 'system_column'
++      errors.add(:storage_type, 'must be system_column for system fields')
++    elsif !is_system? && storage_type != 'custom_attribute'
++      errors.add(:storage_type, 'must be custom_attribute for custom fields')
++    end
++  end
++end
+diff --git a/app/models/crm_pipeline_stage_required_field.rb b/app/models/crm_pipeline_stage_required_field.rb
+new file mode 100644
+index 0000000..2985d43
+--- /dev/null
++++ b/app/models/crm_pipeline_stage_required_field.rb
+@@ -0,0 +1,25 @@
++class CrmPipelineStageRequiredField < ApplicationRecord
++  belongs_to :account
++  belongs_to :stage, class_name: 'CrmPipelineStage'
++  belongs_to :field_definition, class_name: 'CrmDealFieldDefinition'
++
++  scope :for_account, ->(account_id) { where(account_id: account_id) }
++
++  validates :field_definition_id, uniqueness: { scope: :stage_id }
++  validate :stage_belongs_to_account
++  validate :field_definition_belongs_to_account
++
++  private
++
++  def stage_belongs_to_account
++    return if stage.blank? || account_id.blank? || stage.account_id == account_id
++
++    errors.add(:stage, 'must belong to the same account')
++  end
++
++  def field_definition_belongs_to_account
++    return if field_definition.blank? || account_id.blank? || field_definition.account_id == account_id
++
++    errors.add(:field_definition, 'must belong to the same account')
++  end
++end
+diff --git a/config/routes.rb b/config/routes.rb
+index 49338ad..42ff1e5 100644
+--- a/config/routes.rb
++++ b/config/routes.rb
+@@ -121,6 +121,11 @@ Rails.application.routes.draw do
+             end
+ 
+             resources :deals, only: [:index, :show, :create, :update, :destroy]
++            resources :deal_fields, only: [:index, :create, :update, :destroy] do
++              collection do
++                patch :stage_requirements
++              end
++            end
+             resources :loss_reasons, only: [:index, :create, :update]
+           end
+           resources :canned_responses, only: [:index, :create, :update, :destroy]

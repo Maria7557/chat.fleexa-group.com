@@ -85,10 +85,22 @@ CREATE TABLE IF NOT EXISTS public.crm_deals (
   rental_end timestamp,
   amount decimal(10,2),
   debt_amount decimal(10,2),
+  custom_attributes jsonb NOT NULL DEFAULT '{}'::jsonb,
   rotting_since timestamp,
   created_at timestamp NOT NULL DEFAULT NOW(),
   updated_at timestamp NOT NULL DEFAULT NOW()
 );
+
+ALTER TABLE public.crm_deals
+  ADD COLUMN IF NOT EXISTS custom_attributes jsonb;
+
+UPDATE public.crm_deals
+  SET custom_attributes = '{}'::jsonb
+  WHERE custom_attributes IS NULL;
+
+ALTER TABLE public.crm_deals
+  ALTER COLUMN custom_attributes SET DEFAULT '{}'::jsonb,
+  ALTER COLUMN custom_attributes SET NOT NULL;
 
 DO $$
 BEGIN
@@ -198,6 +210,229 @@ CREATE INDEX IF NOT EXISTS idx_crm_deals_contact_id
 
 CREATE INDEX IF NOT EXISTS idx_crm_deals_assigned_to
   ON public.crm_deals (assigned_to);
+
+CREATE INDEX IF NOT EXISTS idx_crm_deals_custom_attributes
+  ON public.crm_deals USING gin (custom_attributes);
+
+-- ---------------------------------------------------------------------------
+-- CRM configurable deal fields
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.crm_deal_field_definitions (
+  id bigserial PRIMARY KEY,
+  account_id integer NOT NULL,
+  key varchar(64) NOT NULL,
+  label varchar(120) NOT NULL,
+  field_type varchar(30) NOT NULL DEFAULT 'text',
+  storage_type varchar(30) NOT NULL DEFAULT 'custom_attribute',
+  position integer NOT NULL DEFAULT 0,
+  options jsonb NOT NULL DEFAULT '[]'::jsonb,
+  is_active boolean NOT NULL DEFAULT true,
+  is_system boolean NOT NULL DEFAULT false,
+  created_at timestamp NOT NULL DEFAULT NOW(),
+  updated_at timestamp NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE public.crm_deal_field_definitions
+  ADD COLUMN IF NOT EXISTS storage_type varchar(30);
+
+UPDATE public.crm_deal_field_definitions
+  SET storage_type = CASE
+    WHEN is_system THEN 'system_column'
+    ELSE 'custom_attribute'
+  END
+  WHERE storage_type IS NULL;
+
+ALTER TABLE public.crm_deal_field_definitions
+  ALTER COLUMN storage_type SET DEFAULT 'custom_attribute',
+  ALTER COLUMN storage_type SET NOT NULL;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conname = 'fk_crm_deal_field_definitions_account_id'
+      AND conrelid = 'public.crm_deal_field_definitions'::regclass
+  ) THEN
+    ALTER TABLE public.crm_deal_field_definitions
+      ADD CONSTRAINT fk_crm_deal_field_definitions_account_id
+      FOREIGN KEY (account_id)
+      REFERENCES public.accounts(id)
+      ON DELETE CASCADE;
+  END IF;
+END $$;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conname = 'uq_crm_deal_field_definitions_account_key'
+      AND conrelid = 'public.crm_deal_field_definitions'::regclass
+  ) THEN
+    ALTER TABLE public.crm_deal_field_definitions
+      ADD CONSTRAINT uq_crm_deal_field_definitions_account_key
+      UNIQUE (account_id, key);
+  END IF;
+END $$;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conname = 'chk_crm_deal_field_definitions_field_type'
+      AND conrelid = 'public.crm_deal_field_definitions'::regclass
+  ) THEN
+    ALTER TABLE public.crm_deal_field_definitions
+      ADD CONSTRAINT chk_crm_deal_field_definitions_field_type
+      CHECK (field_type IN ('text', 'number', 'date', 'boolean', 'select'));
+  END IF;
+END $$;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conname = 'chk_crm_deal_field_definitions_storage_type'
+      AND conrelid = 'public.crm_deal_field_definitions'::regclass
+  ) THEN
+    ALTER TABLE public.crm_deal_field_definitions
+      ADD CONSTRAINT chk_crm_deal_field_definitions_storage_type
+      CHECK (storage_type IN ('system_column', 'custom_attribute'));
+  END IF;
+END $$;
+
+CREATE INDEX IF NOT EXISTS idx_crm_deal_field_definitions_account_id
+  ON public.crm_deal_field_definitions (account_id);
+
+CREATE TABLE IF NOT EXISTS public.crm_pipeline_stage_required_fields (
+  id bigserial PRIMARY KEY,
+  account_id integer NOT NULL,
+  stage_id bigint NOT NULL,
+  field_definition_id bigint NOT NULL,
+  created_at timestamp NOT NULL DEFAULT NOW(),
+  updated_at timestamp NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE public.crm_pipeline_stage_required_fields
+  ADD COLUMN IF NOT EXISTS field_definition_id bigint;
+
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'crm_pipeline_stage_required_fields'
+      AND column_name = 'field_key'
+  ) THEN
+    ALTER TABLE public.crm_pipeline_stage_required_fields
+      ALTER COLUMN field_key DROP NOT NULL;
+  END IF;
+END $$;
+
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'crm_pipeline_stage_required_fields'
+      AND column_name = 'field_key'
+  ) THEN
+    UPDATE public.crm_pipeline_stage_required_fields required_field
+      SET field_definition_id = field_definition.id
+      FROM public.crm_deal_field_definitions field_definition
+      WHERE required_field.field_definition_id IS NULL
+        AND required_field.account_id = field_definition.account_id
+        AND required_field.field_key = field_definition.key;
+  END IF;
+END $$;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM public.crm_pipeline_stage_required_fields
+    WHERE field_definition_id IS NULL
+  ) THEN
+    ALTER TABLE public.crm_pipeline_stage_required_fields
+      ALTER COLUMN field_definition_id SET NOT NULL;
+  END IF;
+END $$;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conname = 'fk_crm_pipeline_stage_required_fields_account_id'
+      AND conrelid = 'public.crm_pipeline_stage_required_fields'::regclass
+  ) THEN
+    ALTER TABLE public.crm_pipeline_stage_required_fields
+      ADD CONSTRAINT fk_crm_pipeline_stage_required_fields_account_id
+      FOREIGN KEY (account_id)
+      REFERENCES public.accounts(id)
+      ON DELETE CASCADE;
+  END IF;
+END $$;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conname = 'fk_crm_pipeline_stage_required_fields_stage_id'
+      AND conrelid = 'public.crm_pipeline_stage_required_fields'::regclass
+  ) THEN
+    ALTER TABLE public.crm_pipeline_stage_required_fields
+      ADD CONSTRAINT fk_crm_pipeline_stage_required_fields_stage_id
+      FOREIGN KEY (stage_id)
+      REFERENCES public.crm_pipeline_stages(id)
+      ON DELETE CASCADE;
+  END IF;
+END $$;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conname = 'fk_crm_pipeline_stage_required_fields_field_definition_id'
+      AND conrelid = 'public.crm_pipeline_stage_required_fields'::regclass
+  ) THEN
+    ALTER TABLE public.crm_pipeline_stage_required_fields
+      ADD CONSTRAINT fk_crm_pipeline_stage_required_fields_field_definition_id
+      FOREIGN KEY (field_definition_id)
+      REFERENCES public.crm_deal_field_definitions(id)
+      ON DELETE CASCADE;
+  END IF;
+END $$;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conname = 'uq_crm_pipeline_stage_required_fields_stage_field_definition'
+      AND conrelid = 'public.crm_pipeline_stage_required_fields'::regclass
+  ) THEN
+    ALTER TABLE public.crm_pipeline_stage_required_fields
+      ADD CONSTRAINT uq_crm_pipeline_stage_required_fields_stage_field_definition
+      UNIQUE (stage_id, field_definition_id);
+  END IF;
+END $$;
+
+CREATE INDEX IF NOT EXISTS idx_crm_pipeline_stage_required_fields_account_id
+  ON public.crm_pipeline_stage_required_fields (account_id);
+
+CREATE INDEX IF NOT EXISTS idx_crm_pipeline_stage_required_fields_stage_id
+  ON public.crm_pipeline_stage_required_fields (stage_id);
+
+CREATE INDEX IF NOT EXISTS idx_crm_pipeline_stage_required_fields_field_definition_id
+  ON public.crm_pipeline_stage_required_fields (field_definition_id);
 
 -- ---------------------------------------------------------------------------
 -- CRM deal activities
