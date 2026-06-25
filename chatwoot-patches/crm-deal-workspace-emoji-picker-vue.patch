@@ -1,0 +1,43 @@
+diff --git a/app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue b/app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue
+index b0e5393..867de6a 100644
+--- a/app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue
++++ b/app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue
+@@ -599,7 +599,7 @@ onUnmounted(() => {
+         </div>
+         <ConversationBox
+           v-else
+-          class="h-full flex-1 [&.conversation-details-wrap]:!border-0"
++          class="crm-deal-chat-shell h-full flex-1 [&.conversation-details-wrap]:!border-0"
+           is-inbox-view
+           :inbox-id="conversationInboxId"
+           :is-on-expanded-layout="false"
+@@ -1006,3 +1006,29 @@ onUnmounted(() => {
+     </div>
+   </section>
+ </template>
++
++<style>
++.crm-deal-chat-shell .emoji-dialog {
++  left: 0 !important;
++  right: unset !important;
++  bottom: 0 !important;
++  z-index: 100 !important;
++}
++
++.crm-deal-chat-shell .emoji-dialog::before {
++  left: 0.25rem !important;
++  right: unset !important;
++  bottom: -0.5rem !important;
++  transform: rotate(0deg) !important;
++}
++
++.rtl .crm-deal-chat-shell .emoji-dialog {
++  left: unset !important;
++  right: 0 !important;
++}
++
++.rtl .crm-deal-chat-shell .emoji-dialog::before {
++  left: unset !important;
++  right: 0.25rem !important;
++}
++</style>
