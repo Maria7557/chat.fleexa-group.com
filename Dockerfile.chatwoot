@@ -9,7 +9,6 @@ COPY chatwoot-patches/crm-deal-workspace-inbox-chat-vue.patch /tmp/crm-deal-work
 COPY chatwoot-patches/crm-deal-workspace-sidebar-style-vue.patch /tmp/crm-deal-workspace-sidebar-style-vue.patch
 COPY chatwoot-patches/crm-deal-workspace-emoji-picker-vue.patch /tmp/crm-deal-workspace-emoji-picker-vue.patch
 COPY chatwoot-patches/crm-deal-workspace-tabs-vue.patch /tmp/crm-deal-workspace-tabs-vue.patch
-COPY chatwoot-patches/crm-deal-workspace-native-sidebar-vue.patch /tmp/crm-deal-workspace-native-sidebar-vue.patch
 
 RUN cd /app && \
     git apply /tmp/crm-pipeline-vue.patch && \
@@ -19,7 +18,6 @@ RUN cd /app && \
     git apply /tmp/crm-deal-workspace-sidebar-style-vue.patch && \
     git apply /tmp/crm-deal-workspace-emoji-picker-vue.patch && \
     git apply /tmp/crm-deal-workspace-tabs-vue.patch && \
-    git apply /tmp/crm-deal-workspace-native-sidebar-vue.patch && \
     pnpm install --frozen-lockfile && \
     (node node_modules/esbuild/install.js 2>/dev/null || true)
 
@@ -44,7 +42,6 @@ COPY chatwoot-patches/crm-deal-workspace-inbox-chat-vue.patch /tmp/crm-deal-work
 COPY chatwoot-patches/crm-deal-workspace-sidebar-style-vue.patch /tmp/crm-deal-workspace-sidebar-style-vue.patch
 COPY chatwoot-patches/crm-deal-workspace-emoji-picker-vue.patch /tmp/crm-deal-workspace-emoji-picker-vue.patch
 COPY chatwoot-patches/crm-deal-workspace-tabs-vue.patch /tmp/crm-deal-workspace-tabs-vue.patch
-COPY chatwoot-patches/crm-deal-workspace-native-sidebar-vue.patch /tmp/crm-deal-workspace-native-sidebar-vue.patch
 
 RUN cd /app && \
     git apply /tmp/patch.patch && \
@@ -59,5 +56,4 @@ RUN cd /app && \
     git apply /tmp/crm-deal-workspace-inbox-chat-vue.patch && \
     git apply /tmp/crm-deal-workspace-sidebar-style-vue.patch && \
     git apply /tmp/crm-deal-workspace-emoji-picker-vue.patch && \
-    git apply /tmp/crm-deal-workspace-tabs-vue.patch && \
-    git apply /tmp/crm-deal-workspace-native-sidebar-vue.patch
+    git apply /tmp/crm-deal-workspace-tabs-vue.patch

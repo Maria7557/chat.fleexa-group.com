@@ -86,7 +86,6 @@ crm-vue-copy: ensure-env
 	$(COMPOSE) cp chatwoot-patches/crm-deal-workspace-sidebar-style-vue.patch rails:/tmp/crm-deal-workspace-sidebar-style-vue.patch
 	$(COMPOSE) cp chatwoot-patches/crm-deal-workspace-emoji-picker-vue.patch rails:/tmp/crm-deal-workspace-emoji-picker-vue.patch
 	$(COMPOSE) cp chatwoot-patches/crm-deal-workspace-tabs-vue.patch rails:/tmp/crm-deal-workspace-tabs-vue.patch
-	$(COMPOSE) cp chatwoot-patches/crm-deal-workspace-native-sidebar-vue.patch rails:/tmp/crm-deal-workspace-native-sidebar-vue.patch
 	@echo "CRM Vue patch copied to Rails container"
 
 crm-vue-check: crm-vue-copy
@@ -97,7 +96,6 @@ crm-vue-check: crm-vue-copy
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply --check /tmp/crm-deal-workspace-sidebar-style-vue.patch"
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply --check /tmp/crm-deal-workspace-emoji-picker-vue.patch"
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply --check /tmp/crm-deal-workspace-tabs-vue.patch"
-	$(COMPOSE) exec rails sh -lc "cd /app && git apply --check /tmp/crm-deal-workspace-native-sidebar-vue.patch"
 	@echo "CRM Vue patch validated"
 
 crm-vue-patch: crm-vue-copy
@@ -108,7 +106,6 @@ crm-vue-patch: crm-vue-copy
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply /tmp/crm-deal-workspace-sidebar-style-vue.patch"
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply /tmp/crm-deal-workspace-emoji-picker-vue.patch"
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply /tmp/crm-deal-workspace-tabs-vue.patch"
-	$(COMPOSE) exec rails sh -lc "cd /app && git apply /tmp/crm-deal-workspace-native-sidebar-vue.patch"
 	@echo "CRM Vue patch applied"
 
 crm-assets-build-host:
@@ -137,7 +134,6 @@ crm-assets-build-host:
 	git apply "$(CURDIR)/chatwoot-patches/crm-deal-workspace-sidebar-style-vue.patch"; \
 	git apply "$(CURDIR)/chatwoot-patches/crm-deal-workspace-emoji-picker-vue.patch"; \
 	git apply "$(CURDIR)/chatwoot-patches/crm-deal-workspace-tabs-vue.patch"; \
-	git apply "$(CURDIR)/chatwoot-patches/crm-deal-workspace-native-sidebar-vue.patch"; \
 	grep -n "ConversationBox" app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue; \
 	grep -n "CRM Deal" app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue; \
 	grep -n "isDealEditing" app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue; \
@@ -145,9 +141,7 @@ crm-assets-build-host:
 	grep -n "emoji-dialog" app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue; \
 	grep -n "activeSidebarTab" app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue; \
 	grep -n "Show tracking" app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue; \
-	grep -n "ContactInfo" app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue; \
-	grep -n "dealTitle" app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue; \
-	grep -n "visibleConfigFields" app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue; \
+	grep -n "client" app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue; \
 	if grep -n "Reply to client" app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue; then exit 1; fi; \
 	if grep -nE ">Title<|Title \\*" app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue; then exit 1; fi; \
 	npx --yes pnpm@10.2.0 install --frozen-lockfile; \
@@ -196,9 +190,7 @@ crm-assets-install-local: ensure-env
 	docker exec "$$install_container" sh -lc "grep -n 'emoji-dialog' /app/app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue"; \
 	docker exec "$$install_container" sh -lc "grep -n 'activeSidebarTab' /app/app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue"; \
 	docker exec "$$install_container" sh -lc "grep -n 'Show tracking' /app/app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue"; \
-	docker exec "$$install_container" sh -lc "grep -n 'ContactInfo' /app/app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue"; \
-	docker exec "$$install_container" sh -lc "grep -n 'dealTitle' /app/app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue"; \
-	docker exec "$$install_container" sh -lc "grep -n 'visibleConfigFields' /app/app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue"; \
+	docker exec "$$install_container" sh -lc "grep -n 'client' /app/app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue"; \
 	docker exec "$$install_container" sh -lc "if grep -n 'Reply to client' /app/app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue; then exit 1; fi"; \
 	docker exec "$$install_container" sh -lc "if grep -nE '>Title<|Title \\*' /app/app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue; then exit 1; fi"; \
 	docker commit "$$install_container" "$(CHATWOOT_LOCAL_IMAGE)" >/dev/null; \
@@ -225,9 +217,6 @@ crm-assets-refresh-local: crm-assets-build-host crm-assets-install-local
 	$(COMPOSE) exec -T rails sh -lc "grep -n 'emoji-dialog' /app/app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue"; \
 	$(COMPOSE) exec -T rails sh -lc "grep -n 'activeSidebarTab' /app/app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue"; \
 	$(COMPOSE) exec -T rails sh -lc "grep -n 'Show tracking' /app/app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue"; \
-	$(COMPOSE) exec -T rails sh -lc "grep -n 'ContactInfo' /app/app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue"; \
-	$(COMPOSE) exec -T rails sh -lc "grep -n 'dealTitle' /app/app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue"; \
-	$(COMPOSE) exec -T rails sh -lc "grep -n 'visibleConfigFields' /app/app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue"; \
 	$(COMPOSE) exec -T rails sh -lc "if grep -n 'Reply to client' /app/app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue; then exit 1; fi"; \
 	$(COMPOSE) exec -T rails sh -lc "if grep -nE '>Title<|Title \\*' /app/app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue; then exit 1; fi"; \
 	$(COMPOSE) exec -T rails sh -lc "test -d /app/public/vite/assets && test -f /app/public/vite/.vite/manifest.json && ls /app/public/vite/assets/DealWorkspace-*.js >/dev/null && grep -E 'CRM Deal|Field setup' /app/public/vite/assets/DealWorkspace-*.js >/dev/null"; \
