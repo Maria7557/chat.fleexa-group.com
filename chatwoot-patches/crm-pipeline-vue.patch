@@ -3,7 +3,7 @@ new file mode 100644
 index 0000000..598b9e4
 --- /dev/null
 +++ b/app/javascript/dashboard/api/crmPipeline.js
-@@ -0,0 +1,31 @@
+@@ -0,0 +1,38 @@
 +/* global axios */
 +import ApiClient from './ApiClient';
 +
@@ -19,6 +19,13 @@ index 0000000..598b9e4
 +
 +  getStages() {
 +    return this.stages.get();
++  }
++
++  exportDeals(params = {}) {
++    return axios.get(`${this.deals.url}/export.csv`, {
++      params,
++      responseType: 'blob',
++    });
 +  }
 +
 +  getDeals(params = {}) {
@@ -275,7 +282,7 @@ new file mode 100644
 index 0000000..22e2836
 --- /dev/null
 +++ b/app/javascript/dashboard/routes/dashboard/crm/Pipeline.vue
-@@ -0,0 +1,1586 @@
+@@ -0,0 +1,1720 @@
 +<script setup>
 +import { computed, onBeforeUnmount, ref, watch } from 'vue';
 +import { useRoute, useRouter } from 'vue-router';
@@ -338,6 +345,10 @@ index 0000000..22e2836
 +const appliedFilters = ref(buildEmptyFilters());
 +const draftFilters = ref(buildEmptyFilters());
 +const isFilterPanelOpen = ref(false);
++const isExportModalOpen = ref(false);
++const isExporting = ref(false);
++const exportScope = ref('all');
++const exportFormat = ref('csv');
 +const viewMode = ref('kanban');
 +const filterShellRef = ref(null);
 +
@@ -736,6 +747,15 @@ index 0000000..22e2836
 +  return params;
 +});
 +
++const exportRequestParams = () => {
++  if (exportScope.value !== 'filtered') return {};
++
++  const params = { ...dealRequestParams.value };
++  delete params.include_meta;
++  delete params.per_page;
++  return params;
++};
++
 +const routeValue = value => {
 +  return Array.isArray(value) ? value[0] : value;
 +};
@@ -914,6 +934,54 @@ index 0000000..22e2836
 +    ...appliedFilters.value,
 +    q: '',
 +  });
++};
++
++const openExportModal = () => {
++  exportScope.value = hasActiveFilters.value ? 'filtered' : 'all';
++  exportFormat.value = 'csv';
++  isFilterPanelOpen.value = false;
++  isExportModalOpen.value = true;
++};
++
++const closeExportModal = () => {
++  if (isExporting.value) return;
++
++  isExportModalOpen.value = false;
++};
++
++const exportFilename = response => {
++  const disposition = response.headers?.['content-disposition'] || '';
++  const match = disposition.match(/filename="?([^"]+)"?/i);
++  return match?.[1] || `fleexa_crm_deals_${new Date().toISOString().slice(0, 10)}.csv`;
++};
++
++const downloadExportBlob = response => {
++  const blob = new Blob([response.data], { type: 'text/csv;charset=utf-8' });
++  const url = window.URL.createObjectURL(blob);
++  const link = document.createElement('a');
++  link.href = url;
++  link.download = exportFilename(response);
++  document.body.appendChild(link);
++  link.click();
++  document.body.removeChild(link);
++  window.URL.revokeObjectURL(url);
++};
++
++const exportDeals = async () => {
++  if (exportFormat.value !== 'csv') return;
++
++  isExporting.value = true;
++  errorMessage.value = '';
++
++  try {
++    const response = await CrmPipelineAPI.exportDeals(exportRequestParams());
++    downloadExportBlob(response);
++    isExportModalOpen.value = false;
++  } catch (error) {
++    setError(error);
++  } finally {
++    isExporting.value = false;
++  }
 +};
 +
 +const removeFilterChip = chip => {
@@ -1195,6 +1263,15 @@ index 0000000..22e2836
 +            </button>
 +          </div>
 +          <Button
++            label="Export"
++            icon="i-lucide-download"
++            size="sm"
++            slate
++            faded
++            type="button"
++            @click="openExportModal"
++          />
++          <Button
 +            icon="i-lucide-refresh-cw"
 +            size="sm"
 +            slate
@@ -1475,6 +1552,70 @@ index 0000000..22e2836
 +        </div>
 +      </div>
 +    </header>
++
++    <div
++      v-if="isExportModalOpen"
++      class="fixed inset-0 z-50 flex items-start justify-end bg-n-slate-12/30 px-6 py-20"
++      @click.self="closeExportModal"
++    >
++      <section class="w-full max-w-sm overflow-hidden rounded-lg border border-n-weak bg-n-surface-1 shadow-xl">
++        <header class="flex items-center justify-between gap-3 border-b border-n-weak px-4 py-3">
++          <h2 class="m-0 text-sm font-semibold text-n-slate-12">
++            Export
++          </h2>
++          <button
++            type="button"
++            class="grid h-8 w-8 place-items-center rounded-md text-n-slate-10 hover:bg-n-alpha-2 hover:text-n-slate-12"
++            aria-label="Close export"
++            @click="closeExportModal"
++          >
++            <i class="i-lucide-x h-4 w-4" />
++          </button>
++        </header>
++
++        <main class="grid gap-4 px-4 py-4">
++          <label class="flex items-center gap-2 rounded-md border border-n-weak bg-n-background px-3 py-2 text-sm text-n-slate-12">
++            <input
++              v-model="exportFormat"
++              class="m-0"
++              type="radio"
++              value="csv"
++            />
++            <span>CSV-файл</span>
++          </label>
++
++          <label class="grid gap-1.5 text-xs font-medium text-n-slate-11">
++            Scope
++            <select
++              v-model="exportScope"
++              class="h-9 rounded-md border border-n-weak bg-n-background px-2 text-sm text-n-slate-12 outline-none focus:border-n-brand"
++            >
++              <option value="all">Все</option>
++              <option value="filtered">С активным фильтром</option>
++            </select>
++          </label>
++        </main>
++
++        <footer class="flex items-center justify-end gap-2 border-t border-n-weak px-4 py-3">
++          <Button
++            label="Cancel"
++            size="sm"
++            slate
++            ghost
++            type="button"
++            @click="closeExportModal"
++          />
++          <Button
++            label="Export"
++            icon="i-lucide-download"
++            size="sm"
++            type="button"
++            :is-loading="isExporting"
++            @click="exportDeals"
++          />
++        </footer>
++      </section>
++    </div>
 +
 +    <div
 +      v-if="errorMessage"

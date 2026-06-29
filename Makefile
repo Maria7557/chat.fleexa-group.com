@@ -57,6 +57,7 @@ crm-copy-patches: ensure-env
 	$(COMPOSE) cp chatwoot-patches/crm-routes.rb.patch rails:/tmp/crm-routes.rb.patch
 	$(COMPOSE) cp chatwoot-patches/crm-deal-fields-backend.patch rails:/tmp/crm-deal-fields-backend.patch
 	$(COMPOSE) cp chatwoot-patches/crm-deal-query-backend.patch rails:/tmp/crm-deal-query-backend.patch
+	$(COMPOSE) cp chatwoot-patches/crm-deals-export-backend.patch rails:/tmp/crm-deals-export-backend.patch
 	@echo "CRM patch files copied to Rails container"
 
 crm-patch-check: crm-copy-patches
@@ -65,6 +66,7 @@ crm-patch-check: crm-copy-patches
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply --check /tmp/crm-routes.rb.patch"
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply --check /tmp/crm-deal-fields-backend.patch"
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply --check /tmp/crm-deal-query-backend.patch"
+	$(COMPOSE) exec rails sh -lc "cd /app && git apply --check /tmp/crm-deals-export-backend.patch"
 	@echo "CRM patches validated"
 
 crm-patch:
@@ -73,6 +75,7 @@ crm-patch:
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply /tmp/crm-routes.rb.patch"
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply /tmp/crm-deal-fields-backend.patch"
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply /tmp/crm-deal-query-backend.patch"
+	$(COMPOSE) exec rails sh -lc "cd /app && git apply /tmp/crm-deals-export-backend.patch"
 	@echo "CRM patches applied to Rails container"
 
 crm-install: crm-copy-patches crm-patch
@@ -127,6 +130,7 @@ crm-assets-build-host:
 	git apply "$(CURDIR)/chatwoot-patches/crm-routes.rb.patch"; \
 	git apply "$(CURDIR)/chatwoot-patches/crm-deal-fields-backend.patch"; \
 	git apply "$(CURDIR)/chatwoot-patches/crm-deal-query-backend.patch"; \
+	git apply "$(CURDIR)/chatwoot-patches/crm-deals-export-backend.patch"; \
 	git apply "$(CURDIR)/chatwoot-patches/crm-pipeline-vue.patch"; \
 	git apply "$(CURDIR)/chatwoot-patches/crm-deal-workspace-vue.patch"; \
 	git apply "$(CURDIR)/chatwoot-patches/crm-deal-fields-vue.patch"; \

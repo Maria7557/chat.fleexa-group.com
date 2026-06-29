@@ -1,0 +1,315 @@
+diff --git a/app/controllers/api/v1/accounts/crm/deals_controller.rb b/app/controllers/api/v1/accounts/crm/deals_controller.rb
+index 44c51d3..180fd81 100644
+--- a/app/controllers/api/v1/accounts/crm/deals_controller.rb
++++ b/app/controllers/api/v1/accounts/crm/deals_controller.rb
+@@ -1,7 +1,91 @@
++require 'csv'
++
+ class Api::V1::Accounts::Crm::DealsController < Api::V1::Accounts::BaseController
+   DEFAULT_PER_PAGE = 50
+   MAX_PER_PAGE = 200
+   DATE_FILTER_COLUMNS = %w[created_at updated_at rental_start rental_end rotting_since].freeze
++  EXPORT_CSV_HEADERS = [
++    'ID',
++    'Название сделки',
++    'Бюджет AED',
++    'Ответственный',
++    'Дата создания сделки',
++    'Кем создана сделка',
++    'Дата редактирования',
++    'Кем редактирована',
++    'Дата закрытия',
++    'Теги',
++    'Примечание',
++    'Примечание 2',
++    'Примечание 3',
++    'Примечание 4',
++    'Примечание 5',
++    'Этап сделки',
++    'Воронка',
++    'Полное имя контакта',
++    'Компания контакта',
++    'Ответственный за контакт',
++    'Компания',
++    'Рабочий телефон',
++    'Рабочий прямой телефон',
++    'Мобильный телефон',
++    'Факс',
++    'Домашний телефон',
++    'Другой телефон',
++    'Рабочий email',
++    'Личный email',
++    'Другой email',
++    'День рождения',
++    'TelegramId_WZ',
++    'Whatsgroup_WZ',
++    'WhatsappUsername_WZ',
++    'WhatsappLid_WZ',
++    'MaxId_WZ',
++    'TikTok',
++    'Vkontakte',
++    'Avito',
++    'City',
++    'Birthday',
++    'Ref',
++    'Ref source',
++    'Должность',
++    'TelegroupId_WZ',
++    'Instagram_WZ',
++    'TelegramUsername_WZ',
++    'Instagram',
++    'User terms',
++    'Source Request',
++    'Selected Car',
++    'Car type',
++    'Period',
++    'Client',
++    'Client Type',
++    'Language',
++    'Booking №',
++    'Анкета',
++    'First incoming message',
++    'Lost reason - no reply?',
++    'utm_content',
++    'utm_medium',
++    'utm_campaign',
++    'utm_source',
++    'utm_term',
++    'utm_referrer',
++    'roistat',
++    'referrer',
++    'openstat_service',
++    'openstat_campaign',
++    'openstat_ad',
++    'openstat_source',
++    'from',
++    'gclientid',
++    '_ym_uid',
++    '_ym_counter',
++    'gclid',
++    'yclid',
++    'fbclid',
++    'ga_utm'
++  ].freeze
+   CUSTOM_ATTRIBUTE_DIRECT_FILTER_KEYS = %w[
+     source_request selected_car car_type client lost_reason_no_reply
+     utm_content utm_medium utm_campaign utm_source utm_term utm_referrer
+@@ -23,6 +107,16 @@ class Api::V1::Accounts::Crm::DealsController < Api::V1::Accounts::BaseControlle
+     render json: page_deals.map { |deal| deal_payload(deal) }
+   end
+ 
++  def export
++    deals = apply_deal_sort(apply_deal_query(deal_scope))
++            .includes(:stage, :contact, :conversation, :assignee)
++    filename = "fleexa_crm_deals_#{Time.zone.today.iso8601}.csv"
++
++    send_data export_csv_for(deals),
++              type: 'text/csv; charset=utf-8',
++              disposition: "attachment; filename=#{filename}"
++  end
++
+   def show
+     render json: deal_payload(@deal)
+   end
+@@ -417,6 +511,184 @@ class Api::V1::Accounts::Crm::DealsController < Api::V1::Accounts::BaseControlle
+     }
+   end
+ 
++  def export_csv_for(deals)
++    "\uFEFF" + CSV.generate(row_sep: "\r\n") do |csv|
++      csv << EXPORT_CSV_HEADERS
++      deals.each { |deal| csv << export_csv_row(deal) }
++    end
++  end
++
++  def export_csv_row(deal)
++    contact = deal.contact
++    assignee_name = deal.assignee&.name.to_s
++    [
++      deal.id,
++      export_deal_title(deal),
++      deal.amount,
++      assignee_name,
++      export_datetime(deal.created_at),
++      '',
++      export_datetime(deal.updated_at),
++      '',
++      export_closed_at(deal),
++      '',
++      '',
++      '',
++      '',
++      '',
++      '',
++      deal.stage&.name,
++      'Fleexa CRM',
++      contact&.name,
++      export_company_name(contact),
++      assignee_name,
++      export_company_name(contact),
++      '',
++      '',
++      contact&.phone_number.presence || deal.client_phone,
++      '',
++      '',
++      '',
++      contact&.email,
++      '',
++      '',
++      export_contact_value(deal, 'date_of_birth', 'birthday'),
++      export_contact_value(deal, 'TelegramId_WZ', 'telegram_id_wz', 'telegram_id'),
++      export_contact_value(deal, 'Whatsgroup_WZ', 'whatsgroup_wz'),
++      export_contact_value(deal, 'WhatsappUsername_WZ', 'whatsapp_username_wz'),
++      export_contact_value(deal, 'WhatsappLid_WZ', 'whatsapp_lid_wz'),
++      export_contact_value(deal, 'MaxId_WZ', 'max_id_wz'),
++      export_contact_value(deal, 'TikTok', 'tiktok'),
++      export_contact_value(deal, 'Vkontakte', 'vkontakte'),
++      export_contact_value(deal, 'Avito', 'avito'),
++      export_contact_value(deal, 'City', 'city'),
++      export_contact_value(deal, 'Birthday', 'birthday', 'date_of_birth'),
++      export_contact_value(deal, 'Ref', 'ref'),
++      export_contact_value(deal, 'Ref source', 'ref_source'),
++      export_contact_value(deal, 'Должность', 'job_title', 'position'),
++      export_contact_value(deal, 'TelegroupId_WZ', 'telegroup_id_wz'),
++      export_contact_value(deal, 'Instagram_WZ', 'instagram_wz'),
++      export_contact_value(deal, 'TelegramUsername_WZ', 'telegram_username_wz'),
++      export_contact_value(deal, 'Instagram', 'instagram'),
++      export_contact_value(deal, 'User terms', 'user_terms'),
++      export_deal_value(deal, 'source_request', 'source_requect'),
++      deal.car_model.presence || export_deal_value(deal, 'selected_car'),
++      export_deal_value(deal, 'car_type'),
++      export_period(deal),
++      export_deal_value(deal, 'client_status', 'client'),
++      export_deal_value(deal, 'client_type'),
++      export_deal_value(deal, 'language'),
++      deal.booking_id,
++      export_deal_value(deal, 'application_form'),
++      export_deal_value(deal, 'first_incoming_message'),
++      export_deal_value(deal, 'lost_reason_no_reply', 'loss_reason_no_reply', 'lost_reason'),
++      export_deal_value(deal, 'utm_content'),
++      export_deal_value(deal, 'utm_medium'),
++      export_deal_value(deal, 'utm_campaign'),
++      export_deal_value(deal, 'utm_source'),
++      export_deal_value(deal, 'utm_term'),
++      export_deal_value(deal, 'utm_referrer'),
++      export_deal_value(deal, 'roistat'),
++      export_deal_value(deal, 'referrer'),
++      export_deal_value(deal, 'openstat_service'),
++      export_deal_value(deal, 'openstat_campaign'),
++      export_deal_value(deal, 'openstat_ad'),
++      export_deal_value(deal, 'openstat_source'),
++      export_deal_value(deal, 'from'),
++      export_deal_value(deal, 'gclientid'),
++      export_deal_value(deal, '_ym_uid'),
++      export_deal_value(deal, '_ym_counter'),
++      export_deal_value(deal, 'gclid'),
++      export_deal_value(deal, 'yclid'),
++      export_deal_value(deal, 'fbclid'),
++      export_deal_value(deal, 'ga_utm')
++    ]
++  end
++
++  def export_deal_title(deal)
++    parts = [deal.contact&.name, deal.car_model].filter_map(&:presence)
++    return parts.join(' - ') if parts.any?
++
++    deal.title
++  end
++
++  def export_closed_at(deal)
++    export_custom_value([export_deal_attributes(deal)], 'closed_at', 'closed_date').presence || 'не закрыта'
++  end
++
++  def export_company_name(contact)
++    export_custom_value(
++      [
++        export_record_attributes(contact, :additional_attributes),
++        export_record_attributes(contact, :custom_attributes)
++      ],
++      'company_name',
++      'company',
++      'organization'
++    )
++  end
++
++  def export_contact_value(deal, *keys)
++    export_custom_value(
++      [
++        export_record_attributes(deal.contact, :custom_attributes),
++        export_record_attributes(deal.contact, :additional_attributes),
++        export_record_attributes(deal.conversation, :custom_attributes),
++        export_deal_attributes(deal)
++      ],
++      *keys
++    )
++  end
++
++  def export_deal_value(deal, *keys)
++    export_custom_value([export_deal_attributes(deal)], *keys)
++  end
++
++  def export_custom_value(attribute_sets, *keys)
++    lookup_keys = keys.flat_map { |key| [key.to_s, key.to_s.downcase] }.uniq
++
++    attribute_sets.each do |attributes|
++      lookup_keys.each do |key|
++        value = attributes[key]
++        return value if value.present? || value == false
++      end
++    end
++
++    ''
++  end
++
++  def export_deal_attributes(deal)
++    export_record_attributes(deal, :custom_attributes)
++  end
++
++  def export_record_attributes(record, attribute_name)
++    return {} unless record&.respond_to?(attribute_name)
++
++    value = record.public_send(attribute_name)
++    return value.to_h.stringify_keys if value.respond_to?(:to_h)
++    return JSON.parse(value).deep_stringify_keys if value.is_a?(String) && value.present?
++
++    {}
++  rescue JSON::ParserError
++    {}
++  end
++
++  def export_datetime(value)
++    return '' if value.blank?
++
++    value.in_time_zone.strftime('%d.%m.%Y %H:%M:%S')
++  end
++
++  def export_period(deal)
++    return '' if deal.rental_start.blank? || deal.rental_end.blank?
++
++    "#{export_day_month(deal.rental_start)}-#{export_day_month(deal.rental_end)}"
++  end
++
++  def export_day_month(value)
++    value.in_time_zone.strftime('%d.%m')
++  end
++
+   def range_values_for(*keys)
+     raw_value = filter_value(*keys)
+     return range_values_from_hash(raw_value) if raw_value.is_a?(Hash)
+diff --git a/config/routes.rb b/config/routes.rb
+index 42ff1e5..5f45ce8 100644
+--- a/config/routes.rb
++++ b/config/routes.rb
+@@ -120,7 +120,11 @@ Rails.application.routes.draw do
+               end
+             end
+ 
+-            resources :deals, only: [:index, :show, :create, :update, :destroy]
++            resources :deals, only: [:index, :show, :create, :update, :destroy] do
++              collection do
++                get :export
++              end
++            end
+             resources :deal_fields, only: [:index, :create, :update, :destroy] do
+               collection do
+                 patch :stage_requirements
