@@ -1,0 +1,84 @@
+--- /dev/null	2026-06-29 15:47:54
++++ b/app/services/crm/ensure_from_conversation_service.rb	2026-06-29 15:47:54
+@@ -0,0 +1,57 @@
++module Crm
++  class EnsureFromConversationService
++    class InvalidStageError < StandardError; end
++
++    Result = Struct.new(:deal, :created, keyword_init: true)
++
++    def initialize(account:, conversation_id:, stage_slug: nil)
++      @account = account
++      @conversation_id = conversation_id
++      @stage_slug = stage_slug
++    end
++
++    def call
++      stage = resolve_stage!
++      conversation = @account.conversations.find(@conversation_id)
++      title = generated_title(conversation)
++
++      deal, created = find_or_create_deal!(conversation, stage, title)
++
++      Result.new(deal: deal, created: created)
++    end
++
++    private
++
++    def resolve_stage!
++      stage_slug = @stage_slug.presence || 'unassigned'
++      stage = CrmPipelineStage.for_account(@account.id).find_by!(slug: stage_slug)
++
++      stage
++    rescue ActiveRecord::RecordNotFound
++      raise InvalidStageError, "Pipeline stage '#{stage_slug}' was not found for account #{@account.id}"
++    end
++
++    def find_or_create_deal!(conversation, stage, title)
++      deal = CrmDeal.find_or_create_by!(
++        account_id: @account.id,
++        conversation_id: conversation.id
++      ) do |deal|
++        deal.stage_id = stage.id
++        deal.title = title
++        deal.contact_id = conversation.contact_id
++        deal.assigned_to = nil
++      end
++
++      [deal, deal.previously_new_record?]
++    rescue ActiveRecord::RecordNotUnique
++      [CrmDeal.find_by!(account_id: @account.id, conversation_id: conversation.id), false]
++    end
++
++    def generated_title(conversation)
++      contact_name = conversation.contact&.name.to_s.strip
++      return "#{contact_name} - New request" if contact_name.present?
++
++      "Deal ##{Time.current.to_i}"
++    end
++  end
++end
+--- /dev/null	2026-06-29 15:47:54
++++ b/app/jobs/crm/ensure_from_conversation_job.rb	2026-06-29 15:47:54
+@@ -0,0 +1,21 @@
++module Crm
++  class EnsureFromConversationJob < ApplicationJob
++    queue_as :low
++
++    def perform(conversation_id, account_id)
++      account = Account.find_by(id: account_id)
++      return if account.blank?
++
++      Crm::EnsureFromConversationService.new(
++        account: account,
++        conversation_id: conversation_id,
++      ).call
++    rescue ActiveRecord::RecordNotFound => e
++      Rails.logger.info("[CRM] conversation not found for auto-deal creation: #{e.message}")
++    rescue Crm::EnsureFromConversationService::InvalidStageError => e
++      Rails.logger.error("[CRM] failed to ensure deal for conversation #{conversation_id}: #{e.message}")
++    rescue StandardError => e
++      Rails.logger.error("[CRM] failed to ensure deal for conversation #{conversation_id}: #{e.class.name}: #{e.message}")
++    end
++  end
++end

@@ -1,0 +1,91 @@
+--- /dev/null	2026-06-29 15:47:25
++++ b/lib/tasks/crm_deal_backfill.rake
+@@ -0,0 +1,88 @@
++# frozen_string_literal: true
++
++namespace :crm do
++  desc 'Backfill CRM deals from conversations into unassigned for an account'
++  task :backfill_unassigned_deals, [:account_id] => :environment do |_t, args|
++    account_id = args[:account_id] || ENV['ACCOUNT_ID']
++    unless account_id
++      puts 'Usage: bundle exec rake crm:backfill_unassigned_deals[ACCOUNT_ID]'
++      puts '   or: ACCOUNT_ID=1 bundle exec rake crm:backfill_unassigned_deals'
++      exit(1)
++    end
++
++    account = Account.find_by(id: account_id)
++    unless account
++      puts "Error: Account with ID #{account_id} was not found"
++      exit(1)
++    end
++
++    start_from = (ENV['START_FROM_CONVERSATION_ID'] || 0).to_i
++    batch_size = (ENV['BATCH_SIZE'] || 500).to_i
++    batch_size = 500 if batch_size <= 0
++
++    conversations = Conversation.where(account_id: account.id)
++                               .where.not(id: CrmDeal.where(account_id: account.id).where.not(conversation_id: nil)
++                                                                       .select(:conversation_id))
++                               .where('id > ?', start_from)
++                               .order(:id)
++    total = conversations.count
++    if total.zero?
++      puts "No conversations found for backfill for account #{account.id}"
++      exit(0)
++    end
++
++    puts "Backfill account ##{account.id}"
++    puts "Target conversations: #{total}"
++    puts "Start with conversation_id > #{start_from}" if start_from.positive?
++    puts "Batch size: #{batch_size}"
++    puts "Started at: #{Time.current}"
++    puts
++
++    processed = 0
++    created_count = 0
++    existing_count = 0
++    error_count = 0
++    last_conversation_id = start_from
++    started_at = Time.current
++
++    conversations.find_in_batches(batch_size: batch_size) do |batch|
++      batch.each do |conversation|
++        last_conversation_id = conversation.id
++        begin
++          result = Crm::EnsureFromConversationService.new(
++            account: account,
++            conversation_id: conversation.id
++          ).call
++          if result.created
++            created_count += 1
++          else
++            existing_count += 1
++          end
++        rescue StandardError => e
++          error_count += 1
++          puts "Error for conversation #{conversation.id}: #{e.message}"
++        end
++
++        processed += 1
++        if (processed % 100).zero? || processed == total
++          percentage = (processed.to_f / total * 100).round(1)
++          print "\rProcessed #{processed}/#{total} conversations (#{percentage}%)"
++          $stdout.flush
++        end
++      end
++    end
++
++    elapsed = Time.current - started_at
++    puts
++    puts 'Backfill complete'
++    puts "Total processed: #{processed}"
++    puts "Created: #{created_count}"
++    puts "Already had deals: #{existing_count}"
++    puts "Errors: #{error_count}"
++    puts "Time: #{elapsed.round(2)}s"
++    puts "Resumable start point:"
++    puts "  ACCOUNT_ID=#{account.id}"
++    puts "  START_FROM_CONVERSATION_ID=#{last_conversation_id}"
++    puts "  bundle exec rake \"crm:backfill_unassigned_deals[#{account.id}]\""
++  end
++end
