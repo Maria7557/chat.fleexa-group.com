@@ -275,7 +275,7 @@ new file mode 100644
 index 0000000..22e2836
 --- /dev/null
 +++ b/app/javascript/dashboard/routes/dashboard/crm/Pipeline.vue
-@@ -0,0 +1,1591 @@
+@@ -0,0 +1,1595 @@
 +<script setup>
 +import { computed, onBeforeUnmount, ref, watch } from 'vue';
 +import { useRoute, useRouter } from 'vue-router';
@@ -1207,27 +1207,62 @@ index 0000000..22e2836
 +      </div>
 +
 +      <div ref="filterShellRef" class="relative mt-4" @click.stop>
-+        <div
-+          class="flex min-h-[2.75rem] w-full min-w-0 flex-wrap items-center gap-2"
-+        >
-+          <div class="relative min-w-[16rem] flex-1">
-+            <i class="i-lucide-search pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-n-slate-10" />
-+            <input
-+              v-model="draftFilters.q"
-+              class="h-10 w-full rounded-lg border border-n-weak bg-n-background pl-9 pr-9 text-sm text-n-slate-12 outline-none transition placeholder:text-n-slate-9 focus:border-n-brand"
-+              placeholder="Search deals, clients, cars..."
-+              type="search"
-+              @keydown.enter.prevent.stop="applySearch"
-+            />
-+            <button
-+              v-if="draftFilters.q || appliedFilters.q"
-+              type="button"
-+              class="absolute right-2 top-1/2 grid h-6 w-6 -translate-y-1/2 place-items-center rounded-md text-n-slate-10 hover:bg-n-alpha-2 hover:text-n-slate-12"
-+              aria-label="Clear search"
-+              @click.stop="clearSearch"
++        <div class="flex w-full min-w-0 flex-col gap-2">
++          <div class="flex w-full min-w-0 items-center gap-2">
++            <div
++              class="flex h-10 min-w-0 flex-1 items-center gap-2 rounded-lg border border-n-weak bg-n-background px-3 transition focus-within:border-n-brand"
++              role="search"
 +            >
-+              <i class="i-lucide-x h-4 w-4" />
++              <i class="i-lucide-search pointer-events-none h-4 w-4 shrink-0 text-n-slate-10" />
++              <input
++                v-model="draftFilters.q"
++                aria-label="Search deals"
++                class="!m-0 !h-full min-w-0 flex-1 !border-0 !bg-transparent !p-0 text-sm leading-5 text-n-slate-12 !shadow-none outline-none placeholder:text-n-slate-9 focus:outline-none"
++                placeholder="Search deals, clients, cars..."
++                type="search"
++                @keydown.enter.prevent.stop="applySearch"
++              />
++              <button
++                v-if="draftFilters.q || appliedFilters.q"
++                type="button"
++                class="grid h-6 w-6 shrink-0 place-items-center rounded-md text-n-slate-10 hover:bg-n-alpha-2 hover:text-n-slate-12"
++                aria-label="Clear search"
++                @click.stop="clearSearch"
++              >
++                <i class="i-lucide-x h-4 w-4" />
++              </button>
++            </div>
++
++            <button
++              type="button"
++              class="grid h-10 w-10 shrink-0 place-items-center rounded-lg border border-n-weak bg-n-background text-n-slate-10 transition hover:border-n-slate-7 hover:bg-n-alpha-2 hover:text-n-slate-12"
++              :class="{ 'border-n-brand bg-n-brand-3 text-n-brand-11': isFilterPanelOpen || hasActiveFilters }"
++              aria-label="Open filters"
++              :aria-pressed="isFilterPanelOpen"
++              @click.stop="openFilterPanel"
++            >
++              <i class="i-lucide-sliders-horizontal h-4 w-4" />
 +            </button>
++
++            <div class="flex shrink-0 items-center gap-3">
++              <div class="text-right">
++                <div class="text-xs text-n-slate-10">
++                  Total
++                </div>
++                <div class="text-sm font-semibold text-n-slate-12">
++                  {{ pipelineTotalCount }} / {{ formatAmount(pipelineTotalAmount) || 'AED 0.00' }}
++                </div>
++              </div>
++              <button
++                v-if="hasActiveFilters"
++                type="button"
++                class="grid h-8 w-8 place-items-center rounded-md text-n-slate-10 hover:bg-n-alpha-2 hover:text-n-slate-12"
++                aria-label="Clear all filters"
++                @click.stop="resetFilters"
++              >
++                <i class="i-lucide-circle-x h-4 w-4" />
++              </button>
++            </div>
 +          </div>
 +
 +          <div
@@ -1249,37 +1284,6 @@ index 0000000..22e2836
 +                <i class="i-lucide-x h-3 w-3" />
 +              </button>
 +            </span>
-+          </div>
-+
-+          <button
-+            type="button"
-+            class="grid h-10 w-10 shrink-0 place-items-center rounded-lg border border-n-weak bg-n-background text-n-slate-10 transition hover:border-n-slate-7 hover:bg-n-alpha-2 hover:text-n-slate-12"
-+            :class="{ 'border-n-brand bg-n-brand-3 text-n-brand-11': isFilterPanelOpen || hasActiveFilters }"
-+            aria-label="Open filters"
-+            :aria-pressed="isFilterPanelOpen"
-+            @click.stop="openFilterPanel"
-+          >
-+            <i class="i-lucide-sliders-horizontal h-4 w-4" />
-+          </button>
-+
-+          <div class="flex shrink-0 items-center gap-3">
-+            <div class="text-right">
-+              <div class="text-xs text-n-slate-10">
-+                Total
-+              </div>
-+              <div class="text-sm font-semibold text-n-slate-12">
-+                {{ pipelineTotalCount }} / {{ formatAmount(pipelineTotalAmount) || 'AED 0.00' }}
-+              </div>
-+            </div>
-+            <button
-+              v-if="hasActiveFilters"
-+              type="button"
-+              class="grid h-8 w-8 place-items-center rounded-md text-n-slate-10 hover:bg-n-alpha-2 hover:text-n-slate-12"
-+              aria-label="Clear all filters"
-+              @click.stop="resetFilters"
-+            >
-+              <i class="i-lucide-circle-x h-4 w-4" />
-+            </button>
 +          </div>
 +        </div>
 +
