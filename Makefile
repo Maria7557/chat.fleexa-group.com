@@ -6,7 +6,7 @@ CHATWOOT_BASE_IMAGE := chatwoot/chatwoot:v4.14.2
 CHATWOOT_LOCAL_IMAGE := fleexa-chatwoot:v4.14.2-patch1
 CRM_ASSETS_BUILD_DIR := /tmp/fleexa-chatwoot-app-build
 
-.PHONY: setup up down logs migrate seed shell verify-patch ensure-env crm-apply crm-migrate crm-seed crm-copy-patches crm-patch-check crm-patch crm-install crm-vue-copy crm-vue-check crm-vue-patch crm-assets-build-host crm-assets-install-local crm-assets-refresh-local
+.PHONY: setup up down logs migrate seed shell verify-patch ensure-env crm-apply crm-migrate crm-seed crm-autocreate-backfill crm-copy-patches crm-patch-check crm-patch crm-install crm-vue-copy crm-vue-check crm-vue-patch crm-assets-build-host crm-assets-install-local crm-assets-refresh-local
 
 ensure-env:
 	@test -f $(ENV_FILE) || (echo "$(ENV_FILE) is missing. Run: make setup"; exit 1)
@@ -51,31 +51,44 @@ crm-seed:
 	sed "s/ACCOUNT_ID/$(ACCOUNT_ID)/g" chatwoot-patches/crm-pipeline-seed.sql | $(COMPOSE) exec -T postgres psql -U chatwoot -d chatwoot_production
 	@echo "CRM seed complete"
 
+crm-autocreate-backfill: ensure-env
+	@test -n "$(ACCOUNT_ID)" || (echo "Usage: ACCOUNT_ID=1 make crm-autocreate-backfill" && exit 1)
+	$(COMPOSE) exec rails bundle exec rake 'crm:backfill_unassigned_deals[$(ACCOUNT_ID)]'
+
 crm-copy-patches: ensure-env
 	$(COMPOSE) cp chatwoot-patches/crm-models.rb.patch rails:/tmp/crm-models.rb.patch
 	$(COMPOSE) cp chatwoot-patches/crm-controllers.rb.patch rails:/tmp/crm-controllers.rb.patch
 	$(COMPOSE) cp chatwoot-patches/crm-routes.rb.patch rails:/tmp/crm-routes.rb.patch
+	$(COMPOSE) cp chatwoot-patches/crm-ensure-from-conversation.patch rails:/tmp/crm-ensure-from-conversation.patch
 	$(COMPOSE) cp chatwoot-patches/crm-deal-fields-backend.patch rails:/tmp/crm-deal-fields-backend.patch
 	$(COMPOSE) cp chatwoot-patches/crm-deal-query-backend.patch rails:/tmp/crm-deal-query-backend.patch
 	$(COMPOSE) cp chatwoot-patches/crm-deals-export-backend.patch rails:/tmp/crm-deals-export-backend.patch
+	$(COMPOSE) cp chatwoot-patches/crm-webhook-listener.patch rails:/tmp/crm-webhook-listener.patch
+	$(COMPOSE) cp chatwoot-patches/crm-deal-backfill.patch rails:/tmp/crm-deal-backfill.patch
 	@echo "CRM patch files copied to Rails container"
 
 crm-patch-check: crm-copy-patches
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply --check /tmp/crm-models.rb.patch"
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply --check /tmp/crm-controllers.rb.patch"
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply --check /tmp/crm-routes.rb.patch"
+	$(COMPOSE) exec rails sh -lc "cd /app && git apply --check /tmp/crm-ensure-from-conversation.patch"
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply --check /tmp/crm-deal-fields-backend.patch"
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply --check /tmp/crm-deal-query-backend.patch"
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply --check /tmp/crm-deals-export-backend.patch"
+	$(COMPOSE) exec rails sh -lc "cd /app && git apply --check /tmp/crm-webhook-listener.patch"
+	$(COMPOSE) exec rails sh -lc "cd /app && git apply --check /tmp/crm-deal-backfill.patch"
 	@echo "CRM patches validated"
 
 crm-patch:
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply /tmp/crm-models.rb.patch"
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply /tmp/crm-controllers.rb.patch"
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply /tmp/crm-routes.rb.patch"
+	$(COMPOSE) exec rails sh -lc "cd /app && git apply /tmp/crm-ensure-from-conversation.patch"
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply /tmp/crm-deal-fields-backend.patch"
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply /tmp/crm-deal-query-backend.patch"
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply /tmp/crm-deals-export-backend.patch"
+	$(COMPOSE) exec rails sh -lc "cd /app && git apply /tmp/crm-webhook-listener.patch"
+	$(COMPOSE) exec rails sh -lc "cd /app && git apply /tmp/crm-deal-backfill.patch"
 	@echo "CRM patches applied to Rails container"
 
 crm-install: crm-copy-patches crm-patch
@@ -128,9 +141,12 @@ crm-assets-build-host:
 	git apply "$(CURDIR)/chatwoot-patches/crm-models.rb.patch"; \
 	git apply "$(CURDIR)/chatwoot-patches/crm-controllers.rb.patch"; \
 	git apply "$(CURDIR)/chatwoot-patches/crm-routes.rb.patch"; \
+	git apply "$(CURDIR)/chatwoot-patches/crm-ensure-from-conversation.patch"; \
 	git apply "$(CURDIR)/chatwoot-patches/crm-deal-fields-backend.patch"; \
 	git apply "$(CURDIR)/chatwoot-patches/crm-deal-query-backend.patch"; \
 	git apply "$(CURDIR)/chatwoot-patches/crm-deals-export-backend.patch"; \
+	git apply "$(CURDIR)/chatwoot-patches/crm-webhook-listener.patch"; \
+	git apply "$(CURDIR)/chatwoot-patches/crm-deal-backfill.patch"; \
 	git apply "$(CURDIR)/chatwoot-patches/crm-pipeline-vue.patch"; \
 	git apply "$(CURDIR)/chatwoot-patches/crm-deal-workspace-vue.patch"; \
 	git apply "$(CURDIR)/chatwoot-patches/crm-deal-fields-vue.patch"; \
