@@ -172,9 +172,10 @@ diff --git a/app/controllers/api/v1/accounts/crm/deals_controller.rb b/app/contr
 index d9a531d..3d6d2a7 100644
 --- a/app/controllers/api/v1/accounts/crm/deals_controller.rb
 +++ b/app/controllers/api/v1/accounts/crm/deals_controller.rb
-@@ -19,6 +19,8 @@ class Api::V1::Accounts::Crm::DealsController < Api::V1::Accounts::BaseControlle
+@@ -19,7 +19,9 @@ class Api::V1::Accounts::Crm::DealsController < Api::V1::Accounts::BaseControlle
    def create
      attrs = deal_params
+     attrs[:conversation_id] = fallback_conversation_id_for_contact(attrs[:contact_id]) if attrs[:conversation_id].blank?
      stage = stage_scope.find(attrs[:stage_id])
 +    missing_required_fields = missing_required_fields_for(stage, attrs)
 +    return render_missing_required_fields(missing_required_fields) if missing_required_fields.any?
@@ -211,7 +212,7 @@ index d9a531d..3d6d2a7 100644
        fleet_sync_status: deal.fleet_sync_status,
        rotting_since: deal.rotting_since,
        contact: contact_payload(deal.contact),
-@@ -137,6 +142,76 @@ class Api::V1::Accounts::Crm::DealsController < Api::V1::Accounts::BaseControlle
+@@ -137,4 +142,74 @@ class Api::V1::Accounts::Crm::DealsController < Api::V1::Accounts::BaseControlle
      }
    end
  
@@ -286,8 +287,6 @@ index d9a531d..3d6d2a7 100644
 +  end
 +
    def create_stage_change_activity(deal, old_stage_id)
-     create_activity(
-       deal,
 diff --git a/app/models/crm_deal.rb b/app/models/crm_deal.rb
 index 7dfa2d8..57ad8ac 100644
 --- a/app/models/crm_deal.rb
@@ -456,10 +455,12 @@ diff --git a/config/routes.rb b/config/routes.rb
 index 49338ad..42ff1e5 100644
 --- a/config/routes.rb
 +++ b/config/routes.rb
-@@ -121,6 +121,11 @@ Rails.application.routes.draw do
+@@ -121,8 +121,13 @@ Rails.application.routes.draw do
+             resources :deals, only: [:index, :show, :create, :update, :destroy] do
+               collection do
+                 post :ensure_from_conversation
+               end
              end
- 
-             resources :deals, only: [:index, :show, :create, :update, :destroy]
 +            resources :deal_fields, only: [:index, :create, :update, :destroy] do
 +              collection do
 +                patch :stage_requirements

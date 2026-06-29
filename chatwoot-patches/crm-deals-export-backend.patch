@@ -300,16 +300,14 @@ diff --git a/config/routes.rb b/config/routes.rb
 index 42ff1e5..5f45ce8 100644
 --- a/config/routes.rb
 +++ b/config/routes.rb
-@@ -120,7 +120,11 @@ Rails.application.routes.draw do
+@@ -120,7 +120,8 @@ Rails.application.routes.draw do
+ 
+             resources :deals, only: [:index, :show, :create, :update, :destroy] do
+               collection do
++                get :export
+                 post :ensure_from_conversation
                end
              end
- 
--            resources :deals, only: [:index, :show, :create, :update, :destroy]
-+            resources :deals, only: [:index, :show, :create, :update, :destroy] do
-+              collection do
-+                get :export
-+              end
-+            end
              resources :deal_fields, only: [:index, :create, :update, :destroy] do
                collection do
                  patch :stage_requirements
