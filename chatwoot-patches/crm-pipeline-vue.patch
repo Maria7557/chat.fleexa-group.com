@@ -275,7 +275,7 @@ new file mode 100644
 index 0000000..22e2836
 --- /dev/null
 +++ b/app/javascript/dashboard/routes/dashboard/crm/Pipeline.vue
-@@ -0,0 +1,1595 @@
+@@ -0,0 +1,1586 @@
 +<script setup>
 +import { computed, onBeforeUnmount, ref, watch } from 'vue';
 +import { useRoute, useRouter } from 'vue-router';
@@ -1217,20 +1217,11 @@ index 0000000..22e2836
 +              <input
 +                v-model="draftFilters.q"
 +                aria-label="Search deals"
-+                class="!m-0 !h-full min-w-0 flex-1 !border-0 !bg-transparent !p-0 text-sm leading-5 text-n-slate-12 !shadow-none outline-none placeholder:text-n-slate-9 focus:outline-none"
++                class="!m-0 !h-full min-w-0 flex-1 !border-0 !bg-transparent !p-0 text-sm leading-5 text-n-slate-12 !shadow-none !outline-none placeholder:text-n-slate-9 focus:!ring-0 focus:!outline-none focus:!shadow-none"
 +                placeholder="Search deals, clients, cars..."
-+                type="search"
++                type="text"
 +                @keydown.enter.prevent.stop="applySearch"
 +              />
-+              <button
-+                v-if="draftFilters.q || appliedFilters.q"
-+                type="button"
-+                class="grid h-6 w-6 shrink-0 place-items-center rounded-md text-n-slate-10 hover:bg-n-alpha-2 hover:text-n-slate-12"
-+                aria-label="Clear search"
-+                @click.stop="clearSearch"
-+              >
-+                <i class="i-lucide-x h-4 w-4" />
-+              </button>
 +            </div>
 +
 +            <button
