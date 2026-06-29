@@ -272,21 +272,22 @@ index 07789a1..91db2e1 100644
          :list="conversationSidebarItems"
 diff --git a/app/javascript/dashboard/routes/dashboard/crm/Pipeline.vue b/app/javascript/dashboard/routes/dashboard/crm/Pipeline.vue
 new file mode 100644
-index 0000000..a574cb2
+index 0000000..42f0a7b
 --- /dev/null
 +++ b/app/javascript/dashboard/routes/dashboard/crm/Pipeline.vue
-@@ -0,0 +1,957 @@
+@@ -0,0 +1,1617 @@
 +<script setup>
-+import { computed, ref, watch } from 'vue';
-+import { useRouter } from 'vue-router';
++import { computed, onBeforeUnmount, ref, watch } from 'vue';
++import { useRoute, useRouter } from 'vue-router';
 +
 +import CrmPipelineAPI from 'dashboard/api/crmPipeline';
 +import Button from 'dashboard/components-next/button/Button.vue';
 +import Spinner from 'dashboard/components-next/spinner/Spinner.vue';
 +import { useAccount } from 'dashboard/composables/useAccount';
 +
-+const { accountId } = useAccount();
++const route = useRoute();
 +const router = useRouter();
++const { accountId } = useAccount();
 +
 +const buildDealForm = () => ({
 +  title: '',
@@ -307,57 +308,72 @@ index 0000000..a574cb2
 +  'booking_id',
 +];
 +
++const buildEmptyFilters = () => ({
++  q: '',
++  assignee: '',
++  stageSlug: '',
++  createdPreset: '',
++  createdFrom: '',
++  createdTo: '',
++  inboxId: '',
++  sourceRequest: '',
++  carType: '',
++  clientStatus: '',
++  language: '',
++  rentalFrom: '',
++  rentalTo: '',
++  amountMin: '',
++  amountMax: '',
++  hasDebt: false,
++  rottingTo: '',
++  presetKey: '',
++});
++
 +const stages = ref([]);
 +const deals = ref([]);
++const fieldDefinitions = ref([]);
 +const pipelineMeta = ref({
 +  total_count: 0,
 +  total_amount: 0,
 +  total_debt_amount: 0,
 +});
 +const isLoading = ref(false);
++const isLoadingFields = ref(false);
 +const errorMessage = ref('');
 +const activeStageId = ref(null);
 +const newDealForm = ref(buildDealForm());
 +const savingStageId = ref(null);
 +const draggingDealId = ref(null);
 +const selectedDeal = ref(null);
-+const searchQuery = ref('');
-+const quickFilter = ref('all');
-+const dateRangeFilter = ref('all');
-+const assigneeFilter = ref('all');
-+const channelFilter = ref('');
-+const inboxFilter = ref('');
-+
-+const quickPresetFilters = [
-+  {
-+    key: 'all',
-+    label: 'All',
-+    build: () => ({}),
-+  },
-+  {
-+    key: 'my',
-+    label: 'My deals',
-+    build: () => ({ assigned_to: 'me' }),
-+  },
-+  {
-+    key: 'unassigned',
-+    label: 'Unassigned',
-+    build: () => ({ only_unassigned: 1 }),
-+  },
-+  {
-+    key: 'overdue',
-+    label: 'Overdue',
-+    build: () => ({ rental_end_to: new Date().toISOString().slice(0, 10) }),
-+  },
-+];
++const appliedFilters = ref(buildEmptyFilters());
++const draftFilters = ref(buildEmptyFilters());
++const isFilterPanelOpen = ref(false);
++const viewMode = ref('kanban');
++const filterShellRef = ref(null);
 +
 +const dateRangeFilters = [
-+  { key: 'all', label: 'All dates', value: null },
-+  { key: 'today', label: 'Today', value: 'today' },
-+  { key: 'yesterday', label: 'Yesterday', value: 'yesterday' },
-+  { key: 'last_7_days', label: '7 days', value: 'last_7_days' },
-+  { key: 'this_week', label: 'This week', value: 'this_week' },
-+  { key: 'this_month', label: 'This month', value: 'this_month' },
++  { key: '', label: 'Any date' },
++  { key: 'today', label: 'Today' },
++  { key: 'yesterday', label: 'Yesterday' },
++  { key: 'last_7_days', label: 'Last 7 days' },
++  { key: 'this_week', label: 'This week' },
++  { key: 'last_week', label: 'Last week' },
++  { key: 'this_month', label: 'This month' },
++  { key: 'last_month', label: 'Last month' },
++  { key: 'this_quarter', label: 'Quarter' },
++];
++
++const clientStatusOptions = [
++  { value: '', label: 'Any client' },
++  { value: 'NEW', label: 'NEW' },
++  { value: 'REG', label: 'REG' },
++];
++
++const languageOptions = [
++  { value: '', label: 'Any language' },
++  { value: 'RU', label: 'RU' },
++  { value: 'EN', label: 'EN' },
++  { value: 'AR', label: 'AR' },
 +];
 +
 +const moneyFormatter = new Intl.NumberFormat('en-AE', {
@@ -371,9 +387,62 @@ index 0000000..a574cb2
 +  year: 'numeric',
 +});
 +
++const cloneFilters = filters => ({
++  ...buildEmptyFilters(),
++  ...(filters || {}),
++});
++
 +const orderedStages = computed(() => {
 +  return [...stages.value].sort((a, b) => a.position - b.position);
 +});
++
++const doneStageSlug = computed(() => {
++  return (
++    orderedStages.value.find(stage => stage.slug === 'done')?.slug ||
++    orderedStages.value.find(stage => stage.slug === 'closed_won')?.slug ||
++    orderedStages.value.find(stage => /done|won|closed/i.test(stage.name || ''))?.slug ||
++    'closed_won'
++  );
++});
++
++const filterPresets = computed(() => [
++  {
++    key: 'all',
++    label: 'All deals',
++    description: 'Clear every filter',
++    disabled: false,
++  },
++  {
++    key: 'my',
++    label: 'My deals',
++    description: 'Assigned to me',
++    disabled: false,
++  },
++  {
++    key: 'unassigned',
++    label: 'Unassigned',
++    description: 'No manager',
++    disabled: false,
++  },
++  {
++    key: 'done_this_month',
++    label: 'Done this month',
++    description: 'Done stage and current month',
++    disabled: false,
++  },
++  {
++    key: 'overdue',
++    label: 'Overdue',
++    description: 'Rotting deals',
++    disabled: false,
++  },
++  {
++    key: 'no_booking',
++    label: 'No booking',
++    description: 'Needs null booking backend filter',
++    disabled: true,
++  },
++]);
 +
 +const dealsByStage = computed(() => {
 +  return deals.value.reduce((memo, deal) => {
@@ -409,10 +478,6 @@ index 0000000..a574cb2
 +  return `${pipelineTotalCount.value} deals · ${amount || formatAmount(0)}`;
 +});
 +
-+const quickFilterOptions = computed(() => {
-+  return quickPresetFilters;
-+});
-+
 +const dateFilterOptions = computed(() => {
 +  return dateRangeFilters;
 +});
@@ -427,8 +492,8 @@ index 0000000..a574cb2
 +  });
 +
 +  return [
-+    { value: 'all', label: 'All assignees' },
-+    { value: 'me', label: 'My deals' },
++    { value: '', label: 'All assignees' },
++    { value: 'me', label: 'Me' },
 +    { value: 'unassigned', label: 'Unassigned' },
 +    ...[...users.entries()].map(([value, label]) => ({
 +      value,
@@ -445,80 +510,366 @@ index 0000000..a574cb2
 +    if (inboxId) inboxes.add(String(inboxId));
 +  });
 +
-+  return [...inboxes]
-+    .sort((left, right) => Number(left) - Number(right))
-+    .map(inboxId => ({ value: inboxId, label: `Inbox #${inboxId}` }));
++  return [
++    { value: '', label: 'All inboxes' },
++    ...[...inboxes]
++      .sort((left, right) => Number(left) - Number(right))
++      .map(inboxId => ({ value: inboxId, label: `Inbox #${inboxId}` })),
++  ];
 +});
 +
-+const channelFilterOptions = computed(() => {
-+  const channels = new Set();
++const fieldDefinitionFor = key => {
++  return fieldDefinitions.value.find(field => field.key === key);
++};
 +
++const customAttributeValue = (deal, key) => {
++  return deal.custom_attributes?.[key] || deal[key] || '';
++};
++
++const uniqueDealValuesFor = key => {
++  const values = new Set();
 +  deals.value.forEach(deal => {
-+    const channel = deal.conversation?.channel_id;
-+    if (channel) channels.add(String(channel));
++    const value = customAttributeValue(deal, key);
++    if (value) values.add(String(value));
 +  });
 +
-+  return [...channels]
-+    .sort()
-+    .map(channelId => ({ value: channelId, label: `Channel ${channelId}` }));
++  return [...values].sort();
++};
++
++const optionsForField = key => {
++  const fieldOptions = fieldDefinitionFor(key)?.options || [];
++  const configuredOptions = Array.isArray(fieldOptions) ? fieldOptions : [];
++  const values = configuredOptions.length ? configuredOptions : uniqueDealValuesFor(key);
++
++  return [
++    { value: '', label: `Any ${labelForField(key).toLowerCase()}` },
++    ...values.map(value => ({ value: String(value), label: String(value) })),
++  ];
++};
++
++const sourceRequestOptions = computed(() => optionsForField('source_request'));
++const carTypeOptions = computed(() => optionsForField('car_type'));
++
++const sourceQuickFilters = computed(() => {
++  const counts = deals.value.reduce((memo, deal) => {
++    const source = customAttributeValue(deal, 'source_request');
++    if (!source) return memo;
++    memo[source] = (memo[source] || 0) + 1;
++    return memo;
++  }, {});
++
++  const configuredSources = sourceRequestOptions.value
++    .filter(option => option.value)
++    .map(option => option.value);
++  const values = configuredSources.length ? configuredSources : Object.keys(counts);
++
++  return values
++    .map(value => ({
++      value,
++      label: value,
++      count: counts[value] || 0,
++    }))
++    .sort((left, right) => right.count - left.count || left.label.localeCompare(right.label));
 +});
 +
-+const quickFilterPayload = computed(() => {
-+  const active = quickFilterOptions.value.find(item => item.key === quickFilter.value);
-+  return active?.build ? active.build() : {};
++const labelForField = key => {
++  const labels = {
++    source_request: 'Source request',
++    car_type: 'Car type',
++  };
++
++  return fieldDefinitionFor(key)?.label || labels[key] || key;
++};
++
++const datePresetLabel = key => {
++  return dateRangeFilters.find(item => item.key === key)?.label || '';
++};
++
++const assigneeLabel = value => {
++  return assigneeFilterOptions.value.find(item => item.value === value)?.label || value;
++};
++
++const inboxLabel = value => {
++  return inboxFilterOptions.value.find(item => item.value === value)?.label || `Inbox #${value}`;
++};
++
++const presetLabel = key => {
++  return filterPresets.value.find(item => item.key === key)?.label || '';
++};
++
++const formatDateRangeLabel = (from, to) => {
++  if (from && to) return `${formatDate(from)} - ${formatDate(to)}`;
++  if (from) return `from ${formatDate(from)}`;
++  if (to) return `to ${formatDate(to)}`;
++  return '';
++};
++
++const activeFilterChips = computed(() => {
++  const filters = appliedFilters.value;
++  const chips = [];
++
++  if (filters.q) chips.push({ key: 'q', label: `Search: ${filters.q}` });
++  if (filters.presetKey && filters.presetKey !== 'all') {
++    chips.push({ key: 'preset', label: presetLabel(filters.presetKey) });
++  }
++  if (filters.assignee) {
++    chips.push({ key: 'assignee', label: `Assignee: ${assigneeLabel(filters.assignee)}` });
++  }
++  if (filters.createdPreset) {
++    chips.push({ key: 'created', label: datePresetLabel(filters.createdPreset) });
++  } else if (filters.createdFrom || filters.createdTo) {
++    chips.push({ key: 'created', label: formatDateRangeLabel(filters.createdFrom, filters.createdTo) });
++  }
++  if (filters.inboxId) chips.push({ key: 'inboxId', label: `Inbox: ${inboxLabel(filters.inboxId)}` });
++  if (filters.sourceRequest) chips.push({ key: 'sourceRequest', label: `Source: ${filters.sourceRequest}` });
++  if (filters.carType) chips.push({ key: 'carType', label: `Car type: ${filters.carType}` });
++  if (filters.clientStatus) chips.push({ key: 'clientStatus', label: `Client: ${filters.clientStatus}` });
++  if (filters.language) chips.push({ key: 'language', label: `Language: ${filters.language}` });
++  if (filters.rentalFrom || filters.rentalTo) {
++    chips.push({ key: 'rental', label: `Rental: ${formatDateRangeLabel(filters.rentalFrom, filters.rentalTo)}` });
++  }
++  if (filters.amountMin || filters.amountMax) {
++    chips.push({ key: 'amount', label: `Amount: ${filters.amountMin || '0'}-${filters.amountMax || 'any'}` });
++  }
++  if (filters.hasDebt) chips.push({ key: 'hasDebt', label: 'Has debt' });
++
++  return chips;
 +});
 +
-+const dateFilterPayload = computed(() => {
-+  const range = dateFilterOptions.value.find(item => item.key === dateRangeFilter.value);
-+  return range?.value ? { created_at_preset: range.value } : {};
-+});
++const hasActiveFilters = computed(() => activeFilterChips.value.length > 0);
++
++const customFiltersForRequest = filters => {
++  const custom = {};
++  if (filters.clientStatus) custom.client_status = filters.clientStatus;
++  if (filters.language) custom.language = filters.language;
++  return custom;
++};
 +
 +const dealRequestParams = computed(() => {
++  const filters = appliedFilters.value;
 +  const params = {
 +    include_meta: 1,
 +    per_page: 100,
 +  };
 +
-+  const q = searchQuery.value.trim();
-+  if (q) params.q = q;
++  if (filters.q) params.q = filters.q;
++  if (filters.stageSlug) params.stage_slug = filters.stageSlug;
++  if (filters.createdPreset) params.created_at_preset = filters.createdPreset;
++  if (filters.createdFrom) params.created_at_from = filters.createdFrom;
++  if (filters.createdTo) params.created_at_to = filters.createdTo;
++  if (filters.inboxId) params.inbox_id = filters.inboxId;
++  if (filters.sourceRequest) params.source_request = filters.sourceRequest;
++  if (filters.carType) params.car_type = filters.carType;
++  if (filters.rentalFrom) params.period_from = filters.rentalFrom;
++  if (filters.rentalTo) params.period_to = filters.rentalTo;
++  if (filters.amountMin) params.amount_min = filters.amountMin;
++  if (filters.amountMax) params.amount_max = filters.amountMax;
++  if (filters.hasDebt) params.debt_min = '0.01';
++  if (filters.rottingTo) params.rotting_since_to = filters.rottingTo;
 +
-+  const quickPayload = quickFilterPayload.value;
-+  Object.entries(quickPayload).forEach(([key, value]) => {
-+    if (value === undefined || value === null || value === '') return;
-+    params[key] = value;
-+  });
-+
-+  const datePayload = dateFilterPayload.value;
-+  Object.entries(datePayload).forEach(([key, value]) => {
-+    if (value === undefined || value === null || value === '') return;
-+    params[key] = value;
-+  });
-+
-+  if (assigneeFilter.value === 'me') {
++  if (filters.assignee === 'me') {
 +    params.assigned_to = 'me';
-+  } else if (assigneeFilter.value === 'unassigned') {
++  } else if (filters.assignee === 'unassigned') {
 +    params.only_unassigned = 1;
-+  } else if (assigneeFilter.value && assigneeFilter.value !== 'all') {
-+    params.assigned_to = assigneeFilter.value;
++  } else if (filters.assignee) {
++    params.assigned_to = filters.assignee;
 +  }
 +
-+  if (channelFilter.value) params.channel_id = channelFilter.value;
-+  if (inboxFilter.value) params.inbox_id = inboxFilter.value;
++  const customFilters = customFiltersForRequest(filters);
++  if (Object.keys(customFilters).length) {
++    params.filters = JSON.stringify({ custom_attributes: customFilters });
++  }
 +
 +  return params;
 +});
 +
-+const applyQuickFilter = preset => {
-+  quickFilter.value = preset;
++const routeValue = value => {
++  return Array.isArray(value) ? value[0] : value;
++};
++
++const filtersFromQuery = query => {
++  const filters = buildEmptyFilters();
++  const hasDebt = routeValue(query.has_debt);
++
++  filters.q = routeValue(query.q) || '';
++  filters.assignee =
++    routeValue(query.assignee) ||
++    routeValue(query.assigned_to) ||
++    (routeValue(query.only_unassigned) ? 'unassigned' : '');
++  filters.stageSlug = routeValue(query.stage_slug) || '';
++  filters.createdPreset = routeValue(query.created_preset) || routeValue(query.created_at_preset) || '';
++  filters.createdFrom = routeValue(query.created_from) || routeValue(query.created_at_from) || '';
++  filters.createdTo = routeValue(query.created_to) || routeValue(query.created_at_to) || '';
++  filters.inboxId = routeValue(query.inbox_id) || '';
++  filters.sourceRequest = routeValue(query.source_request) || '';
++  filters.carType = routeValue(query.car_type) || '';
++  filters.clientStatus = routeValue(query.client_status) || '';
++  filters.language = routeValue(query.language) || '';
++  filters.rentalFrom = routeValue(query.rental_from) || routeValue(query.period_from) || '';
++  filters.rentalTo = routeValue(query.rental_to) || routeValue(query.period_to) || '';
++  filters.amountMin = routeValue(query.amount_min) || '';
++  filters.amountMax = routeValue(query.amount_max) || '';
++  filters.hasDebt = hasDebt === '1' || hasDebt === 'true';
++  filters.rottingTo = routeValue(query.rotting_to) || routeValue(query.rotting_since_to) || '';
++  filters.presetKey = routeValue(query.preset) || '';
++
++  return filters;
++};
++
++const filtersToQuery = filters => {
++  const query = {};
++  const entries = {
++    q: filters.q,
++    assignee: filters.assignee,
++    stage_slug: filters.stageSlug,
++    created_preset: filters.createdPreset,
++    created_from: filters.createdFrom,
++    created_to: filters.createdTo,
++    inbox_id: filters.inboxId,
++    source_request: filters.sourceRequest,
++    car_type: filters.carType,
++    client_status: filters.clientStatus,
++    language: filters.language,
++    rental_from: filters.rentalFrom,
++    rental_to: filters.rentalTo,
++    amount_min: filters.amountMin,
++    amount_max: filters.amountMax,
++    rotting_to: filters.rottingTo,
++    preset: filters.presetKey,
++  };
++
++  Object.entries(entries).forEach(([key, value]) => {
++    if (value !== undefined && value !== null && value !== '') query[key] = value;
++  });
++
++  if (filters.hasDebt) query.has_debt = '1';
++
++  return query;
++};
++
++const updateRouteQuery = filters => {
++  return router.replace({
++    name: 'crm_pipeline_index',
++    params: { accountId: accountId.value },
++    query: filtersToQuery(filters),
++  });
++};
++
++const resetFilterKey = (filters, key) => {
++  if (key === 'preset') {
++    filters.presetKey = '';
++    filters.stageSlug = '';
++    filters.rottingTo = '';
++    return;
++  }
++  if (key === 'created') {
++    filters.createdPreset = '';
++    filters.createdFrom = '';
++    filters.createdTo = '';
++    return;
++  }
++  if (key === 'rental') {
++    filters.rentalFrom = '';
++    filters.rentalTo = '';
++    return;
++  }
++  if (key === 'amount') {
++    filters.amountMin = '';
++    filters.amountMax = '';
++    return;
++  }
++
++  filters[key] = key === 'hasDebt' ? false : '';
++};
++
++const commitFilters = async (filters, options = {}) => {
++  const nextFilters = cloneFilters(filters);
++  appliedFilters.value = nextFilters;
++  draftFilters.value = cloneFilters(nextFilters);
++  await updateRouteQuery(nextFilters);
++  await fetchPipeline();
++  if (options.closePanel) isFilterPanelOpen.value = false;
++};
++
++const openFilterPanel = () => {
++  if (!isFilterPanelOpen.value) {
++    draftFilters.value = cloneFilters(appliedFilters.value);
++  }
++  isFilterPanelOpen.value = true;
++};
++
++const closeFilterPanel = () => {
++  draftFilters.value = cloneFilters(appliedFilters.value);
++  isFilterPanelOpen.value = false;
++};
++
++const handleOutsideClick = event => {
++  if (!isFilterPanelOpen.value) return;
++  if (filterShellRef.value?.contains(event.target)) return;
++  closeFilterPanel();
++};
++
++document.addEventListener('click', handleOutsideClick);
++
++onBeforeUnmount(() => {
++  document.removeEventListener('click', handleOutsideClick);
++});
++
++const applyDraftFilters = () => {
++  commitFilters(draftFilters.value, { closePanel: true });
 +};
 +
 +const resetFilters = () => {
-+  searchQuery.value = '';
-+  quickFilter.value = 'all';
-+  dateRangeFilter.value = 'all';
-+  assigneeFilter.value = 'all';
-+  channelFilter.value = '';
-+  inboxFilter.value = '';
++  commitFilters(buildEmptyFilters(), { closePanel: true });
++};
++
++const applySearch = () => {
++  commitFilters({
++    ...appliedFilters.value,
++    q: draftFilters.value.q.trim(),
++  });
++};
++
++const clearSearch = () => {
++  commitFilters({
++    ...appliedFilters.value,
++    q: '',
++  });
++};
++
++const removeFilterChip = chip => {
++  const filters = cloneFilters(appliedFilters.value);
++  resetFilterKey(filters, chip.key);
++  commitFilters(filters);
++};
++
++const applyPreset = preset => {
++  if (preset.disabled) return;
++
++  const filters = buildEmptyFilters();
++  filters.presetKey = preset.key;
++
++  if (preset.key === 'my') {
++    filters.assignee = 'me';
++  } else if (preset.key === 'unassigned') {
++    filters.assignee = 'unassigned';
++  } else if (preset.key === 'done_this_month') {
++    filters.stageSlug = doneStageSlug.value;
++    filters.createdPreset = 'this_month';
++  } else if (preset.key === 'overdue') {
++    filters.rottingTo = new Date().toISOString();
++  } else if (preset.key === 'all') {
++    filters.presetKey = '';
++  }
++
++  commitFilters(filters, { closePanel: true });
++};
++
++const selectQuickSource = value => {
++  draftFilters.value = {
++    ...draftFilters.value,
++    sourceRequest: value,
++  };
 +};
 +
 +const stageTotal = stageId => {
@@ -539,6 +890,20 @@ index 0000000..a574cb2
 +  errorMessage.value = error?.response?.data?.error || error?.message || 'Request failed';
 +};
 +
++const loadDealFields = async () => {
++  if (typeof CrmPipelineAPI.getDealFields !== 'function') return;
++
++  isLoadingFields.value = true;
++  try {
++    const response = await CrmPipelineAPI.getDealFields();
++    fieldDefinitions.value = response.data?.fields || [];
++  } catch {
++    fieldDefinitions.value = [];
++  } finally {
++    isLoadingFields.value = false;
++  }
++};
++
 +const fetchPipeline = async () => {
 +  isLoading.value = true;
 +  errorMessage.value = '';
@@ -547,6 +912,7 @@ index 0000000..a574cb2
 +    const [stageResponse, dealResponse] = await Promise.all([
 +      CrmPipelineAPI.getStages(),
 +      CrmPipelineAPI.getDeals(dealRequestParams.value),
++      loadDealFields(),
 +    ]);
 +
 +    stages.value = stageResponse.data || [];
@@ -572,6 +938,13 @@ index 0000000..a574cb2
 +  } finally {
 +    isLoading.value = false;
 +  }
++};
++
++const initializePipeline = () => {
++  const initialFilters = filtersFromQuery(route.query);
++  appliedFilters.value = cloneFilters(initialFilters);
++  draftFilters.value = cloneFilters(initialFilters);
++  fetchPipeline();
 +};
 +
 +const openNewDealForm = stageId => {
@@ -671,7 +1044,7 @@ index 0000000..a574cb2
 +const formatDate = value => {
 +  if (!value) return '';
 +  const date = new Date(value);
-+  return Number.isNaN(date.getTime()) ? '' : dateFormatter.format(date);
++  return Number.isNaN(date.getTime()) ? value : dateFormatter.format(date);
 +};
 +
 +const formatRentalPeriod = deal => {
@@ -728,22 +1101,19 @@ index 0000000..a574cb2
 +};
 +
 +watch(
-+  [accountId, searchQuery, quickFilter, dateRangeFilter, channelFilter, inboxFilter, assigneeFilter],
++  accountId,
 +  () => {
 +    if (!accountId.value) return;
-+    fetchPipeline();
++    initializePipeline();
 +  },
-+  {
-+    immediate: true,
-+    deep: true,
-+  },
++  { immediate: true },
 +);
 +</script>
 +
 +<template>
 +  <section class="flex h-full min-w-0 flex-1 flex-col bg-n-surface-1">
 +    <header class="border-b border-n-weak px-6 py-4">
-+      <div class="flex flex-wrap items-start justify-between gap-3">
++      <div class="flex flex-wrap items-center justify-between gap-3">
 +        <div class="min-w-0">
 +          <h1 class="m-0 truncate text-xl font-medium text-n-slate-12">
 +            Pipeline
@@ -752,104 +1122,388 @@ index 0000000..a574cb2
 +            {{ pipelineSummary }}
 +          </p>
 +        </div>
-+        <div class="flex w-full min-w-0 flex-wrap items-center gap-2 sm:w-auto">
-+          <input
-+            v-model="searchQuery"
-+            class="h-9 min-w-0 flex-1 rounded-md border border-n-weak bg-n-background px-3 text-sm text-n-slate-12 outline-none focus:border-n-brand"
-+            placeholder="Search by deal, client, auto, phone"
-+            type="search"
-+          />
++
++        <div class="flex items-center gap-2">
++          <div class="inline-flex h-9 rounded-md border border-n-weak bg-n-surface-2 p-0.5">
++            <button
++              type="button"
++              class="inline-flex items-center gap-1.5 rounded px-3 text-xs font-medium text-n-slate-11 transition"
++              :class="{ 'bg-n-background text-n-slate-12 shadow-sm': viewMode === 'kanban' }"
++              @click="viewMode = 'kanban'"
++            >
++              <i class="i-lucide-columns-3 h-3.5 w-3.5" />
++              Kanban
++            </button>
++            <button
++              type="button"
++              class="inline-flex items-center gap-1.5 rounded px-3 text-xs font-medium text-n-slate-11 transition"
++              :class="{ 'bg-n-background text-n-slate-12 shadow-sm': viewMode === 'list' }"
++              @click="viewMode = 'list'"
++            >
++              <i class="i-lucide-list h-3.5 w-3.5" />
++              List
++            </button>
++          </div>
 +          <Button
-+            label="Refresh"
 +            icon="i-lucide-refresh-cw"
 +            size="sm"
 +            slate
 +            faded
 +            :is-loading="isLoading"
++            aria-label="Refresh pipeline"
 +            @click="fetchPipeline"
-+          />
-+          <Button
-+            label="Reset"
-+            size="sm"
-+            slate
-+            ghost
-+            type="button"
-+            @click="resetFilters"
 +          />
 +        </div>
 +      </div>
 +
-+      <div class="mt-3 flex flex-wrap items-center gap-2">
-+        <button
-+          v-for="preset in quickFilterOptions"
-+          :key="preset.key"
-+          type="button"
-+          class="rounded-md border border-n-weak bg-n-surface-2 px-3 py-1.5 text-xs font-medium text-n-slate-11 transition hover:border-n-brand hover:text-n-slate-12"
-+          :class="{
-+            'bg-n-brand-9 border-n-brand-9 text-n-white': quickFilter === preset.key,
-+          }"
-+          @click="applyQuickFilter(preset.key)"
++      <div ref="filterShellRef" class="relative mt-4" @click.stop>
++        <div
++          class="flex min-h-[2.75rem] w-full min-w-0 flex-wrap items-center gap-2 rounded-lg border border-n-weak bg-n-background px-3 py-2 shadow-sm transition focus-within:border-n-brand hover:border-n-slate-7"
++          role="button"
++          tabindex="0"
++          @click="openFilterPanel"
++          @keyup.enter="openFilterPanel"
 +        >
-+          {{ preset.label }}
-+        </button>
++          <i class="i-lucide-search h-4 w-4 shrink-0 text-n-slate-10" />
++          <input
++            v-model="draftFilters.q"
++            class="h-7 min-w-[14rem] flex-1 border-0 bg-transparent text-sm text-n-slate-12 outline-none placeholder:text-n-slate-9"
++            placeholder="Search deals, clients, cars..."
++            type="search"
++            @focus="openFilterPanel"
++            @keydown.enter.prevent.stop="applySearch"
++          />
 +
-+        <select
-+          v-model="dateRangeFilter"
-+          class="rounded-md border border-n-weak bg-n-background px-2 py-2 text-xs text-n-slate-11 outline-none focus:border-n-brand"
-+        >
-+          <option
-+            v-for="item in dateFilterOptions"
-+            :key="item.key"
-+            :value="item.key"
++          <div
++            v-if="activeFilterChips.length"
++            class="flex min-w-0 flex-wrap items-center gap-1.5"
 +          >
-+            {{ item.label }}
-+          </option>
-+        </select>
++            <span
++              v-for="chip in activeFilterChips"
++              :key="chip.key"
++              class="inline-flex max-w-[15rem] items-center gap-1.5 rounded-md bg-n-alpha-2 px-2 py-1 text-xs font-medium text-n-slate-11"
++            >
++              <span class="truncate">{{ chip.label }}</span>
++              <button
++                type="button"
++                class="grid h-4 w-4 shrink-0 place-items-center rounded hover:bg-n-alpha-3"
++                :aria-label="`Remove ${chip.label}`"
++                @click.stop="removeFilterChip(chip)"
++              >
++                <i class="i-lucide-x h-3 w-3" />
++              </button>
++            </span>
++          </div>
 +
-+        <select
-+          v-model="assigneeFilter"
-+          class="rounded-md border border-n-weak bg-n-background px-2 py-2 text-xs text-n-slate-11 outline-none focus:border-n-brand"
-+        >
-+          <option
-+            v-for="item in assigneeFilterOptions"
-+            :key="item.value"
-+            :value="item.value"
++          <button
++            v-if="draftFilters.q || appliedFilters.q"
++            type="button"
++            class="grid h-7 w-7 shrink-0 place-items-center rounded-md text-n-slate-10 hover:bg-n-alpha-2 hover:text-n-slate-12"
++            aria-label="Clear search"
++            @click.stop="clearSearch"
 +          >
-+            {{ item.label }}
-+          </option>
-+        </select>
++            <i class="i-lucide-x h-4 w-4" />
++          </button>
 +
-+        <select
-+          v-model="inboxFilter"
-+          class="rounded-md border border-n-weak bg-n-background px-2 py-2 text-xs text-n-slate-11 outline-none focus:border-n-brand"
-+        >
-+          <option value="">
-+            All inboxes
-+          </option>
-+          <option
-+            v-for="item in inboxFilterOptions"
-+            :key="item.value"
-+            :value="item.value"
-+          >
-+            {{ item.label }}
-+          </option>
-+        </select>
++          <div class="ml-auto flex shrink-0 items-center gap-3 border-l border-n-weak pl-3">
++            <div class="text-right">
++              <div class="text-xs text-n-slate-10">
++                Total
++              </div>
++              <div class="text-sm font-semibold text-n-slate-12">
++                {{ pipelineTotalCount }} / {{ formatAmount(pipelineTotalAmount) || 'AED 0.00' }}
++              </div>
++            </div>
++            <button
++              v-if="hasActiveFilters"
++              type="button"
++              class="grid h-8 w-8 place-items-center rounded-md text-n-slate-10 hover:bg-n-alpha-2 hover:text-n-slate-12"
++              aria-label="Clear all filters"
++              @click.stop="resetFilters"
++            >
++              <i class="i-lucide-circle-x h-4 w-4" />
++            </button>
++            <i class="i-lucide-sliders-horizontal h-4 w-4 text-n-slate-10" />
++          </div>
++        </div>
 +
-+        <select
-+          v-model="channelFilter"
-+          class="rounded-md border border-n-weak bg-n-background px-2 py-2 text-xs text-n-slate-11 outline-none focus:border-n-brand"
++        <div
++          v-if="isFilterPanelOpen"
++          class="absolute left-0 right-0 top-[calc(100%+0.5rem)] z-40 rounded-lg border border-n-weak bg-n-surface-1 shadow-xl"
 +        >
-+          <option value="">
-+            All channels
-+          </option>
-+          <option
-+            v-for="item in channelFilterOptions"
-+            :key="item.value"
-+            :value="item.value"
-+          >
-+            {{ item.label }}
-+          </option>
-+        </select>
++          <div class="grid grid-cols-[13rem_minmax(0,1fr)_16rem] gap-0">
++            <aside class="border-r border-n-weak p-4">
++              <div class="mb-3 text-xs font-semibold uppercase text-n-slate-10">
++                Presets
++              </div>
++              <div class="grid gap-1">
++                <button
++                  v-for="preset in filterPresets"
++                  :key="preset.key"
++                  type="button"
++                  class="rounded-md px-3 py-2 text-left transition"
++                  :class="[
++                    preset.disabled
++                      ? 'cursor-not-allowed text-n-slate-8'
++                      : 'text-n-slate-11 hover:bg-n-alpha-2 hover:text-n-slate-12',
++                    appliedFilters.presetKey === preset.key ? 'bg-n-brand-3 text-n-brand-11' : '',
++                  ]"
++                  :disabled="preset.disabled"
++                  @click="applyPreset(preset)"
++                >
++                  <div class="text-sm font-medium">
++                    {{ preset.label }}
++                  </div>
++                  <div class="mt-0.5 text-xs text-n-slate-10">
++                    {{ preset.description }}
++                  </div>
++                </button>
++              </div>
++            </aside>
++
++            <main class="grid grid-cols-2 gap-4 p-4">
++              <label class="grid gap-1 text-xs font-medium text-n-slate-11">
++                Assignee
++                <select
++                  v-model="draftFilters.assignee"
++                  class="h-9 rounded-md border border-n-weak bg-n-background px-2 text-sm text-n-slate-12 outline-none focus:border-n-brand"
++                >
++                  <option
++                    v-for="item in assigneeFilterOptions"
++                    :key="item.value"
++                    :value="item.value"
++                  >
++                    {{ item.label }}
++                  </option>
++                </select>
++              </label>
++
++              <label class="grid gap-1 text-xs font-medium text-n-slate-11">
++                Date created
++                <select
++                  v-model="draftFilters.createdPreset"
++                  class="h-9 rounded-md border border-n-weak bg-n-background px-2 text-sm text-n-slate-12 outline-none focus:border-n-brand"
++                >
++                  <option
++                    v-for="item in dateFilterOptions"
++                    :key="item.key"
++                    :value="item.key"
++                  >
++                    {{ item.label }}
++                  </option>
++                </select>
++              </label>
++
++              <label
++                v-if="!draftFilters.createdPreset"
++                class="grid gap-1 text-xs font-medium text-n-slate-11"
++              >
++                Created from
++                <input
++                  v-model="draftFilters.createdFrom"
++                  class="h-9 rounded-md border border-n-weak bg-n-background px-2 text-sm text-n-slate-12 outline-none focus:border-n-brand"
++                  type="date"
++                />
++              </label>
++
++              <label
++                v-if="!draftFilters.createdPreset"
++                class="grid gap-1 text-xs font-medium text-n-slate-11"
++              >
++                Created to
++                <input
++                  v-model="draftFilters.createdTo"
++                  class="h-9 rounded-md border border-n-weak bg-n-background px-2 text-sm text-n-slate-12 outline-none focus:border-n-brand"
++                  type="date"
++                />
++              </label>
++
++              <label class="grid gap-1 text-xs font-medium text-n-slate-11">
++                Inbox
++                <select
++                  v-model="draftFilters.inboxId"
++                  class="h-9 rounded-md border border-n-weak bg-n-background px-2 text-sm text-n-slate-12 outline-none focus:border-n-brand"
++                >
++                  <option
++                    v-for="item in inboxFilterOptions"
++                    :key="item.value"
++                    :value="item.value"
++                  >
++                    {{ item.label }}
++                  </option>
++                </select>
++              </label>
++
++              <label class="grid gap-1 text-xs font-medium text-n-slate-11">
++                Source Request
++                <select
++                  v-model="draftFilters.sourceRequest"
++                  class="h-9 rounded-md border border-n-weak bg-n-background px-2 text-sm text-n-slate-12 outline-none focus:border-n-brand"
++                >
++                  <option
++                    v-for="item in sourceRequestOptions"
++                    :key="item.value"
++                    :value="item.value"
++                  >
++                    {{ item.label }}
++                  </option>
++                </select>
++              </label>
++
++              <label class="grid gap-1 text-xs font-medium text-n-slate-11">
++                Car type
++                <select
++                  v-model="draftFilters.carType"
++                  class="h-9 rounded-md border border-n-weak bg-n-background px-2 text-sm text-n-slate-12 outline-none focus:border-n-brand"
++                >
++                  <option
++                    v-for="item in carTypeOptions"
++                    :key="item.value"
++                    :value="item.value"
++                  >
++                    {{ item.label }}
++                  </option>
++                </select>
++              </label>
++
++              <label class="grid gap-1 text-xs font-medium text-n-slate-11">
++                Client status
++                <select
++                  v-model="draftFilters.clientStatus"
++                  class="h-9 rounded-md border border-n-weak bg-n-background px-2 text-sm text-n-slate-12 outline-none focus:border-n-brand"
++                >
++                  <option
++                    v-for="item in clientStatusOptions"
++                    :key="item.value"
++                    :value="item.value"
++                  >
++                    {{ item.label }}
++                  </option>
++                </select>
++              </label>
++
++              <label class="grid gap-1 text-xs font-medium text-n-slate-11">
++                Language
++                <select
++                  v-model="draftFilters.language"
++                  class="h-9 rounded-md border border-n-weak bg-n-background px-2 text-sm text-n-slate-12 outline-none focus:border-n-brand"
++                >
++                  <option
++                    v-for="item in languageOptions"
++                    :key="item.value"
++                    :value="item.value"
++                  >
++                    {{ item.label }}
++                  </option>
++                </select>
++              </label>
++
++              <label class="grid gap-1 text-xs font-medium text-n-slate-11">
++                Rental from
++                <input
++                  v-model="draftFilters.rentalFrom"
++                  class="h-9 rounded-md border border-n-weak bg-n-background px-2 text-sm text-n-slate-12 outline-none focus:border-n-brand"
++                  type="date"
++                />
++              </label>
++
++              <label class="grid gap-1 text-xs font-medium text-n-slate-11">
++                Rental to
++                <input
++                  v-model="draftFilters.rentalTo"
++                  class="h-9 rounded-md border border-n-weak bg-n-background px-2 text-sm text-n-slate-12 outline-none focus:border-n-brand"
++                  type="date"
++                />
++              </label>
++
++              <label class="grid gap-1 text-xs font-medium text-n-slate-11">
++                Amount from
++                <input
++                  v-model="draftFilters.amountMin"
++                  class="h-9 rounded-md border border-n-weak bg-n-background px-2 text-sm text-n-slate-12 outline-none focus:border-n-brand"
++                  min="0"
++                  step="0.01"
++                  type="number"
++                />
++              </label>
++
++              <label class="grid gap-1 text-xs font-medium text-n-slate-11">
++                Amount to
++                <input
++                  v-model="draftFilters.amountMax"
++                  class="h-9 rounded-md border border-n-weak bg-n-background px-2 text-sm text-n-slate-12 outline-none focus:border-n-brand"
++                  min="0"
++                  step="0.01"
++                  type="number"
++                />
++              </label>
++
++              <label class="col-span-2 inline-flex items-center gap-2 text-sm font-medium text-n-slate-11">
++                <input
++                  v-model="draftFilters.hasDebt"
++                  class="h-4 w-4 rounded border-n-weak"
++                  type="checkbox"
++                />
++                Has debt
++              </label>
++            </main>
++
++            <aside class="border-l border-n-weak p-4">
++              <div class="mb-3 flex items-center justify-between gap-2">
++                <div class="text-xs font-semibold uppercase text-n-slate-10">
++                  Source quick filters
++                </div>
++                <Spinner v-if="isLoadingFields" :size="14" />
++              </div>
++              <div v-if="sourceQuickFilters.length" class="grid gap-1.5">
++                <button
++                  v-for="item in sourceQuickFilters"
++                  :key="item.value"
++                  type="button"
++                  class="flex min-w-0 items-center justify-between gap-3 rounded-md px-3 py-2 text-left text-sm text-n-slate-11 transition hover:bg-n-alpha-2 hover:text-n-slate-12"
++                  :class="{ 'bg-n-brand-3 text-n-brand-11': draftFilters.sourceRequest === item.value }"
++                  @click="selectQuickSource(item.value)"
++                >
++                  <span class="truncate">{{ item.label }}</span>
++                  <span class="shrink-0 rounded bg-n-alpha-2 px-1.5 py-0.5 text-xs">
++                    {{ item.count }}
++                  </span>
++                </button>
++              </div>
++              <div v-else class="rounded-md border border-dashed border-n-weak px-3 py-5 text-sm text-n-slate-10">
++                No source values yet.
++              </div>
++            </aside>
++          </div>
++
++          <footer class="flex items-center justify-between gap-3 border-t border-n-weak px-4 py-3">
++            <Button
++              label="Reset"
++              size="sm"
++              slate
++              ghost
++              type="button"
++              @click="resetFilters"
++            />
++            <div class="flex items-center gap-2">
++              <Button
++                label="Close"
++                size="sm"
++                slate
++                ghost
++                type="button"
++                @click="closeFilterPanel"
++              />
++              <Button
++                label="Apply filters"
++                icon="i-lucide-check"
++                size="sm"
++                type="button"
++                @click="applyDraftFilters"
++              />
++            </div>
++          </footer>
++        </div>
 +      </div>
 +    </header>
 +
@@ -865,6 +1519,12 @@ index 0000000..a574cb2
 +      class="grid flex-1 place-items-center text-n-slate-11"
 +    >
 +      <Spinner :size="28" />
++    </div>
++
++    <div v-else-if="viewMode === 'list'" class="min-h-0 flex-1 px-6 py-5">
++      <div class="grid h-full place-items-center rounded-lg border border-dashed border-n-weak text-sm text-n-slate-11">
++        List view is coming next. Kanban remains active for deal work.
++      </div>
 +    </div>
 +
 +    <div v-else class="min-h-0 flex-1 overflow-x-auto px-6 py-5">
