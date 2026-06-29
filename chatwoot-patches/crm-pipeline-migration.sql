@@ -211,6 +211,21 @@ CREATE INDEX IF NOT EXISTS idx_crm_deals_contact_id
 CREATE INDEX IF NOT EXISTS idx_crm_deals_assigned_to
   ON public.crm_deals (assigned_to);
 
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_indexes
+    WHERE schemaname = 'public'
+      AND indexname = 'idx_crm_deals_account_conversation_id'
+      AND tablename = 'crm_deals'
+  ) THEN
+    CREATE UNIQUE INDEX idx_crm_deals_account_conversation_id
+      ON public.crm_deals (account_id, conversation_id)
+      WHERE conversation_id IS NOT NULL;
+  END IF;
+END $$;
+
 CREATE INDEX IF NOT EXISTS idx_crm_deals_custom_attributes
   ON public.crm_deals USING gin (custom_attributes);
 

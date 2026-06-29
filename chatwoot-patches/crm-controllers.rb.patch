@@ -128,7 +128,7 @@ new file mode 100644
 index 0000000..ad35c89
 --- /dev/null
 +++ b/app/controllers/api/v1/accounts/crm/deals_controller.rb
-@@ -0,0 +1,162 @@
+@@ -0,0 +1,186 @@
 +class Api::V1::Accounts::Crm::DealsController < Api::V1::Accounts::BaseController
 +  before_action :check_authorization
 +  before_action :set_deal, only: [:show, :update, :destroy]
@@ -177,6 +177,24 @@ index 0000000..ad35c89
 +    @deal.destroy!
 +
 +    head :ok
++  end
++
++  def ensure_from_conversation
++    result = Crm::EnsureFromConversationService.new(
++      account: Current.account,
++      conversation_id: ensure_from_conversation_params[:conversation_id],
++      stage_slug: ensure_from_conversation_params[:stage_slug]
++    ).call
++
++    render json: deal_payload(result.deal)
++  rescue ActiveRecord::RecordNotFound
++    render json: { error: 'Conversation not found' }, status: :not_found
++  rescue Crm::EnsureFromConversationService::InvalidStageError => e
++    render json: { error: e.message }, status: :unprocessable_entity
++  rescue ActiveRecord::RecordInvalid => e
++    render json: { error: e.record.errors.full_messages.join(', ') }, status: :unprocessable_entity
++  rescue ActionController::ParameterMissing, ArgumentError => e
++    render json: { error: e.message }, status: :unprocessable_entity
 +  end
 +
 +  private
@@ -265,6 +283,15 @@ index 0000000..ad35c89
 +      name: user.name,
 +      email: user.email,
 +      avatar_url: user.avatar_url
++    }
++  end
++
++  def ensure_from_conversation_params
++    params.require(:conversation_id)
++
++    {
++      conversation_id: params.require(:conversation_id).to_i,
++      stage_slug: params[:stage_slug]
 +    }
 +  end
 +
