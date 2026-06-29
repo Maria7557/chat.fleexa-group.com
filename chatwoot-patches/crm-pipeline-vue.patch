@@ -272,10 +272,10 @@ index 07789a1..91db2e1 100644
          :list="conversationSidebarItems"
 diff --git a/app/javascript/dashboard/routes/dashboard/crm/Pipeline.vue b/app/javascript/dashboard/routes/dashboard/crm/Pipeline.vue
 new file mode 100644
-index 0000000..42f0a7b
+index 0000000..9b90ff3
 --- /dev/null
 +++ b/app/javascript/dashboard/routes/dashboard/crm/Pipeline.vue
-@@ -0,0 +1,1617 @@
+@@ -0,0 +1,1585 @@
 +<script setup>
 +import { computed, onBeforeUnmount, ref, watch } from 'vue';
 +import { useRoute, useRouter } from 'vue-router';
@@ -311,22 +311,12 @@ index 0000000..42f0a7b
 +const buildEmptyFilters = () => ({
 +  q: '',
 +  assignee: '',
-+  stageSlug: '',
++  stageId: '',
 +  createdPreset: '',
 +  createdFrom: '',
 +  createdTo: '',
 +  inboxId: '',
-+  sourceRequest: '',
-+  carType: '',
-+  clientStatus: '',
-+  language: '',
-+  rentalFrom: '',
-+  rentalTo: '',
-+  amountMin: '',
-+  amountMax: '',
-+  hasDebt: false,
-+  rottingTo: '',
-+  presetKey: '',
++  fieldFilters: {},
 +});
 +
 +const stages = ref([]);
@@ -363,19 +353,6 @@ index 0000000..42f0a7b
 +  { key: 'this_quarter', label: 'Quarter' },
 +];
 +
-+const clientStatusOptions = [
-+  { value: '', label: 'Any client' },
-+  { value: 'NEW', label: 'NEW' },
-+  { value: 'REG', label: 'REG' },
-+];
-+
-+const languageOptions = [
-+  { value: '', label: 'Any language' },
-+  { value: 'RU', label: 'RU' },
-+  { value: 'EN', label: 'EN' },
-+  { value: 'AR', label: 'AR' },
-+];
-+
 +const moneyFormatter = new Intl.NumberFormat('en-AE', {
 +  style: 'currency',
 +  currency: 'AED',
@@ -390,59 +367,12 @@ index 0000000..42f0a7b
 +const cloneFilters = filters => ({
 +  ...buildEmptyFilters(),
 +  ...(filters || {}),
++  fieldFilters: { ...(filters?.fieldFilters || {}) },
 +});
 +
 +const orderedStages = computed(() => {
 +  return [...stages.value].sort((a, b) => a.position - b.position);
 +});
-+
-+const doneStageSlug = computed(() => {
-+  return (
-+    orderedStages.value.find(stage => stage.slug === 'done')?.slug ||
-+    orderedStages.value.find(stage => stage.slug === 'closed_won')?.slug ||
-+    orderedStages.value.find(stage => /done|won|closed/i.test(stage.name || ''))?.slug ||
-+    'closed_won'
-+  );
-+});
-+
-+const filterPresets = computed(() => [
-+  {
-+    key: 'all',
-+    label: 'All deals',
-+    description: 'Clear every filter',
-+    disabled: false,
-+  },
-+  {
-+    key: 'my',
-+    label: 'My deals',
-+    description: 'Assigned to me',
-+    disabled: false,
-+  },
-+  {
-+    key: 'unassigned',
-+    label: 'Unassigned',
-+    description: 'No manager',
-+    disabled: false,
-+  },
-+  {
-+    key: 'done_this_month',
-+    label: 'Done this month',
-+    description: 'Done stage and current month',
-+    disabled: false,
-+  },
-+  {
-+    key: 'overdue',
-+    label: 'Overdue',
-+    description: 'Rotting deals',
-+    disabled: false,
-+  },
-+  {
-+    key: 'no_booking',
-+    label: 'No booking',
-+    description: 'Needs null booking backend filter',
-+    disabled: true,
-+  },
-+]);
 +
 +const dealsByStage = computed(() => {
 +  return deals.value.reduce((memo, deal) => {
@@ -492,7 +422,7 @@ index 0000000..42f0a7b
 +  });
 +
 +  return [
-+    { value: '', label: 'All assignees' },
++    { value: '', label: 'All operators' },
 +    { value: 'me', label: 'Me' },
 +    { value: 'unassigned', label: 'Unassigned' },
 +    ...[...users.entries()].map(([value, label]) => ({
@@ -501,6 +431,14 @@ index 0000000..42f0a7b
 +    })),
 +  ];
 +});
++
++const stageFilterOptions = computed(() => [
++  { value: '', label: 'All stages' },
++  ...orderedStages.value.map(stage => ({
++    value: String(stage.id),
++    label: stage.name,
++  })),
++]);
 +
 +const inboxFilterOptions = computed(() => {
 +  const inboxes = new Set();
@@ -522,63 +460,82 @@ index 0000000..42f0a7b
 +  return fieldDefinitions.value.find(field => field.key === key);
 +};
 +
-+const customAttributeValue = (deal, key) => {
-+  return deal.custom_attributes?.[key] || deal[key] || '';
++const isSystemField = field => {
++  return field.storage_type === 'system_column' || field.source === 'system';
 +};
 +
-+const uniqueDealValuesFor = key => {
++const customAttributeValue = (deal, key) => {
++  return deal.custom_attributes?.[key] ?? deal[key] ?? '';
++};
++
++const valueForField = (deal, field) => {
++  return isSystemField(field) ? deal[field.key] : customAttributeValue(deal, field.key);
++};
++
++const hasDisplayValue = value => {
++  return value !== null && value !== undefined && value !== '';
++};
++
++const canonicalFilterFieldKey = field => {
++  const key = field.key.toString();
++  return key === 'source_requect' ? 'source_request' : key;
++};
++
++const fieldActualValueCount = field => {
 +  const values = new Set();
++
 +  deals.value.forEach(deal => {
-+    const value = customAttributeValue(deal, key);
-+    if (value) values.add(String(value));
++    const value = valueForField(deal, field);
++    if (hasDisplayValue(value)) values.add(String(value));
++  });
++
++  return values.size;
++};
++
++const fieldFilterPriority = field => {
++  const options = Array.isArray(field.options) ? field.options.length : 0;
++  const sourceRequestCompatibilityBonus = field.key === 'source_requect' ? 10000 : 0;
++  return sourceRequestCompatibilityBonus + fieldActualValueCount(field) * 100 + options;
++};
++
++const filterFieldDefinitions = computed(() => {
++  const fieldsByCanonicalKey = new Map();
++
++  [...fieldDefinitions.value]
++    .filter(field => field.is_active !== false)
++    .sort((a, b) => a.position - b.position)
++    .forEach(field => {
++      const canonicalKey = canonicalFilterFieldKey(field);
++      const existingField = fieldsByCanonicalKey.get(canonicalKey);
++
++      if (!existingField || fieldFilterPriority(field) > fieldFilterPriority(existingField)) {
++        fieldsByCanonicalKey.set(canonicalKey, field);
++      }
++    });
++
++  return [...fieldsByCanonicalKey.values()].sort((a, b) => a.position - b.position);
++});
++
++const uniqueDealValuesForField = field => {
++  const values = new Set();
++
++  deals.value.forEach(deal => {
++    const value = valueForField(deal, field);
++    if (hasDisplayValue(value)) values.add(String(value));
 +  });
 +
 +  return [...values].sort();
 +};
 +
-+const optionsForField = key => {
-+  const fieldOptions = fieldDefinitionFor(key)?.options || [];
-+  const configuredOptions = Array.isArray(fieldOptions) ? fieldOptions : [];
-+  const values = configuredOptions.length ? configuredOptions : uniqueDealValuesFor(key);
++const optionsForField = field => {
++  const configuredOptions = Array.isArray(field.options) ? field.options : [];
++  const actualValues = uniqueDealValuesForField(field);
++  const values = [...new Set([...actualValues, ...configuredOptions].map(String))];
 +
 +  return [
-+    { value: '', label: `Any ${labelForField(key).toLowerCase()}` },
++    { value: '', label: `Any ${field.label.toLowerCase()}` },
 +    ...values.map(value => ({ value: String(value), label: String(value) })),
 +  ];
-+};
-+
-+const sourceRequestOptions = computed(() => optionsForField('source_request'));
-+const carTypeOptions = computed(() => optionsForField('car_type'));
-+
-+const sourceQuickFilters = computed(() => {
-+  const counts = deals.value.reduce((memo, deal) => {
-+    const source = customAttributeValue(deal, 'source_request');
-+    if (!source) return memo;
-+    memo[source] = (memo[source] || 0) + 1;
-+    return memo;
-+  }, {});
-+
-+  const configuredSources = sourceRequestOptions.value
-+    .filter(option => option.value)
-+    .map(option => option.value);
-+  const values = configuredSources.length ? configuredSources : Object.keys(counts);
-+
-+  return values
-+    .map(value => ({
-+      value,
-+      label: value,
-+      count: counts[value] || 0,
-+    }))
-+    .sort((left, right) => right.count - left.count || left.label.localeCompare(right.label));
-+});
-+
-+const labelForField = key => {
-+  const labels = {
-+    source_request: 'Source request',
-+    car_type: 'Car type',
-+  };
-+
-+  return fieldDefinitionFor(key)?.label || labels[key] || key;
 +};
 +
 +const datePresetLabel = key => {
@@ -589,12 +546,12 @@ index 0000000..42f0a7b
 +  return assigneeFilterOptions.value.find(item => item.value === value)?.label || value;
 +};
 +
-+const inboxLabel = value => {
-+  return inboxFilterOptions.value.find(item => item.value === value)?.label || `Inbox #${value}`;
++const stageLabel = value => {
++  return stageFilterOptions.value.find(item => item.value === String(value))?.label || value;
 +};
 +
-+const presetLabel = key => {
-+  return filterPresets.value.find(item => item.key === key)?.label || '';
++const inboxLabel = value => {
++  return inboxFilterOptions.value.find(item => item.value === value)?.label || `Inbox #${value}`;
 +};
 +
 +const formatDateRangeLabel = (from, to) => {
@@ -604,16 +561,80 @@ index 0000000..42f0a7b
 +  return '';
 +};
 +
++const fieldFilterState = (filters, field) => {
++  return filters.fieldFilters?.[field.key] || {};
++};
++
++const setDraftFieldFilter = (field, value) => {
++  draftFilters.value.fieldFilters = {
++    ...(draftFilters.value.fieldFilters || {}),
++    [field.key]: {
++      ...fieldFilterState(draftFilters.value, field),
++      ...value,
++    },
++  };
++};
++
++const selectOptionsForField = field => {
++  if (field.field_type === 'boolean') {
++    return [
++      { value: '', label: `Any ${field.label.toLowerCase()}` },
++      { value: 'true', label: 'Yes' },
++      { value: 'false', label: 'No' },
++    ];
++  }
++
++  return optionsForField(field);
++};
++
++const inputTypeForField = field => {
++  if (field.field_type === 'date') return 'date';
++  if (field.field_type === 'number') return 'number';
++  return 'text';
++};
++
++const stepForField = field => {
++  return field.field_type === 'number' ? '0.01' : undefined;
++};
++
++const isTextFilterField = field => {
++  return !['select', 'boolean', 'date', 'number'].includes(field.field_type);
++};
++
++const isRangeFilterField = field => {
++  return ['date', 'number'].includes(field.field_type);
++};
++
++const hasFieldFilterValue = filter => {
++  return hasDisplayValue(filter.value) || hasDisplayValue(filter.from) || hasDisplayValue(filter.to);
++};
++
++const fieldFilterChipLabel = (field, filter) => {
++  if (field.field_type === 'date') {
++    return `${field.label}: ${formatDateRangeLabel(filter.from, filter.to)}`;
++  }
++
++  if (field.field_type === 'number') {
++    return `${field.label}: ${filter.from || '0'}-${filter.to || 'any'}`;
++  }
++
++  if (field.field_type === 'boolean') {
++    return `${field.label}: ${filter.value === 'true' ? 'Yes' : 'No'}`;
++  }
++
++  return `${field.label}: ${filter.value}`;
++};
++
 +const activeFilterChips = computed(() => {
 +  const filters = appliedFilters.value;
 +  const chips = [];
 +
 +  if (filters.q) chips.push({ key: 'q', label: `Search: ${filters.q}` });
-+  if (filters.presetKey && filters.presetKey !== 'all') {
-+    chips.push({ key: 'preset', label: presetLabel(filters.presetKey) });
++  if (filters.stageId) {
++    chips.push({ key: 'stageId', label: `Stage: ${stageLabel(filters.stageId)}` });
 +  }
 +  if (filters.assignee) {
-+    chips.push({ key: 'assignee', label: `Assignee: ${assigneeLabel(filters.assignee)}` });
++    chips.push({ key: 'assignee', label: `Operator: ${assigneeLabel(filters.assignee)}` });
 +  }
 +  if (filters.createdPreset) {
 +    chips.push({ key: 'created', label: datePresetLabel(filters.createdPreset) });
@@ -621,17 +642,15 @@ index 0000000..42f0a7b
 +    chips.push({ key: 'created', label: formatDateRangeLabel(filters.createdFrom, filters.createdTo) });
 +  }
 +  if (filters.inboxId) chips.push({ key: 'inboxId', label: `Inbox: ${inboxLabel(filters.inboxId)}` });
-+  if (filters.sourceRequest) chips.push({ key: 'sourceRequest', label: `Source: ${filters.sourceRequest}` });
-+  if (filters.carType) chips.push({ key: 'carType', label: `Car type: ${filters.carType}` });
-+  if (filters.clientStatus) chips.push({ key: 'clientStatus', label: `Client: ${filters.clientStatus}` });
-+  if (filters.language) chips.push({ key: 'language', label: `Language: ${filters.language}` });
-+  if (filters.rentalFrom || filters.rentalTo) {
-+    chips.push({ key: 'rental', label: `Rental: ${formatDateRangeLabel(filters.rentalFrom, filters.rentalTo)}` });
-+  }
-+  if (filters.amountMin || filters.amountMax) {
-+    chips.push({ key: 'amount', label: `Amount: ${filters.amountMin || '0'}-${filters.amountMax || 'any'}` });
-+  }
-+  if (filters.hasDebt) chips.push({ key: 'hasDebt', label: 'Has debt' });
++
++  Object.entries(filters.fieldFilters || {}).forEach(([key, filter]) => {
++    if (!hasFieldFilterValue(filter)) return;
++
++    const field = fieldDefinitionFor(key);
++    if (!field) return;
++
++    chips.push({ key: `field:${key}`, label: fieldFilterChipLabel(field, filter) });
++  });
 +
 +  return chips;
 +});
@@ -640,9 +659,44 @@ index 0000000..42f0a7b
 +
 +const customFiltersForRequest = filters => {
 +  const custom = {};
-+  if (filters.clientStatus) custom.client_status = filters.clientStatus;
-+  if (filters.language) custom.language = filters.language;
++
++  Object.entries(filters.fieldFilters || {}).forEach(([key, filter]) => {
++    if (!hasFieldFilterValue(filter)) return;
++
++    const field = fieldDefinitionFor(key);
++    if (!field || isSystemField(field)) return;
++
++    if (isRangeFilterField(field)) {
++      custom[key] = {
++        from: filter.from || '',
++        to: filter.to || '',
++      };
++      return;
++    }
++
++    custom[key] = filter.value;
++  });
++
 +  return custom;
++};
++
++const applySystemFieldFilter = (params, field, filter) => {
++  if (!hasFieldFilterValue(filter)) return;
++
++  if (field.field_type === 'date') {
++    if (filter.from) params[`${field.key}_from`] = filter.from;
++    if (filter.to) params[`${field.key}_to`] = filter.to;
++    return;
++  }
++
++  if (field.field_type === 'number') {
++    const rangeKey = field.key === 'debt_amount' ? 'debt' : field.key;
++    if (filter.from) params[`${rangeKey}_min`] = filter.from;
++    if (filter.to) params[`${rangeKey}_max`] = filter.to;
++    return;
++  }
++
++  if (filter.value) params[field.key] = filter.value;
 +};
 +
 +const dealRequestParams = computed(() => {
@@ -653,19 +707,11 @@ index 0000000..42f0a7b
 +  };
 +
 +  if (filters.q) params.q = filters.q;
-+  if (filters.stageSlug) params.stage_slug = filters.stageSlug;
++  if (filters.stageId) params.stage_id = filters.stageId;
 +  if (filters.createdPreset) params.created_at_preset = filters.createdPreset;
 +  if (filters.createdFrom) params.created_at_from = filters.createdFrom;
 +  if (filters.createdTo) params.created_at_to = filters.createdTo;
 +  if (filters.inboxId) params.inbox_id = filters.inboxId;
-+  if (filters.sourceRequest) params.source_request = filters.sourceRequest;
-+  if (filters.carType) params.car_type = filters.carType;
-+  if (filters.rentalFrom) params.period_from = filters.rentalFrom;
-+  if (filters.rentalTo) params.period_to = filters.rentalTo;
-+  if (filters.amountMin) params.amount_min = filters.amountMin;
-+  if (filters.amountMax) params.amount_max = filters.amountMax;
-+  if (filters.hasDebt) params.debt_min = '0.01';
-+  if (filters.rottingTo) params.rotting_since_to = filters.rottingTo;
 +
 +  if (filters.assignee === 'me') {
 +    params.assigned_to = 'me';
@@ -674,6 +720,13 @@ index 0000000..42f0a7b
 +  } else if (filters.assignee) {
 +    params.assigned_to = filters.assignee;
 +  }
++
++  Object.entries(filters.fieldFilters || {}).forEach(([key, filter]) => {
++    const field = fieldDefinitionFor(key);
++    if (!field || !isSystemField(field)) return;
++
++    applySystemFieldFilter(params, field, filter);
++  });
 +
 +  const customFilters = customFiltersForRequest(filters);
 +  if (Object.keys(customFilters).length) {
@@ -687,31 +740,72 @@ index 0000000..42f0a7b
 +  return Array.isArray(value) ? value[0] : value;
 +};
 +
++const setQueryFieldFilter = (filters, key, value, rangePart = 'value') => {
++  if (!hasDisplayValue(value)) return;
++
++  filters.fieldFilters[key] = {
++    ...(filters.fieldFilters[key] || {}),
++    [rangePart]: value,
++  };
++};
++
++const hydrateLegacyFieldQuery = (filters, query) => {
++  const legacyFieldMap = {
++    source_request: 'source_requect',
++    car_type: 'car_type',
++    client_status: 'client_status',
++    language: 'language',
++    rental_from: 'rental_start',
++    rental_to: 'rental_end',
++    amount_min: 'amount',
++    amount_max: 'amount',
++    debt_min: 'debt_amount',
++    debt_max: 'debt_amount',
++  };
++
++  Object.entries(legacyFieldMap).forEach(([queryKey, fieldKey]) => {
++    const value = routeValue(query[queryKey]);
++    if (!hasDisplayValue(value)) return;
++
++    if (queryKey.endsWith('_from') || queryKey.endsWith('_min')) {
++      setQueryFieldFilter(filters, fieldKey, value, 'from');
++    } else if (queryKey.endsWith('_to') || queryKey.endsWith('_max')) {
++      setQueryFieldFilter(filters, fieldKey, value, 'to');
++    } else {
++      setQueryFieldFilter(filters, fieldKey, value);
++    }
++  });
++};
++
 +const filtersFromQuery = query => {
 +  const filters = buildEmptyFilters();
-+  const hasDebt = routeValue(query.has_debt);
 +
 +  filters.q = routeValue(query.q) || '';
 +  filters.assignee =
 +    routeValue(query.assignee) ||
 +    routeValue(query.assigned_to) ||
 +    (routeValue(query.only_unassigned) ? 'unassigned' : '');
-+  filters.stageSlug = routeValue(query.stage_slug) || '';
++  filters.stageId = routeValue(query.stage_id) || '';
 +  filters.createdPreset = routeValue(query.created_preset) || routeValue(query.created_at_preset) || '';
 +  filters.createdFrom = routeValue(query.created_from) || routeValue(query.created_at_from) || '';
 +  filters.createdTo = routeValue(query.created_to) || routeValue(query.created_at_to) || '';
 +  filters.inboxId = routeValue(query.inbox_id) || '';
-+  filters.sourceRequest = routeValue(query.source_request) || '';
-+  filters.carType = routeValue(query.car_type) || '';
-+  filters.clientStatus = routeValue(query.client_status) || '';
-+  filters.language = routeValue(query.language) || '';
-+  filters.rentalFrom = routeValue(query.rental_from) || routeValue(query.period_from) || '';
-+  filters.rentalTo = routeValue(query.rental_to) || routeValue(query.period_to) || '';
-+  filters.amountMin = routeValue(query.amount_min) || '';
-+  filters.amountMax = routeValue(query.amount_max) || '';
-+  filters.hasDebt = hasDebt === '1' || hasDebt === 'true';
-+  filters.rottingTo = routeValue(query.rotting_to) || routeValue(query.rotting_since_to) || '';
-+  filters.presetKey = routeValue(query.preset) || '';
++
++  Object.entries(query).forEach(([queryKey, rawValue]) => {
++    if (!queryKey.startsWith('field_')) return;
++
++    const value = routeValue(rawValue);
++    const rawFieldKey = queryKey.slice(6);
++    if (rawFieldKey.endsWith('_from')) {
++      setQueryFieldFilter(filters, rawFieldKey.slice(0, -5), value, 'from');
++    } else if (rawFieldKey.endsWith('_to')) {
++      setQueryFieldFilter(filters, rawFieldKey.slice(0, -3), value, 'to');
++    } else {
++      setQueryFieldFilter(filters, rawFieldKey, value);
++    }
++  });
++
++  hydrateLegacyFieldQuery(filters, query);
 +
 +  return filters;
 +};
@@ -721,28 +815,22 @@ index 0000000..42f0a7b
 +  const entries = {
 +    q: filters.q,
 +    assignee: filters.assignee,
-+    stage_slug: filters.stageSlug,
++    stage_id: filters.stageId,
 +    created_preset: filters.createdPreset,
 +    created_from: filters.createdFrom,
 +    created_to: filters.createdTo,
 +    inbox_id: filters.inboxId,
-+    source_request: filters.sourceRequest,
-+    car_type: filters.carType,
-+    client_status: filters.clientStatus,
-+    language: filters.language,
-+    rental_from: filters.rentalFrom,
-+    rental_to: filters.rentalTo,
-+    amount_min: filters.amountMin,
-+    amount_max: filters.amountMax,
-+    rotting_to: filters.rottingTo,
-+    preset: filters.presetKey,
 +  };
 +
 +  Object.entries(entries).forEach(([key, value]) => {
 +    if (value !== undefined && value !== null && value !== '') query[key] = value;
 +  });
 +
-+  if (filters.hasDebt) query.has_debt = '1';
++  Object.entries(filters.fieldFilters || {}).forEach(([fieldKey, filter]) => {
++    if (hasDisplayValue(filter.value)) query[`field_${fieldKey}`] = filter.value;
++    if (hasDisplayValue(filter.from)) query[`field_${fieldKey}_from`] = filter.from;
++    if (hasDisplayValue(filter.to)) query[`field_${fieldKey}_to`] = filter.to;
++  });
 +
 +  return query;
 +};
@@ -756,30 +844,21 @@ index 0000000..42f0a7b
 +};
 +
 +const resetFilterKey = (filters, key) => {
-+  if (key === 'preset') {
-+    filters.presetKey = '';
-+    filters.stageSlug = '';
-+    filters.rottingTo = '';
++  if (key.startsWith('field:')) {
++    const fieldKey = key.slice(6);
++    filters.fieldFilters = { ...(filters.fieldFilters || {}) };
++    delete filters.fieldFilters[fieldKey];
 +    return;
 +  }
++
 +  if (key === 'created') {
 +    filters.createdPreset = '';
 +    filters.createdFrom = '';
 +    filters.createdTo = '';
 +    return;
 +  }
-+  if (key === 'rental') {
-+    filters.rentalFrom = '';
-+    filters.rentalTo = '';
-+    return;
-+  }
-+  if (key === 'amount') {
-+    filters.amountMin = '';
-+    filters.amountMax = '';
-+    return;
-+  }
 +
-+  filters[key] = key === 'hasDebt' ? false : '';
++  filters[key] = '';
 +};
 +
 +const commitFilters = async (filters, options = {}) => {
@@ -843,35 +922,6 @@ index 0000000..42f0a7b
 +  commitFilters(filters);
 +};
 +
-+const applyPreset = preset => {
-+  if (preset.disabled) return;
-+
-+  const filters = buildEmptyFilters();
-+  filters.presetKey = preset.key;
-+
-+  if (preset.key === 'my') {
-+    filters.assignee = 'me';
-+  } else if (preset.key === 'unassigned') {
-+    filters.assignee = 'unassigned';
-+  } else if (preset.key === 'done_this_month') {
-+    filters.stageSlug = doneStageSlug.value;
-+    filters.createdPreset = 'this_month';
-+  } else if (preset.key === 'overdue') {
-+    filters.rottingTo = new Date().toISOString();
-+  } else if (preset.key === 'all') {
-+    filters.presetKey = '';
-+  }
-+
-+  commitFilters(filters, { closePanel: true });
-+};
-+
-+const selectQuickSource = value => {
-+  draftFilters.value = {
-+    ...draftFilters.value,
-+    sourceRequest: value,
-+  };
-+};
-+
 +const stageTotal = stageId => {
 +  return dealsForStage(stageId).reduce((sum, deal) => {
 +    return sum + amountValue(deal.amount);
@@ -909,10 +959,10 @@ index 0000000..42f0a7b
 +  errorMessage.value = '';
 +
 +  try {
++    await loadDealFields();
 +    const [stageResponse, dealResponse] = await Promise.all([
 +      CrmPipelineAPI.getStages(),
 +      CrmPipelineAPI.getDeals(dealRequestParams.value),
-+      loadDealFields(),
 +    ]);
 +
 +    stages.value = stageResponse.data || [];
@@ -1231,39 +1281,33 @@ index 0000000..42f0a7b
 +          v-if="isFilterPanelOpen"
 +          class="absolute left-0 right-0 top-[calc(100%+0.5rem)] z-40 rounded-lg border border-n-weak bg-n-surface-1 shadow-xl"
 +        >
-+          <div class="grid grid-cols-[13rem_minmax(0,1fr)_16rem] gap-0">
-+            <aside class="border-r border-n-weak p-4">
-+              <div class="mb-3 text-xs font-semibold uppercase text-n-slate-10">
-+                Presets
-+              </div>
-+              <div class="grid gap-1">
-+                <button
-+                  v-for="preset in filterPresets"
-+                  :key="preset.key"
-+                  type="button"
-+                  class="rounded-md px-3 py-2 text-left transition"
-+                  :class="[
-+                    preset.disabled
-+                      ? 'cursor-not-allowed text-n-slate-8'
-+                      : 'text-n-slate-11 hover:bg-n-alpha-2 hover:text-n-slate-12',
-+                    appliedFilters.presetKey === preset.key ? 'bg-n-brand-3 text-n-brand-11' : '',
-+                  ]"
-+                  :disabled="preset.disabled"
-+                  @click="applyPreset(preset)"
-+                >
-+                  <div class="text-sm font-medium">
-+                    {{ preset.label }}
-+                  </div>
-+                  <div class="mt-0.5 text-xs text-n-slate-10">
-+                    {{ preset.description }}
-+                  </div>
-+                </button>
-+              </div>
-+            </aside>
-+
++          <div class="max-h-[min(72vh,46rem)] overflow-y-auto">
 +            <main class="grid grid-cols-2 gap-4 p-4">
++              <div class="col-span-2 flex items-center justify-between gap-3">
++                <div class="text-xs font-semibold uppercase text-n-slate-10">
++                  Filters
++                </div>
++                <Spinner v-if="isLoadingFields" :size="14" />
++              </div>
++
 +              <label class="grid gap-1 text-xs font-medium text-n-slate-11">
-+                Assignee
++                Stage
++                <select
++                  v-model="draftFilters.stageId"
++                  class="h-9 rounded-md border border-n-weak bg-n-background px-2 text-sm text-n-slate-12 outline-none focus:border-n-brand"
++                >
++                  <option
++                    v-for="item in stageFilterOptions"
++                    :key="item.value"
++                    :value="item.value"
++                  >
++                    {{ item.label }}
++                  </option>
++                </select>
++              </label>
++
++              <label class="grid gap-1 text-xs font-medium text-n-slate-11">
++                Operator
 +                <select
 +                  v-model="draftFilters.assignee"
 +                  class="h-9 rounded-md border border-n-weak bg-n-background px-2 text-sm text-n-slate-12 outline-none focus:border-n-brand"
@@ -1334,146 +1378,70 @@ index 0000000..42f0a7b
 +                </select>
 +              </label>
 +
-+              <label class="grid gap-1 text-xs font-medium text-n-slate-11">
-+                Source Request
-+                <select
-+                  v-model="draftFilters.sourceRequest"
-+                  class="h-9 rounded-md border border-n-weak bg-n-background px-2 text-sm text-n-slate-12 outline-none focus:border-n-brand"
++              <template
++                v-for="field in filterFieldDefinitions"
++                :key="field.key"
++              >
++                <label
++                  v-if="field.field_type === 'select' || field.field_type === 'boolean'"
++                  class="grid gap-1 text-xs font-medium text-n-slate-11"
 +                >
-+                  <option
-+                    v-for="item in sourceRequestOptions"
-+                    :key="item.value"
-+                    :value="item.value"
++                  {{ field.label }}
++                  <select
++                    :value="fieldFilterState(draftFilters, field).value || ''"
++                    class="h-9 rounded-md border border-n-weak bg-n-background px-2 text-sm text-n-slate-12 outline-none focus:border-n-brand"
++                    @change="setDraftFieldFilter(field, { value: $event.target.value })"
 +                  >
-+                    {{ item.label }}
-+                  </option>
-+                </select>
-+              </label>
++                    <option
++                      v-for="item in selectOptionsForField(field)"
++                      :key="item.value"
++                      :value="item.value"
++                    >
++                      {{ item.label }}
++                    </option>
++                  </select>
++                </label>
 +
-+              <label class="grid gap-1 text-xs font-medium text-n-slate-11">
-+                Car type
-+                <select
-+                  v-model="draftFilters.carType"
-+                  class="h-9 rounded-md border border-n-weak bg-n-background px-2 text-sm text-n-slate-12 outline-none focus:border-n-brand"
++                <template v-else-if="isRangeFilterField(field)">
++                  <label class="grid gap-1 text-xs font-medium text-n-slate-11">
++                    {{ field.label }} from
++                    <input
++                      :min="field.field_type === 'number' ? '0' : undefined"
++                      :step="stepForField(field)"
++                      :type="inputTypeForField(field)"
++                      :value="fieldFilterState(draftFilters, field).from || ''"
++                      class="h-9 rounded-md border border-n-weak bg-n-background px-2 text-sm text-n-slate-12 outline-none focus:border-n-brand"
++                      @input="setDraftFieldFilter(field, { from: $event.target.value })"
++                    />
++                  </label>
++
++                  <label class="grid gap-1 text-xs font-medium text-n-slate-11">
++                    {{ field.label }} to
++                    <input
++                      :min="field.field_type === 'number' ? '0' : undefined"
++                      :step="stepForField(field)"
++                      :type="inputTypeForField(field)"
++                      :value="fieldFilterState(draftFilters, field).to || ''"
++                      class="h-9 rounded-md border border-n-weak bg-n-background px-2 text-sm text-n-slate-12 outline-none focus:border-n-brand"
++                      @input="setDraftFieldFilter(field, { to: $event.target.value })"
++                    />
++                  </label>
++                </template>
++
++                <label
++                  v-else-if="isTextFilterField(field)"
++                  class="grid gap-1 text-xs font-medium text-n-slate-11"
 +                >
-+                  <option
-+                    v-for="item in carTypeOptions"
-+                    :key="item.value"
-+                    :value="item.value"
-+                  >
-+                    {{ item.label }}
-+                  </option>
-+                </select>
-+              </label>
-+
-+              <label class="grid gap-1 text-xs font-medium text-n-slate-11">
-+                Client status
-+                <select
-+                  v-model="draftFilters.clientStatus"
-+                  class="h-9 rounded-md border border-n-weak bg-n-background px-2 text-sm text-n-slate-12 outline-none focus:border-n-brand"
-+                >
-+                  <option
-+                    v-for="item in clientStatusOptions"
-+                    :key="item.value"
-+                    :value="item.value"
-+                  >
-+                    {{ item.label }}
-+                  </option>
-+                </select>
-+              </label>
-+
-+              <label class="grid gap-1 text-xs font-medium text-n-slate-11">
-+                Language
-+                <select
-+                  v-model="draftFilters.language"
-+                  class="h-9 rounded-md border border-n-weak bg-n-background px-2 text-sm text-n-slate-12 outline-none focus:border-n-brand"
-+                >
-+                  <option
-+                    v-for="item in languageOptions"
-+                    :key="item.value"
-+                    :value="item.value"
-+                  >
-+                    {{ item.label }}
-+                  </option>
-+                </select>
-+              </label>
-+
-+              <label class="grid gap-1 text-xs font-medium text-n-slate-11">
-+                Rental from
-+                <input
-+                  v-model="draftFilters.rentalFrom"
-+                  class="h-9 rounded-md border border-n-weak bg-n-background px-2 text-sm text-n-slate-12 outline-none focus:border-n-brand"
-+                  type="date"
-+                />
-+              </label>
-+
-+              <label class="grid gap-1 text-xs font-medium text-n-slate-11">
-+                Rental to
-+                <input
-+                  v-model="draftFilters.rentalTo"
-+                  class="h-9 rounded-md border border-n-weak bg-n-background px-2 text-sm text-n-slate-12 outline-none focus:border-n-brand"
-+                  type="date"
-+                />
-+              </label>
-+
-+              <label class="grid gap-1 text-xs font-medium text-n-slate-11">
-+                Amount from
-+                <input
-+                  v-model="draftFilters.amountMin"
-+                  class="h-9 rounded-md border border-n-weak bg-n-background px-2 text-sm text-n-slate-12 outline-none focus:border-n-brand"
-+                  min="0"
-+                  step="0.01"
-+                  type="number"
-+                />
-+              </label>
-+
-+              <label class="grid gap-1 text-xs font-medium text-n-slate-11">
-+                Amount to
-+                <input
-+                  v-model="draftFilters.amountMax"
-+                  class="h-9 rounded-md border border-n-weak bg-n-background px-2 text-sm text-n-slate-12 outline-none focus:border-n-brand"
-+                  min="0"
-+                  step="0.01"
-+                  type="number"
-+                />
-+              </label>
-+
-+              <label class="col-span-2 inline-flex items-center gap-2 text-sm font-medium text-n-slate-11">
-+                <input
-+                  v-model="draftFilters.hasDebt"
-+                  class="h-4 w-4 rounded border-n-weak"
-+                  type="checkbox"
-+                />
-+                Has debt
-+              </label>
++                  {{ field.label }}
++                  <input
++                    :value="fieldFilterState(draftFilters, field).value || ''"
++                    class="h-9 rounded-md border border-n-weak bg-n-background px-2 text-sm text-n-slate-12 outline-none focus:border-n-brand"
++                    type="text"
++                    @input="setDraftFieldFilter(field, { value: $event.target.value })"
++                  />
++                </label>
++              </template>
 +            </main>
-+
-+            <aside class="border-l border-n-weak p-4">
-+              <div class="mb-3 flex items-center justify-between gap-2">
-+                <div class="text-xs font-semibold uppercase text-n-slate-10">
-+                  Source quick filters
-+                </div>
-+                <Spinner v-if="isLoadingFields" :size="14" />
-+              </div>
-+              <div v-if="sourceQuickFilters.length" class="grid gap-1.5">
-+                <button
-+                  v-for="item in sourceQuickFilters"
-+                  :key="item.value"
-+                  type="button"
-+                  class="flex min-w-0 items-center justify-between gap-3 rounded-md px-3 py-2 text-left text-sm text-n-slate-11 transition hover:bg-n-alpha-2 hover:text-n-slate-12"
-+                  :class="{ 'bg-n-brand-3 text-n-brand-11': draftFilters.sourceRequest === item.value }"
-+                  @click="selectQuickSource(item.value)"
-+                >
-+                  <span class="truncate">{{ item.label }}</span>
-+                  <span class="shrink-0 rounded bg-n-alpha-2 px-1.5 py-0.5 text-xs">
-+                    {{ item.count }}
-+                  </span>
-+                </button>
-+              </div>
-+              <div v-else class="rounded-md border border-dashed border-n-weak px-3 py-5 text-sm text-n-slate-10">
-+                No source values yet.
-+              </div>
-+            </aside>
 +          </div>
 +
 +          <footer class="flex items-center justify-between gap-3 border-t border-n-weak px-4 py-3">
