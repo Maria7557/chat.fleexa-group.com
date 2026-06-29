@@ -272,21 +272,22 @@ index 07789a1..91db2e1 100644
          :list="conversationSidebarItems"
 diff --git a/app/javascript/dashboard/routes/dashboard/crm/Pipeline.vue b/app/javascript/dashboard/routes/dashboard/crm/Pipeline.vue
 new file mode 100644
-index 0000000..a574cb2
+index 0000000..22e2836
 --- /dev/null
 +++ b/app/javascript/dashboard/routes/dashboard/crm/Pipeline.vue
-@@ -0,0 +1,668 @@
+@@ -0,0 +1,1586 @@
 +<script setup>
-+import { computed, onMounted, ref, watch } from 'vue';
-+import { useRouter } from 'vue-router';
++import { computed, onBeforeUnmount, ref, watch } from 'vue';
++import { useRoute, useRouter } from 'vue-router';
 +
 +import CrmPipelineAPI from 'dashboard/api/crmPipeline';
 +import Button from 'dashboard/components-next/button/Button.vue';
 +import Spinner from 'dashboard/components-next/spinner/Spinner.vue';
 +import { useAccount } from 'dashboard/composables/useAccount';
 +
-+const { accountId } = useAccount();
++const route = useRoute();
 +const router = useRouter();
++const { accountId } = useAccount();
 +
 +const buildDealForm = () => ({
 +  title: '',
@@ -307,15 +308,50 @@ index 0000000..a574cb2
 +  'booking_id',
 +];
 +
++const buildEmptyFilters = () => ({
++  q: '',
++  assignee: '',
++  stageId: '',
++  createdPreset: '',
++  createdFrom: '',
++  createdTo: '',
++  inboxId: '',
++  fieldFilters: {},
++});
++
 +const stages = ref([]);
 +const deals = ref([]);
++const fieldDefinitions = ref([]);
++const pipelineMeta = ref({
++  total_count: 0,
++  total_amount: 0,
++  total_debt_amount: 0,
++});
 +const isLoading = ref(false);
++const isLoadingFields = ref(false);
 +const errorMessage = ref('');
 +const activeStageId = ref(null);
 +const newDealForm = ref(buildDealForm());
 +const savingStageId = ref(null);
 +const draggingDealId = ref(null);
 +const selectedDeal = ref(null);
++const appliedFilters = ref(buildEmptyFilters());
++const draftFilters = ref(buildEmptyFilters());
++const isFilterPanelOpen = ref(false);
++const viewMode = ref('kanban');
++const filterShellRef = ref(null);
++
++const dateRangeFilters = [
++  { key: '', label: 'Any date' },
++  { key: 'today', label: 'Today' },
++  { key: 'yesterday', label: 'Yesterday' },
++  { key: 'last_7_days', label: 'Last 7 days' },
++  { key: 'this_week', label: 'This week' },
++  { key: 'last_week', label: 'Last week' },
++  { key: 'this_month', label: 'This month' },
++  { key: 'last_month', label: 'Last month' },
++  { key: 'this_quarter', label: 'Quarter' },
++];
 +
 +const moneyFormatter = new Intl.NumberFormat('en-AE', {
 +  style: 'currency',
@@ -326,6 +362,12 @@ index 0000000..a574cb2
 +  day: '2-digit',
 +  month: 'short',
 +  year: 'numeric',
++});
++
++const cloneFilters = filters => ({
++  ...buildEmptyFilters(),
++  ...(filters || {}),
++  fieldFilters: { ...(filters?.fieldFilters || {}) },
 +});
 +
 +const orderedStages = computed(() => {
@@ -349,6 +391,537 @@ index 0000000..a574cb2
 +  return Number.isFinite(value) ? value : 0;
 +};
 +
++const totalFromDeals = () => {
++  return deals.value.reduce((sum, deal) => sum + amountValue(deal.amount), 0);
++};
++
++const pipelineTotalCount = computed(() => {
++  return pipelineMeta.value?.total_count ?? deals.value.length;
++});
++
++const pipelineTotalAmount = computed(() => {
++  return pipelineMeta.value?.total_amount ?? totalFromDeals();
++});
++
++const pipelineSummary = computed(() => {
++  const amount = formatAmount(pipelineTotalAmount.value);
++  return `${pipelineTotalCount.value} deals · ${amount || formatAmount(0)}`;
++});
++
++const dateFilterOptions = computed(() => {
++  return dateRangeFilters;
++});
++
++const assigneeFilterOptions = computed(() => {
++  const users = new Map();
++
++  deals.value.forEach(deal => {
++    const user = deal.assigned_user;
++    if (!user?.id) return;
++    users.set(String(user.id), user.name || user.email || `#${user.id}`);
++  });
++
++  return [
++    { value: '', label: 'All operators' },
++    { value: 'me', label: 'Me' },
++    { value: 'unassigned', label: 'Unassigned' },
++    ...[...users.entries()].map(([value, label]) => ({
++      value,
++      label,
++    })),
++  ];
++});
++
++const stageFilterOptions = computed(() => [
++  { value: '', label: 'All stages' },
++  ...orderedStages.value.map(stage => ({
++    value: String(stage.id),
++    label: stage.name,
++  })),
++]);
++
++const inboxFilterOptions = computed(() => {
++  const inboxes = new Set();
++
++  deals.value.forEach(deal => {
++    const inboxId = deal.conversation?.inbox_id;
++    if (inboxId) inboxes.add(String(inboxId));
++  });
++
++  return [
++    { value: '', label: 'All inboxes' },
++    ...[...inboxes]
++      .sort((left, right) => Number(left) - Number(right))
++      .map(inboxId => ({ value: inboxId, label: `Inbox #${inboxId}` })),
++  ];
++});
++
++const fieldDefinitionFor = key => {
++  return fieldDefinitions.value.find(field => field.key === key);
++};
++
++const isSystemField = field => {
++  return field.storage_type === 'system_column' || field.source === 'system';
++};
++
++const customAttributeValue = (deal, key) => {
++  return deal.custom_attributes?.[key] ?? deal[key] ?? '';
++};
++
++const valueForField = (deal, field) => {
++  return isSystemField(field) ? deal[field.key] : customAttributeValue(deal, field.key);
++};
++
++const hasDisplayValue = value => {
++  return value !== null && value !== undefined && value !== '';
++};
++
++const canonicalFilterFieldKey = field => {
++  const key = field.key.toString();
++  return key === 'source_requect' ? 'source_request' : key;
++};
++
++const fieldActualValueCount = field => {
++  const values = new Set();
++
++  deals.value.forEach(deal => {
++    const value = valueForField(deal, field);
++    if (hasDisplayValue(value)) values.add(String(value));
++  });
++
++  return values.size;
++};
++
++const fieldFilterPriority = field => {
++  const options = Array.isArray(field.options) ? field.options.length : 0;
++  const sourceRequestCompatibilityBonus = field.key === 'source_requect' ? 10000 : 0;
++  return sourceRequestCompatibilityBonus + fieldActualValueCount(field) * 100 + options;
++};
++
++const filterFieldDefinitions = computed(() => {
++  const fieldsByCanonicalKey = new Map();
++
++  [...fieldDefinitions.value]
++    .filter(field => field.is_active !== false)
++    .sort((a, b) => a.position - b.position)
++    .forEach(field => {
++      const canonicalKey = canonicalFilterFieldKey(field);
++      const existingField = fieldsByCanonicalKey.get(canonicalKey);
++
++      if (!existingField || fieldFilterPriority(field) > fieldFilterPriority(existingField)) {
++        fieldsByCanonicalKey.set(canonicalKey, field);
++      }
++    });
++
++  return [...fieldsByCanonicalKey.values()].sort((a, b) => a.position - b.position);
++});
++
++const uniqueDealValuesForField = field => {
++  const values = new Set();
++
++  deals.value.forEach(deal => {
++    const value = valueForField(deal, field);
++    if (hasDisplayValue(value)) values.add(String(value));
++  });
++
++  return [...values].sort();
++};
++
++const optionsForField = field => {
++  const configuredOptions = Array.isArray(field.options) ? field.options : [];
++  const actualValues = uniqueDealValuesForField(field);
++  const values = [...new Set([...actualValues, ...configuredOptions].map(String))];
++
++  return [
++    { value: '', label: `Any ${field.label.toLowerCase()}` },
++    ...values.map(value => ({ value: String(value), label: String(value) })),
++  ];
++};
++
++const datePresetLabel = key => {
++  return dateRangeFilters.find(item => item.key === key)?.label || '';
++};
++
++const assigneeLabel = value => {
++  return assigneeFilterOptions.value.find(item => item.value === value)?.label || value;
++};
++
++const stageLabel = value => {
++  return stageFilterOptions.value.find(item => item.value === String(value))?.label || value;
++};
++
++const inboxLabel = value => {
++  return inboxFilterOptions.value.find(item => item.value === value)?.label || `Inbox #${value}`;
++};
++
++const formatDateRangeLabel = (from, to) => {
++  if (from && to) return `${formatDate(from)} - ${formatDate(to)}`;
++  if (from) return `from ${formatDate(from)}`;
++  if (to) return `to ${formatDate(to)}`;
++  return '';
++};
++
++const fieldFilterState = (filters, field) => {
++  return filters.fieldFilters?.[field.key] || {};
++};
++
++const setDraftFieldFilter = (field, value) => {
++  draftFilters.value.fieldFilters = {
++    ...(draftFilters.value.fieldFilters || {}),
++    [field.key]: {
++      ...fieldFilterState(draftFilters.value, field),
++      ...value,
++    },
++  };
++};
++
++const selectOptionsForField = field => {
++  if (field.field_type === 'boolean') {
++    return [
++      { value: '', label: `Any ${field.label.toLowerCase()}` },
++      { value: 'true', label: 'Yes' },
++      { value: 'false', label: 'No' },
++    ];
++  }
++
++  return optionsForField(field);
++};
++
++const inputTypeForField = field => {
++  if (field.field_type === 'date') return 'date';
++  if (field.field_type === 'number') return 'number';
++  return 'text';
++};
++
++const stepForField = field => {
++  return field.field_type === 'number' ? '0.01' : undefined;
++};
++
++const isTextFilterField = field => {
++  return !['select', 'boolean', 'date', 'number'].includes(field.field_type);
++};
++
++const isRangeFilterField = field => {
++  return ['date', 'number'].includes(field.field_type);
++};
++
++const hasFieldFilterValue = filter => {
++  return hasDisplayValue(filter.value) || hasDisplayValue(filter.from) || hasDisplayValue(filter.to);
++};
++
++const fieldFilterChipLabel = (field, filter) => {
++  if (field.field_type === 'date') {
++    return `${field.label}: ${formatDateRangeLabel(filter.from, filter.to)}`;
++  }
++
++  if (field.field_type === 'number') {
++    return `${field.label}: ${filter.from || '0'}-${filter.to || 'any'}`;
++  }
++
++  if (field.field_type === 'boolean') {
++    return `${field.label}: ${filter.value === 'true' ? 'Yes' : 'No'}`;
++  }
++
++  return `${field.label}: ${filter.value}`;
++};
++
++const activeFilterChips = computed(() => {
++  const filters = appliedFilters.value;
++  const chips = [];
++
++  if (filters.q) chips.push({ key: 'q', label: `Search: ${filters.q}` });
++  if (filters.stageId) {
++    chips.push({ key: 'stageId', label: `Stage: ${stageLabel(filters.stageId)}` });
++  }
++  if (filters.assignee) {
++    chips.push({ key: 'assignee', label: `Operator: ${assigneeLabel(filters.assignee)}` });
++  }
++  if (filters.createdPreset) {
++    chips.push({ key: 'created', label: datePresetLabel(filters.createdPreset) });
++  } else if (filters.createdFrom || filters.createdTo) {
++    chips.push({ key: 'created', label: formatDateRangeLabel(filters.createdFrom, filters.createdTo) });
++  }
++  if (filters.inboxId) chips.push({ key: 'inboxId', label: `Inbox: ${inboxLabel(filters.inboxId)}` });
++
++  Object.entries(filters.fieldFilters || {}).forEach(([key, filter]) => {
++    if (!hasFieldFilterValue(filter)) return;
++
++    const field = fieldDefinitionFor(key);
++    if (!field) return;
++
++    chips.push({ key: `field:${key}`, label: fieldFilterChipLabel(field, filter) });
++  });
++
++  return chips;
++});
++
++const hasActiveFilters = computed(() => activeFilterChips.value.length > 0);
++
++const customFiltersForRequest = filters => {
++  const custom = {};
++
++  Object.entries(filters.fieldFilters || {}).forEach(([key, filter]) => {
++    if (!hasFieldFilterValue(filter)) return;
++
++    const field = fieldDefinitionFor(key);
++    if (!field || isSystemField(field)) return;
++
++    if (isRangeFilterField(field)) {
++      custom[key] = {
++        from: filter.from || '',
++        to: filter.to || '',
++      };
++      return;
++    }
++
++    custom[key] = filter.value;
++  });
++
++  return custom;
++};
++
++const applySystemFieldFilter = (params, field, filter) => {
++  if (!hasFieldFilterValue(filter)) return;
++
++  if (field.field_type === 'date') {
++    if (filter.from) params[`${field.key}_from`] = filter.from;
++    if (filter.to) params[`${field.key}_to`] = filter.to;
++    return;
++  }
++
++  if (field.field_type === 'number') {
++    const rangeKey = field.key === 'debt_amount' ? 'debt' : field.key;
++    if (filter.from) params[`${rangeKey}_min`] = filter.from;
++    if (filter.to) params[`${rangeKey}_max`] = filter.to;
++    return;
++  }
++
++  if (filter.value) params[field.key] = filter.value;
++};
++
++const dealRequestParams = computed(() => {
++  const filters = appliedFilters.value;
++  const params = {
++    include_meta: 1,
++    per_page: 100,
++  };
++
++  if (filters.q) params.q = filters.q;
++  if (filters.stageId) params.stage_id = filters.stageId;
++  if (filters.createdPreset) params.created_at_preset = filters.createdPreset;
++  if (filters.createdFrom) params.created_at_from = filters.createdFrom;
++  if (filters.createdTo) params.created_at_to = filters.createdTo;
++  if (filters.inboxId) params.inbox_id = filters.inboxId;
++
++  if (filters.assignee === 'me') {
++    params.assigned_to = 'me';
++  } else if (filters.assignee === 'unassigned') {
++    params.only_unassigned = 1;
++  } else if (filters.assignee) {
++    params.assigned_to = filters.assignee;
++  }
++
++  Object.entries(filters.fieldFilters || {}).forEach(([key, filter]) => {
++    const field = fieldDefinitionFor(key);
++    if (!field || !isSystemField(field)) return;
++
++    applySystemFieldFilter(params, field, filter);
++  });
++
++  const customFilters = customFiltersForRequest(filters);
++  if (Object.keys(customFilters).length) {
++    params.filters = JSON.stringify({ custom_attributes: customFilters });
++  }
++
++  return params;
++});
++
++const routeValue = value => {
++  return Array.isArray(value) ? value[0] : value;
++};
++
++const setQueryFieldFilter = (filters, key, value, rangePart = 'value') => {
++  if (!hasDisplayValue(value)) return;
++
++  filters.fieldFilters[key] = {
++    ...(filters.fieldFilters[key] || {}),
++    [rangePart]: value,
++  };
++};
++
++const hydrateLegacyFieldQuery = (filters, query) => {
++  const legacyFieldMap = {
++    source_request: 'source_requect',
++    car_type: 'car_type',
++    client_status: 'client_status',
++    language: 'language',
++    rental_from: 'rental_start',
++    rental_to: 'rental_end',
++    amount_min: 'amount',
++    amount_max: 'amount',
++    debt_min: 'debt_amount',
++    debt_max: 'debt_amount',
++  };
++
++  Object.entries(legacyFieldMap).forEach(([queryKey, fieldKey]) => {
++    const value = routeValue(query[queryKey]);
++    if (!hasDisplayValue(value)) return;
++
++    if (queryKey.endsWith('_from') || queryKey.endsWith('_min')) {
++      setQueryFieldFilter(filters, fieldKey, value, 'from');
++    } else if (queryKey.endsWith('_to') || queryKey.endsWith('_max')) {
++      setQueryFieldFilter(filters, fieldKey, value, 'to');
++    } else {
++      setQueryFieldFilter(filters, fieldKey, value);
++    }
++  });
++};
++
++const filtersFromQuery = query => {
++  const filters = buildEmptyFilters();
++
++  filters.q = routeValue(query.q) || '';
++  filters.assignee =
++    routeValue(query.assignee) ||
++    routeValue(query.assigned_to) ||
++    (routeValue(query.only_unassigned) ? 'unassigned' : '');
++  filters.stageId = routeValue(query.stage_id) || '';
++  filters.createdPreset = routeValue(query.created_preset) || routeValue(query.created_at_preset) || '';
++  filters.createdFrom = routeValue(query.created_from) || routeValue(query.created_at_from) || '';
++  filters.createdTo = routeValue(query.created_to) || routeValue(query.created_at_to) || '';
++  filters.inboxId = routeValue(query.inbox_id) || '';
++
++  Object.entries(query).forEach(([queryKey, rawValue]) => {
++    if (!queryKey.startsWith('field_')) return;
++
++    const value = routeValue(rawValue);
++    const rawFieldKey = queryKey.slice(6);
++    if (rawFieldKey.endsWith('_from')) {
++      setQueryFieldFilter(filters, rawFieldKey.slice(0, -5), value, 'from');
++    } else if (rawFieldKey.endsWith('_to')) {
++      setQueryFieldFilter(filters, rawFieldKey.slice(0, -3), value, 'to');
++    } else {
++      setQueryFieldFilter(filters, rawFieldKey, value);
++    }
++  });
++
++  hydrateLegacyFieldQuery(filters, query);
++
++  return filters;
++};
++
++const filtersToQuery = filters => {
++  const query = {};
++  const entries = {
++    q: filters.q,
++    assignee: filters.assignee,
++    stage_id: filters.stageId,
++    created_preset: filters.createdPreset,
++    created_from: filters.createdFrom,
++    created_to: filters.createdTo,
++    inbox_id: filters.inboxId,
++  };
++
++  Object.entries(entries).forEach(([key, value]) => {
++    if (value !== undefined && value !== null && value !== '') query[key] = value;
++  });
++
++  Object.entries(filters.fieldFilters || {}).forEach(([fieldKey, filter]) => {
++    if (hasDisplayValue(filter.value)) query[`field_${fieldKey}`] = filter.value;
++    if (hasDisplayValue(filter.from)) query[`field_${fieldKey}_from`] = filter.from;
++    if (hasDisplayValue(filter.to)) query[`field_${fieldKey}_to`] = filter.to;
++  });
++
++  return query;
++};
++
++const updateRouteQuery = filters => {
++  return router.replace({
++    name: 'crm_pipeline_index',
++    params: { accountId: accountId.value },
++    query: filtersToQuery(filters),
++  });
++};
++
++const resetFilterKey = (filters, key) => {
++  if (key.startsWith('field:')) {
++    const fieldKey = key.slice(6);
++    filters.fieldFilters = { ...(filters.fieldFilters || {}) };
++    delete filters.fieldFilters[fieldKey];
++    return;
++  }
++
++  if (key === 'created') {
++    filters.createdPreset = '';
++    filters.createdFrom = '';
++    filters.createdTo = '';
++    return;
++  }
++
++  filters[key] = '';
++};
++
++const commitFilters = async (filters, options = {}) => {
++  const nextFilters = cloneFilters(filters);
++  appliedFilters.value = nextFilters;
++  draftFilters.value = cloneFilters(nextFilters);
++  await updateRouteQuery(nextFilters);
++  await fetchPipeline();
++  if (options.closePanel) isFilterPanelOpen.value = false;
++};
++
++const openFilterPanel = () => {
++  if (!isFilterPanelOpen.value) {
++    draftFilters.value = cloneFilters(appliedFilters.value);
++  }
++  isFilterPanelOpen.value = true;
++};
++
++const closeFilterPanel = () => {
++  draftFilters.value = cloneFilters(appliedFilters.value);
++  isFilterPanelOpen.value = false;
++};
++
++const handleOutsideClick = event => {
++  if (!isFilterPanelOpen.value) return;
++  if (filterShellRef.value?.contains(event.target)) return;
++  closeFilterPanel();
++};
++
++document.addEventListener('click', handleOutsideClick);
++
++onBeforeUnmount(() => {
++  document.removeEventListener('click', handleOutsideClick);
++});
++
++const applyDraftFilters = () => {
++  commitFilters(draftFilters.value, { closePanel: true });
++};
++
++const resetFilters = () => {
++  commitFilters(buildEmptyFilters(), { closePanel: true });
++};
++
++const applySearch = () => {
++  commitFilters({
++    ...appliedFilters.value,
++    q: draftFilters.value.q.trim(),
++  });
++};
++
++const clearSearch = () => {
++  commitFilters({
++    ...appliedFilters.value,
++    q: '',
++  });
++};
++
++const removeFilterChip = chip => {
++  const filters = cloneFilters(appliedFilters.value);
++  resetFilterKey(filters, chip.key);
++  commitFilters(filters);
++};
++
 +const stageTotal = stageId => {
 +  return dealsForStage(stageId).reduce((sum, deal) => {
 +    return sum + amountValue(deal.amount);
@@ -367,23 +940,61 @@ index 0000000..a574cb2
 +  errorMessage.value = error?.response?.data?.error || error?.message || 'Request failed';
 +};
 +
++const loadDealFields = async () => {
++  if (typeof CrmPipelineAPI.getDealFields !== 'function') return;
++
++  isLoadingFields.value = true;
++  try {
++    const response = await CrmPipelineAPI.getDealFields();
++    fieldDefinitions.value = response.data?.fields || [];
++  } catch {
++    fieldDefinitions.value = [];
++  } finally {
++    isLoadingFields.value = false;
++  }
++};
++
 +const fetchPipeline = async () => {
 +  isLoading.value = true;
 +  errorMessage.value = '';
 +
 +  try {
++    await loadDealFields();
 +    const [stageResponse, dealResponse] = await Promise.all([
 +      CrmPipelineAPI.getStages(),
-+      CrmPipelineAPI.getDeals(),
++      CrmPipelineAPI.getDeals(dealRequestParams.value),
 +    ]);
 +
 +    stages.value = stageResponse.data || [];
-+    deals.value = dealResponse.data || [];
++    const payload = dealResponse.data || {};
++    if (Array.isArray(payload)) {
++      deals.value = payload;
++      pipelineMeta.value = {
++        total_count: payload.length,
++        total_amount: totalFromDeals(),
++        total_debt_amount: 0,
++      };
++      return;
++    }
++
++    deals.value = payload.data || [];
++    pipelineMeta.value = {
++      total_count: payload?.meta?.total_count ?? deals.value.length,
++      total_amount: payload?.meta?.total_amount ?? totalFromDeals(),
++      total_debt_amount: payload?.meta?.total_debt_amount ?? 0,
++    };
 +  } catch (error) {
 +    setError(error);
 +  } finally {
 +    isLoading.value = false;
 +  }
++};
++
++const initializePipeline = () => {
++  const initialFilters = filtersFromQuery(route.query);
++  appliedFilters.value = cloneFilters(initialFilters);
++  draftFilters.value = cloneFilters(initialFilters);
++  fetchPipeline();
 +};
 +
 +const openNewDealForm = stageId => {
@@ -483,7 +1094,7 @@ index 0000000..a574cb2
 +const formatDate = value => {
 +  if (!value) return '';
 +  const date = new Date(value);
-+  return Number.isNaN(date.getTime()) ? '' : dateFormatter.format(date);
++  return Number.isNaN(date.getTime()) ? value : dateFormatter.format(date);
 +};
 +
 +const formatRentalPeriod = deal => {
@@ -539,28 +1150,329 @@ index 0000000..a574cb2
 +  });
 +};
 +
-+watch(accountId, fetchPipeline);
-+onMounted(fetchPipeline);
++watch(
++  accountId,
++  () => {
++    if (!accountId.value) return;
++    initializePipeline();
++  },
++  { immediate: true },
++);
 +</script>
 +
 +<template>
 +  <section class="flex h-full min-w-0 flex-1 flex-col bg-n-surface-1">
 +    <header class="border-b border-n-weak px-6 py-4">
-+      <div class="flex items-center justify-between gap-3">
++      <div class="flex flex-wrap items-center justify-between gap-3">
 +        <div class="min-w-0">
 +          <h1 class="m-0 truncate text-xl font-medium text-n-slate-12">
 +            Pipeline
 +          </h1>
++          <p class="mt-1 text-sm text-n-slate-10">
++            {{ pipelineSummary }}
++          </p>
 +        </div>
-+        <Button
-+          label="Refresh"
-+          icon="i-lucide-refresh-cw"
-+          size="sm"
-+          slate
-+          faded
-+          :is-loading="isLoading"
-+          @click="fetchPipeline"
-+        />
++
++        <div class="flex items-center gap-2">
++          <div class="inline-flex h-9 rounded-md border border-n-weak bg-n-surface-2 p-0.5">
++            <button
++              type="button"
++              class="inline-flex items-center gap-1.5 rounded px-3 text-xs font-medium text-n-slate-11 transition"
++              :class="{ 'bg-n-background text-n-slate-12 shadow-sm': viewMode === 'kanban' }"
++              @click="viewMode = 'kanban'"
++            >
++              <i class="i-lucide-columns-3 h-3.5 w-3.5" />
++              Kanban
++            </button>
++            <button
++              type="button"
++              class="inline-flex items-center gap-1.5 rounded px-3 text-xs font-medium text-n-slate-11 transition"
++              :class="{ 'bg-n-background text-n-slate-12 shadow-sm': viewMode === 'list' }"
++              @click="viewMode = 'list'"
++            >
++              <i class="i-lucide-list h-3.5 w-3.5" />
++              List
++            </button>
++          </div>
++          <Button
++            icon="i-lucide-refresh-cw"
++            size="sm"
++            slate
++            faded
++            :is-loading="isLoading"
++            aria-label="Refresh pipeline"
++            @click="fetchPipeline"
++          />
++        </div>
++      </div>
++
++      <div ref="filterShellRef" class="relative mt-4" @click.stop>
++        <div class="flex w-full min-w-0 flex-col gap-2">
++          <div class="flex w-full min-w-0 items-center gap-2">
++            <div
++              class="flex h-10 min-w-0 flex-1 items-center gap-2 rounded-lg border border-n-weak bg-n-background px-3 transition focus-within:border-n-brand"
++              role="search"
++            >
++              <i class="i-lucide-search pointer-events-none h-4 w-4 shrink-0 text-n-slate-10" />
++              <input
++                v-model="draftFilters.q"
++                aria-label="Search deals"
++                class="!m-0 !h-full min-w-0 flex-1 !border-0 !bg-transparent !p-0 text-sm leading-5 text-n-slate-12 !shadow-none !outline-none placeholder:text-n-slate-9 focus:!ring-0 focus:!outline-none focus:!shadow-none"
++                placeholder="Search deals, clients, cars..."
++                type="text"
++                @keydown.enter.prevent.stop="applySearch"
++              />
++            </div>
++
++            <button
++              type="button"
++              class="grid h-10 w-10 shrink-0 place-items-center rounded-lg border border-n-weak bg-n-background text-n-slate-10 transition hover:border-n-slate-7 hover:bg-n-alpha-2 hover:text-n-slate-12"
++              :class="{ 'border-n-brand bg-n-brand-3 text-n-brand-11': isFilterPanelOpen || hasActiveFilters }"
++              aria-label="Open filters"
++              :aria-pressed="isFilterPanelOpen"
++              @click.stop="openFilterPanel"
++            >
++              <i class="i-lucide-sliders-horizontal h-4 w-4" />
++            </button>
++
++            <div class="flex shrink-0 items-center gap-3">
++              <div class="text-right">
++                <div class="text-xs text-n-slate-10">
++                  Total
++                </div>
++                <div class="text-sm font-semibold text-n-slate-12">
++                  {{ pipelineTotalCount }} / {{ formatAmount(pipelineTotalAmount) || 'AED 0.00' }}
++                </div>
++              </div>
++              <button
++                v-if="hasActiveFilters"
++                type="button"
++                class="grid h-8 w-8 place-items-center rounded-md text-n-slate-10 hover:bg-n-alpha-2 hover:text-n-slate-12"
++                aria-label="Clear all filters"
++                @click.stop="resetFilters"
++              >
++                <i class="i-lucide-circle-x h-4 w-4" />
++              </button>
++            </div>
++          </div>
++
++          <div
++            v-if="activeFilterChips.length"
++            class="flex min-w-0 flex-wrap items-center gap-1.5"
++          >
++            <span
++              v-for="chip in activeFilterChips"
++              :key="chip.key"
++              class="inline-flex max-w-[15rem] items-center gap-1.5 rounded-md bg-n-alpha-2 px-2 py-1 text-xs font-medium text-n-slate-11"
++            >
++              <span class="truncate">{{ chip.label }}</span>
++              <button
++                type="button"
++                class="grid h-4 w-4 shrink-0 place-items-center rounded hover:bg-n-alpha-3"
++                :aria-label="`Remove ${chip.label}`"
++                @click.stop="removeFilterChip(chip)"
++              >
++                <i class="i-lucide-x h-3 w-3" />
++              </button>
++            </span>
++          </div>
++        </div>
++
++        <div
++          v-if="isFilterPanelOpen"
++          class="absolute right-0 top-[calc(100%+0.5rem)] z-40 w-[min(42rem,calc(100vw-3rem))] overflow-hidden rounded-lg border border-n-weak bg-n-surface-1 shadow-xl"
++        >
++          <div class="max-h-[min(48vh,20rem)] overflow-y-auto">
++            <main class="grid grid-cols-2 gap-x-3 gap-y-2.5 p-3">
++              <div class="col-span-2 flex items-center justify-between gap-2">
++                <div class="text-[10px] font-semibold uppercase text-n-slate-10">
++                  Filters
++                </div>
++                <Spinner v-if="isLoadingFields" :size="14" />
++              </div>
++
++              <label class="grid gap-1 text-[11px] font-medium text-n-slate-11">
++                Stage
++                <select
++                  v-model="draftFilters.stageId"
++                  class="h-8 rounded-md border border-n-weak bg-n-background px-2 text-xs text-n-slate-12 outline-none focus:border-n-brand"
++                >
++                  <option
++                    v-for="item in stageFilterOptions"
++                    :key="item.value"
++                    :value="item.value"
++                  >
++                    {{ item.label }}
++                  </option>
++                </select>
++              </label>
++
++              <label class="grid gap-1 text-[11px] font-medium text-n-slate-11">
++                Operator
++                <select
++                  v-model="draftFilters.assignee"
++                  class="h-8 rounded-md border border-n-weak bg-n-background px-2 text-xs text-n-slate-12 outline-none focus:border-n-brand"
++                >
++                  <option
++                    v-for="item in assigneeFilterOptions"
++                    :key="item.value"
++                    :value="item.value"
++                  >
++                    {{ item.label }}
++                  </option>
++                </select>
++              </label>
++
++              <label class="grid gap-1 text-[11px] font-medium text-n-slate-11">
++                Date created
++                <select
++                  v-model="draftFilters.createdPreset"
++                  class="h-8 rounded-md border border-n-weak bg-n-background px-2 text-xs text-n-slate-12 outline-none focus:border-n-brand"
++                >
++                  <option
++                    v-for="item in dateFilterOptions"
++                    :key="item.key"
++                    :value="item.key"
++                  >
++                    {{ item.label }}
++                  </option>
++                </select>
++              </label>
++
++              <label
++                v-if="!draftFilters.createdPreset"
++                class="grid gap-1 text-[11px] font-medium text-n-slate-11"
++              >
++                Created from
++                <input
++                  v-model="draftFilters.createdFrom"
++                  class="h-8 rounded-md border border-n-weak bg-n-background px-2 text-xs text-n-slate-12 outline-none focus:border-n-brand"
++                  type="date"
++                />
++              </label>
++
++              <label
++                v-if="!draftFilters.createdPreset"
++                class="grid gap-1 text-[11px] font-medium text-n-slate-11"
++              >
++                Created to
++                <input
++                  v-model="draftFilters.createdTo"
++                  class="h-8 rounded-md border border-n-weak bg-n-background px-2 text-xs text-n-slate-12 outline-none focus:border-n-brand"
++                  type="date"
++                />
++              </label>
++
++              <label class="grid gap-1 text-[11px] font-medium text-n-slate-11">
++                Inbox
++                <select
++                  v-model="draftFilters.inboxId"
++                  class="h-8 rounded-md border border-n-weak bg-n-background px-2 text-xs text-n-slate-12 outline-none focus:border-n-brand"
++                >
++                  <option
++                    v-for="item in inboxFilterOptions"
++                    :key="item.value"
++                    :value="item.value"
++                  >
++                    {{ item.label }}
++                  </option>
++                </select>
++              </label>
++
++              <template
++                v-for="field in filterFieldDefinitions"
++                :key="field.key"
++              >
++                <label
++                  v-if="field.field_type === 'select' || field.field_type === 'boolean'"
++                  class="grid gap-1 text-[11px] font-medium text-n-slate-11"
++                >
++                  {{ field.label }}
++                  <select
++                    :value="fieldFilterState(draftFilters, field).value || ''"
++                    class="h-8 rounded-md border border-n-weak bg-n-background px-2 text-xs text-n-slate-12 outline-none focus:border-n-brand"
++                    @change="setDraftFieldFilter(field, { value: $event.target.value })"
++                  >
++                    <option
++                      v-for="item in selectOptionsForField(field)"
++                      :key="item.value"
++                      :value="item.value"
++                    >
++                      {{ item.label }}
++                    </option>
++                  </select>
++                </label>
++
++                <template v-else-if="isRangeFilterField(field)">
++                  <label class="grid gap-1 text-[11px] font-medium text-n-slate-11">
++                    {{ field.label }} from
++                    <input
++                      :min="field.field_type === 'number' ? '0' : undefined"
++                      :step="stepForField(field)"
++                      :type="inputTypeForField(field)"
++                      :value="fieldFilterState(draftFilters, field).from || ''"
++                      class="h-8 rounded-md border border-n-weak bg-n-background px-2 text-xs text-n-slate-12 outline-none focus:border-n-brand"
++                      @input="setDraftFieldFilter(field, { from: $event.target.value })"
++                    />
++                  </label>
++
++                  <label class="grid gap-1 text-[11px] font-medium text-n-slate-11">
++                    {{ field.label }} to
++                    <input
++                      :min="field.field_type === 'number' ? '0' : undefined"
++                      :step="stepForField(field)"
++                      :type="inputTypeForField(field)"
++                      :value="fieldFilterState(draftFilters, field).to || ''"
++                      class="h-8 rounded-md border border-n-weak bg-n-background px-2 text-xs text-n-slate-12 outline-none focus:border-n-brand"
++                      @input="setDraftFieldFilter(field, { to: $event.target.value })"
++                    />
++                  </label>
++                </template>
++
++                <label
++                  v-else-if="isTextFilterField(field)"
++                  class="grid gap-1 text-[11px] font-medium text-n-slate-11"
++                >
++                  {{ field.label }}
++                  <input
++                    :value="fieldFilterState(draftFilters, field).value || ''"
++                    class="h-8 rounded-md border border-n-weak bg-n-background px-2 text-xs text-n-slate-12 outline-none focus:border-n-brand"
++                    type="text"
++                    @input="setDraftFieldFilter(field, { value: $event.target.value })"
++                  />
++                </label>
++              </template>
++            </main>
++          </div>
++
++          <footer class="flex items-center justify-between gap-2 border-t border-n-weak px-3 py-2">
++            <Button
++              label="Reset"
++              size="sm"
++              slate
++              ghost
++              type="button"
++              @click="resetFilters"
++            />
++            <div class="flex items-center gap-2">
++              <Button
++                label="Close"
++                size="sm"
++                slate
++                ghost
++                type="button"
++                @click="closeFilterPanel"
++              />
++              <Button
++                label="Apply filters"
++                icon="i-lucide-check"
++                size="sm"
++                type="button"
++                @click="applyDraftFilters"
++              />
++            </div>
++          </footer>
++        </div>
 +      </div>
 +    </header>
 +
@@ -576,6 +1488,12 @@ index 0000000..a574cb2
 +      class="grid flex-1 place-items-center text-n-slate-11"
 +    >
 +      <Spinner :size="28" />
++    </div>
++
++    <div v-else-if="viewMode === 'list'" class="min-h-0 flex-1 px-6 py-5">
++      <div class="grid h-full place-items-center rounded-lg border border-dashed border-n-weak text-sm text-n-slate-11">
++        List view is coming next. Kanban remains active for deal work.
++      </div>
 +    </div>
 +
 +    <div v-else class="min-h-0 flex-1 overflow-x-auto px-6 py-5">

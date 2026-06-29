@@ -1,0 +1,455 @@
+diff --git a/app/controllers/api/v1/accounts/crm/deals_controller.rb b/app/controllers/api/v1/accounts/crm/deals_controller.rb
+index 3d6d2a7..6a7d1f4 100644
+--- a/app/controllers/api/v1/accounts/crm/deals_controller.rb
++++ b/app/controllers/api/v1/accounts/crm/deals_controller.rb
+@@ -1,15 +1,26 @@
+ class Api::V1::Accounts::Crm::DealsController < Api::V1::Accounts::BaseController
++  DEFAULT_PER_PAGE = 50
++  MAX_PER_PAGE = 200
++  DATE_FILTER_COLUMNS = %w[created_at updated_at rental_start rental_end rotting_since].freeze
++  CUSTOM_ATTRIBUTE_DIRECT_FILTER_KEYS = %w[
++    source_request selected_car car_type client lost_reason_no_reply
++    utm_content utm_medium utm_campaign utm_source utm_term utm_referrer
++    roistat referrer openstat_service openstat_campaign openstat_ad
++    openstat_source from gclientid
++  ].freeze
++
+   before_action :check_authorization
+   before_action :set_deal, only: [:show, :update, :destroy]
+ 
+   def index
+-    deals = deal_scope.includes(:contact, :conversation, :assignee).order(created_at: :desc)
+-    deals = deals.where(stage_id: params[:stage_id]) if params[:stage_id].present?
+-    deals = deals.where(assigned_to: params[:assigned_to]) if params[:assigned_to].present?
+-    deals = deals.where(conversation_id: params[:conversation_id]) if params[:conversation_id].present?
+-    deals = deals.where(contact_id: params[:contact_id]) if params[:contact_id].present?
++    filtered_deals = apply_deal_query(deal_scope)
++    sorted_deals = apply_deal_sort(filtered_deals)
++    page_deals = apply_deal_pagination(sorted_deals)
++                 .includes(:contact, :conversation, :assignee)
+ 
+-    render json: deals.map { |deal| deal_payload(deal) }
++    return render json: deals_index_response(page_deals, filtered_deals) if include_meta?
++
++    render json: page_deals.map { |deal| deal_payload(deal) }
+   end
+ 
+   def show
+@@ -49,6 +72,270 @@ class Api::V1::Accounts::Crm::DealsController < Api::V1::Accounts::BaseControlle
+ 
+   private
+ 
++  def apply_deal_query(scope)
++    scope = apply_basic_deal_filters(scope)
++    scope = apply_text_deal_filters(scope)
++    scope = apply_conversation_filters(scope)
++    scope = apply_amount_filters(scope)
++    scope = apply_date_filters(scope)
++    scope = apply_rental_period_filter(scope)
++    scope = apply_custom_attribute_filters(scope)
++    apply_deal_search(scope)
++  end
++
++  def apply_basic_deal_filters(scope)
++    scope = apply_stage_filter(scope)
++    scope = apply_assignee_filter(scope)
++    scope = apply_array_filter(scope, :conversation_id, 'conversation_id', 'conversation_ids')
++    scope = apply_array_filter(scope, :contact_id, 'contact_id', 'contact_ids')
++    apply_array_filter(scope, :fleet_sync_status, 'fleet_sync_status', 'fleet_sync_statuses')
++  end
++
++  def apply_stage_filter(scope)
++    stage_ids = array_filter_value('stage_id', 'stage_ids')
++    stage_slugs = array_filter_value('stage_slug', 'stage_slugs')
++
++    if stage_slugs.any?
++      stage_ids += stage_scope.where(slug: stage_slugs).pluck(:id)
++    end
++
++    return scope if stage_ids.blank?
++
++    scope.where(stage_id: stage_ids.uniq)
++  end
++
++  def apply_assignee_filter(scope)
++    values = array_filter_value('assigned_to', 'assigned_to_ids', 'assignee_id', 'assignee_ids')
++    return scope.where(assigned_to: nil) if truthy_param?(filter_value('only_unassigned')) && values.blank?
++    return scope if values.blank?
++
++    nil_requested = values.any? { |value| %w[none null unassigned].include?(value.to_s) }
++    assignee_ids = values.filter_map do |value|
++      next Current.user.id if value.to_s == 'me'
++      next if %w[none null unassigned].include?(value.to_s)
++
++      value
++    end
++
++    return scope.where(assigned_to: nil) if nil_requested && assignee_ids.blank?
++    return scope.where(assigned_to: assignee_ids) unless nil_requested
++
++    scope.where('crm_deals.assigned_to IN (:assignee_ids) OR crm_deals.assigned_to IS NULL', assignee_ids: assignee_ids)
++  end
++
++  def apply_array_filter(scope, column, *keys)
++    values = array_filter_value(*keys)
++    return scope if values.blank?
++
++    scope.where(column => values)
++  end
++
++  def apply_text_deal_filters(scope)
++    scope = apply_text_filter(scope, :title, 'title')
++    scope = apply_text_filter(scope, :booking_id, 'booking_id')
++    scope = apply_text_filter(scope, :car_model, 'car_model', 'selected_car')
++    apply_text_filter(scope, :client_phone, 'client_phone', 'phone')
++  end
++
++  def apply_text_filter(scope, column, *keys)
++    value = filter_value(*keys)
++    return scope unless present_filter_value?(value)
++
++    safe_column = column.to_s
++    return scope unless %w[title booking_id car_model client_phone].include?(safe_column)
++
++    scope.where("crm_deals.#{safe_column} ILIKE ?", like_query(value))
++  end
++
++  def apply_conversation_filters(scope)
++    inbox_ids = array_filter_value('inbox_id', 'inbox_ids', 'channel_id', 'channel_ids')
++    statuses = array_filter_value('conversation_status', 'conversation_statuses')
++
++    if inbox_ids.any?
++      scope = scope.left_outer_joins(:conversation).where(conversations: { inbox_id: inbox_ids })
++    end
++
++    if statuses.any?
++      scope = scope.left_outer_joins(:conversation).where(conversations: { status: statuses })
++    end
++
++    scope
++  end
++
++  def apply_amount_filters(scope)
++    scope = apply_numeric_range(scope, :amount, 'amount', 'budget')
++    apply_numeric_range(scope, :debt_amount, 'debt_amount', 'debt')
++  end
++
++  def apply_numeric_range(scope, column, *keys)
++    from_value, to_value = range_values_for(*keys)
++    return scope if from_value.blank? && to_value.blank?
++
++    scope = scope.where("crm_deals.#{column} >= ?", from_value) if from_value.present?
++    scope = scope.where("crm_deals.#{column} <= ?", to_value) if to_value.present?
++    scope
++  end
++
++  def apply_date_filters(scope)
++    DATE_FILTER_COLUMNS.each do |column|
++      from_time, to_time = date_range_for(column)
++      next if from_time.blank? && to_time.blank?
++
++      scope = scope.where("crm_deals.#{column} >= ?", from_time) if from_time.present?
++      scope = scope.where("crm_deals.#{column} <= ?", to_time) if to_time.present?
++    end
++
++    scope
++  end
++
++  def apply_rental_period_filter(scope)
++    from_time, to_time = date_range_for('period')
++    return scope if from_time.blank? && to_time.blank?
++
++    if from_time.present? && to_time.present?
++      return scope.where('crm_deals.rental_start <= ? AND crm_deals.rental_end >= ?', to_time, from_time)
++    end
++
++    scope = scope.where('crm_deals.rental_end >= ?', from_time) if from_time.present?
++    scope = scope.where('crm_deals.rental_start <= ?', to_time) if to_time.present?
++    scope
++  end
++
++  def apply_custom_attribute_filters(scope)
++    custom_attribute_filters.each do |key, value|
++      scope = apply_custom_attribute_filter(scope, key, value)
++    end
++
++    CUSTOM_ATTRIBUTE_DIRECT_FILTER_KEYS.each do |key|
++      value = filter_value(key)
++      scope = apply_custom_attribute_filter(scope, key, value) if present_filter_value?(value)
++    end
++
++    scope
++  end
++
++  def apply_custom_attribute_filter(scope, key, value)
++    return scope unless key.to_s.match?(/\A[a-zA-Z0-9_]+\z/)
++    return apply_custom_attribute_range_filter(scope, key, value) if value.is_a?(Hash)
++
++    values = array_param(value)
++    return scope if values.blank?
++
++    return scope.where('crm_deals.custom_attributes ->> ? IN (?)', key.to_s, values) if values.many?
++
++    scope.where('crm_deals.custom_attributes ->> ? ILIKE ?', key.to_s, like_query(values.first))
++  end
++
++  def apply_custom_attribute_range_filter(scope, key, value)
++    from_value, to_value = range_values_from_hash(value)
++    return scope if from_value.blank? && to_value.blank?
++
++    scope = scope.where('(crm_deals.custom_attributes ->> ?) >= ?', key.to_s, from_value) if from_value.present?
++    scope = scope.where('(crm_deals.custom_attributes ->> ?) <= ?', key.to_s, to_value) if to_value.present?
++    scope
++  end
++
++  def apply_deal_search(scope)
++    query = filter_value('q', 'search')
++    return scope unless present_filter_value?(query)
++
++    scope.left_outer_joins(:contact, :conversation).where(
++      [
++        'crm_deals.title ILIKE :query',
++        'crm_deals.booking_id ILIKE :query',
++        'crm_deals.car_model ILIKE :query',
++        'crm_deals.client_phone ILIKE :query',
++        'contacts.name ILIKE :query',
++        'contacts.email ILIKE :query',
++        'contacts.phone_number ILIKE :query',
++        'crm_deals.custom_attributes::text ILIKE :query',
++        'CAST(conversations.display_id AS TEXT) ILIKE :query'
++      ].join(' OR '),
++      query: like_query(query)
++    )
++  end
++
++  def apply_deal_sort(scope)
++    direction = sort_direction
++
++    case sort_key
++    when 'title'
++      scope.order(Arel.sql("LOWER(crm_deals.title) #{direction}"))
++    when 'amount'
++      scope.order(Arel.sql("crm_deals.amount #{direction} NULLS LAST"))
++    when 'rental_start', 'rental_end', 'updated_at', 'created_at'
++      scope.order(Arel.sql("crm_deals.#{sort_key} #{direction} NULLS LAST"))
++    when 'client_name'
++      scope.left_outer_joins(:contact).order(Arel.sql("LOWER(contacts.name) #{direction} NULLS LAST"))
++    when 'conversation_display_id'
++      scope.left_outer_joins(:conversation).order(Arel.sql("conversations.display_id #{direction} NULLS LAST"))
++    else
++      scope.order(created_at: :desc)
++    end
++  end
++
++  def apply_deal_pagination(scope)
++    return scope unless pagination_requested?
++
++    scope.offset((page_number - 1) * per_page).limit(per_page)
++  end
++
++  def deals_index_response(deals, filtered_deals)
++    total_count = filtered_deals.unscope(:order).count
++
++    {
++      data: deals.map { |deal| deal_payload(deal) },
++      meta: {
++        total_count: total_count,
++        total_amount: filtered_deals.unscope(:order).sum(:amount).to_s,
++        page: pagination_requested? ? page_number : nil,
++        per_page: pagination_requested? ? per_page : nil,
++        has_more: pagination_requested? ? page_number * per_page < total_count : false
++      }
++    }
++  end
++
++  def filter_params
++    @filter_params ||= begin
++      raw_filters = params[:filters]
++      filters_hash = if raw_filters.respond_to?(:to_unsafe_h)
++                       raw_filters.to_unsafe_h
++                     elsif raw_filters.is_a?(Hash)
++                       raw_filters
++                     elsif raw_filters.is_a?(String)
++                       JSON.parse(raw_filters)
++                     else
++                       {}
++                     end
++      filters_hash.deep_stringify_keys
++    rescue JSON::ParserError
++      {}
++    end
++  end
++
++  def filter_value(*keys)
++    keys.map(&:to_s).each do |key|
++      direct_value = params[key]
++      return direct_value if present_filter_value?(direct_value)
++
++      filter_value = filter_params[key]
++      return filter_value if present_filter_value?(filter_value)
++    end
++
++    nil
++  end
++
++  def array_filter_value(*keys)
++    array_param(filter_value(*keys))
++  end
++
++  def custom_attribute_filters
++    raw_filters = filter_params['custom_attributes'] || filter_params['custom'] || {}
++    return raw_filters if raw_filters.is_a?(Hash)
++
++    {}
++  end
++
+   def deal_scope
+     CrmDeal.for_account(Current.account.id)
+   end
+@@ -139,6 +425,146 @@ class Api::V1::Accounts::Crm::DealsController < Api::V1::Accounts::BaseControlle
+     }
+   end
+ 
++  def range_values_for(*keys)
++    raw_value = filter_value(*keys)
++    return range_values_from_hash(raw_value) if raw_value.is_a?(Hash)
++
++    from_keys = keys.flat_map { |key| ["#{key}_from", "#{key}_min", "min_#{key}"] }
++    to_keys = keys.flat_map { |key| ["#{key}_to", "#{key}_max", "max_#{key}"] }
++
++    [
++      filter_value(*from_keys),
++      filter_value(*to_keys)
++    ]
++  end
++
++  def range_values_from_hash(value)
++    value = value.deep_stringify_keys
++    [
++      value['from'] || value['min'] || value['start'],
++      value['to'] || value['max'] || value['end']
++    ]
++  end
++
++  def date_range_for(key)
++    raw_value = filter_value(key)
++    raw_hash = raw_value.is_a?(Hash) ? raw_value.deep_stringify_keys : {}
++    preset = raw_hash['preset'] || filter_value("#{key}_preset")
++    preset = raw_value if raw_value.is_a?(String) && raw_value.match?(/\A[a-z_]+\z/)
++
++    preset_from, preset_to = date_preset_range(preset)
++    from_value = raw_hash['from'] || raw_hash['start'] || filter_value("#{key}_from", "#{key}_start")
++    to_value = raw_hash['to'] || raw_hash['end'] || filter_value("#{key}_to", "#{key}_end")
++
++    [
++      parse_time_filter(from_value) || preset_from,
++      parse_time_filter(to_value, end_of_day: true) || preset_to
++    ]
++  end
++
++  def date_preset_range(preset)
++    today = Time.zone.today
++
++    case preset.to_s
++    when 'today'
++      [today.beginning_of_day, today.end_of_day]
++    when 'yesterday'
++      [1.day.ago.beginning_of_day, 1.day.ago.end_of_day]
++    when 'last_7_days'
++      [6.days.ago.beginning_of_day, today.end_of_day]
++    when 'last_30_days'
++      [29.days.ago.beginning_of_day, today.end_of_day]
++    when 'this_week'
++      [today.beginning_of_week, today.end_of_week]
++    when 'last_week'
++      [1.week.ago.beginning_of_week, 1.week.ago.end_of_week]
++    when 'this_month'
++      [today.beginning_of_month, today.end_of_month]
++    when 'last_month'
++      [1.month.ago.beginning_of_month, 1.month.ago.end_of_month]
++    when 'this_quarter'
++      [today.beginning_of_quarter, today.end_of_quarter]
++    when 'this_year'
++      [today.beginning_of_year, today.end_of_year]
++    else
++      [nil, nil]
++    end
++  end
++
++  def parse_time_filter(value, end_of_day: false)
++    return if value.blank?
++
++    parsed_time = Time.zone.parse(value.to_s)
++    return parsed_time.end_of_day if end_of_day && value.to_s.match?(/\A\d{4}-\d{2}-\d{2}\z/)
++
++    parsed_time
++  rescue ArgumentError, TypeError
++    nil
++  end
++
++  def sort_key
++    requested_key = filter_value('sort', 'sort_by').to_s
++    return requested_key if %w[
++      created_at updated_at title amount rental_start rental_end
++      client_name conversation_display_id
++    ].include?(requested_key)
++
++    'created_at'
++  end
++
++  def sort_direction
++    requested_direction = filter_value('direction', 'sort_direction').to_s.downcase
++    requested_direction == 'asc' ? 'ASC' : 'DESC'
++  end
++
++  def pagination_requested?
++    present_filter_value?(params[:page]) || present_filter_value?(params[:per_page])
++  end
++
++  def page_number
++    [params[:page].to_i, 1].max
++  end
++
++  def per_page
++    requested_per_page = params[:per_page].to_i
++    requested_per_page = DEFAULT_PER_PAGE if requested_per_page <= 0
++    [requested_per_page, MAX_PER_PAGE].min
++  end
++
++  def include_meta?
++    truthy_param?(params[:include_meta]) || truthy_param?(params[:pipeline])
++  end
++
++  def truthy_param?(value)
++    %w[1 true yes on].include?(value.to_s.downcase)
++  end
++
++  def present_filter_value?(value)
++    return false if value.nil?
++    return false if value.respond_to?(:empty?) && value.empty?
++
++    true
++  end
++
++  def array_param(value)
++    case value
++    when Array
++      value
++    when String
++      value.split(',')
++    else
++      [value]
++    end.filter_map do |item|
++      next if item.nil?
++
++      item.to_s.strip.presence
++    end
++  end
++
++  def like_query(value)
++    "%#{ActiveRecord::Base.sanitize_sql_like(value.to_s.strip)}%"
++  end
++
+   def merged_deal_attributes(deal, attrs)
+     deal.attributes.merge(attrs.to_h.stringify_keys).tap do |merged_attrs|
+       merged_attrs['custom_attributes'] = normalized_custom_attributes(attrs[:custom_attributes]) if attrs.key?(:custom_attributes)

@@ -1,6 +1,8 @@
 -- CRM Pipeline database foundation for Chatwoot.
 -- Safe to run multiple times.
 
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+
 -- ---------------------------------------------------------------------------
 -- CRM pipeline stages
 -- ---------------------------------------------------------------------------
@@ -213,6 +215,72 @@ CREATE INDEX IF NOT EXISTS idx_crm_deals_assigned_to
 
 CREATE INDEX IF NOT EXISTS idx_crm_deals_custom_attributes
   ON public.crm_deals USING gin (custom_attributes);
+
+CREATE INDEX IF NOT EXISTS idx_crm_deals_account_stage_id
+  ON public.crm_deals (account_id, stage_id);
+
+CREATE INDEX IF NOT EXISTS idx_crm_deals_account_assigned_to
+  ON public.crm_deals (account_id, assigned_to);
+
+CREATE INDEX IF NOT EXISTS idx_crm_deals_account_conversation_id
+  ON public.crm_deals (account_id, conversation_id);
+
+CREATE INDEX IF NOT EXISTS idx_crm_deals_account_contact_id
+  ON public.crm_deals (account_id, contact_id);
+
+CREATE INDEX IF NOT EXISTS idx_crm_deals_account_created_at
+  ON public.crm_deals (account_id, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_crm_deals_account_updated_at
+  ON public.crm_deals (account_id, updated_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_crm_deals_account_rental_start
+  ON public.crm_deals (account_id, rental_start);
+
+CREATE INDEX IF NOT EXISTS idx_crm_deals_account_rental_end
+  ON public.crm_deals (account_id, rental_end);
+
+CREATE INDEX IF NOT EXISTS idx_crm_deals_account_amount
+  ON public.crm_deals (account_id, amount);
+
+CREATE INDEX IF NOT EXISTS idx_crm_deals_account_debt_amount
+  ON public.crm_deals (account_id, debt_amount);
+
+CREATE INDEX IF NOT EXISTS idx_crm_deals_account_fleet_sync_status
+  ON public.crm_deals (account_id, fleet_sync_status);
+
+CREATE INDEX IF NOT EXISTS idx_crm_deals_title_trgm
+  ON public.crm_deals USING gin (title gin_trgm_ops);
+
+CREATE INDEX IF NOT EXISTS idx_crm_deals_booking_id_trgm
+  ON public.crm_deals USING gin (booking_id gin_trgm_ops);
+
+CREATE INDEX IF NOT EXISTS idx_crm_deals_car_model_trgm
+  ON public.crm_deals USING gin (car_model gin_trgm_ops);
+
+CREATE INDEX IF NOT EXISTS idx_crm_deals_client_phone_trgm
+  ON public.crm_deals USING gin (client_phone gin_trgm_ops);
+
+CREATE INDEX IF NOT EXISTS idx_crm_deals_custom_attributes_text_trgm
+  ON public.crm_deals USING gin ((custom_attributes::text) gin_trgm_ops);
+
+CREATE INDEX IF NOT EXISTS idx_contacts_crm_name_trgm
+  ON public.contacts USING gin (name gin_trgm_ops);
+
+CREATE INDEX IF NOT EXISTS idx_contacts_crm_email_trgm
+  ON public.contacts USING gin (email gin_trgm_ops);
+
+CREATE INDEX IF NOT EXISTS idx_contacts_crm_phone_number_trgm
+  ON public.contacts USING gin (phone_number gin_trgm_ops);
+
+CREATE INDEX IF NOT EXISTS idx_conversations_crm_account_inbox_id
+  ON public.conversations (account_id, inbox_id);
+
+CREATE INDEX IF NOT EXISTS idx_conversations_crm_account_status
+  ON public.conversations (account_id, status);
+
+CREATE INDEX IF NOT EXISTS idx_conversations_crm_account_display_id
+  ON public.conversations (account_id, display_id);
 
 -- ---------------------------------------------------------------------------
 -- CRM configurable deal fields

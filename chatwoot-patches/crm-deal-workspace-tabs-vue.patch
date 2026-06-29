@@ -1,0 +1,721 @@
+diff --git a/app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue b/app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue
+index 867de6a..5e2b060 100644
+--- a/app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue
++++ b/app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue
+@@ -8,6 +8,7 @@ import Spinner from 'dashboard/components-next/spinner/Spinner.vue';
+ import SidepanelSwitch from 'dashboard/components-next/Conversation/SidepanelSwitch.vue';
+ import ConversationBox from 'dashboard/components/widgets/conversation/ConversationBox.vue';
+ import { useAccount } from 'dashboard/composables/useAccount';
++import { useAdmin } from 'dashboard/composables/useAdmin';
+ import { useMapGetter, useStore } from 'dashboard/composables/store';
+ import { BUS_EVENTS } from 'shared/constants/busEvents';
+ import { emitter } from 'shared/helpers/mitt';
+@@ -15,6 +16,7 @@ import { emitter } from 'shared/helpers/mitt';
+ const route = useRoute();
+ const router = useRouter();
+ const { accountId } = useAccount();
++const { isAdmin } = useAdmin();
+ const store = useStore();
+ const currentChat = useMapGetter('getSelectedChat');
+ const conversationById = useMapGetter('getConversationById');
+@@ -31,6 +33,8 @@ const fieldConfigError = ref('');
+ const fieldConfigMessage = ref('');
+ const missingRequiredKeys = ref([]);
+ const isDealEditing = ref(false);
++const activeSidebarTab = ref('deal');
++const showTrackingFields = ref(false);
+ const newFieldForm = ref({
+   label: '',
+   key: '',
+@@ -58,6 +62,48 @@ const dateFormatter = new Intl.DateTimeFormat('en-GB', {
+   year: 'numeric',
+ });
+ 
++const FIELD_GROUP_KEYS = {
++  main: ['assigned_manager', 'assigned_manager_id', 'manager', 'client_status', 'language', 'client_type', 'customer_type'],
++  car: ['car_model', 'car_type', 'requested_car', 'selected_car'],
++  booking: ['booking_id', 'rental_start', 'rental_end'],
++  finance: ['amount', 'budget', 'debt_amount'],
++};
++
++const MARKETING_KEYS = [
++  'source_request',
++  'source',
++  'first_message',
++  'landing_url',
++  'requested_car',
++  'utm_source',
++  'utm_campaign',
++  'utm_content',
++  'utm_term',
++];
++
++const TRACKING_KEYS = ['gclid', 'fbclid', 'yclid'];
++
++const CLIENT_ATTRIBUTE_KEYS = [
++  'client_name',
++  'name',
++  'email',
++  'phone',
++  'phone_number',
++  'identifier',
++  'fleet_id',
++  'company',
++  'company_name',
++  'status',
++];
++
++const HIDDEN_DEAL_FIELD_KEYS = new Set([
++  'title',
++  'client_phone',
++  ...MARKETING_KEYS,
++  ...TRACKING_KEYS,
++  ...CLIENT_ATTRIBUTE_KEYS,
++]);
++
+ const orderedStages = computed(() => {
+   return [...stages.value].sort((a, b) => a.position - b.position);
+ });
+@@ -109,6 +155,182 @@ const contactIdentifier = computed(() => {
+ const contactCompany = computed(() => {
+   return contact.value?.additional_attributes?.company_name || contact.value?.company_name || 'Not Available';
+ });
++
++const hasDisplayValue = value => {
++  if (Array.isArray(value)) return value.length > 0;
++  return value !== null && value !== undefined && value !== '';
++};
++
++const normalizedAttributes = source => {
++  if (!source || Array.isArray(source) || typeof source !== 'object') return {};
++  return source;
++};
++
++const displayScalar = value => {
++  if (!hasDisplayValue(value)) return 'Not Available';
++  if (value === true) return 'Yes';
++  if (value === false) return 'No';
++  if (Array.isArray(value)) return value.filter(hasDisplayValue).join(', ') || 'Not Available';
++  if (typeof value === 'object') return JSON.stringify(value);
++  return value;
++};
++
++const humanizeKey = key => {
++  return key
++    .split('_')
++    .filter(Boolean)
++    .map(part => `${part.charAt(0).toUpperCase()}${part.slice(1)}`)
++    .join(' ');
++};
++
++const valueFromSources = (sources, keys) => {
++  for (const source of sources) {
++    const attributes = normalizedAttributes(source);
++    for (const key of keys) {
++      if (hasDisplayValue(attributes[key])) return attributes[key];
++    }
++  }
++
++  return '';
++};
++
++const dealAttributes = computed(() => normalizedAttributes(deal.value?.custom_attributes));
++const contactAttributes = computed(() => ({
++  ...normalizedAttributes(contact.value?.custom_attributes),
++  ...normalizedAttributes(contact.value?.additional_attributes),
++}));
++const conversationAttributes = computed(() => ({
++  ...normalizedAttributes(deal.value?.conversation?.custom_attributes),
++  ...normalizedAttributes(deal.value?.conversation?.additional_attributes),
++}));
++
++const attributeSources = computed(() => [
++  deal.value || {},
++  dealAttributes.value,
++  contactAttributes.value,
++  conversationAttributes.value,
++]);
++
++const clientTypeValue = computed(() => {
++  return valueFromSources(attributeSources.value, ['client_type', 'customer_type', 'type']);
++});
++
++const clientTypeDisplay = computed(() => {
++  const value = clientTypeValue.value;
++  if (!hasDisplayValue(value)) return '';
++
++  const normalizedValue = String(value).trim().toLowerCase();
++  if (normalizedValue.includes('vip')) return 'VIP';
++  if (normalizedValue.includes('company') || normalizedValue.includes('corporate')) return 'Company';
++  if (normalizedValue.includes('individual') || normalizedValue.includes('person')) return 'Individual';
++  return value;
++});
++
++const clientStatusValue = computed(() => {
++  return valueFromSources(attributeSources.value, ['client_status', 'status']);
++});
++
++const clientRows = computed(() => [
++  { label: 'Name', value: contactName.value },
++  { label: 'Email', value: contactEmail.value },
++  { label: 'Phone', value: contactPhone.value },
++  { label: 'Fleet ID', value: contactIdentifier.value || valueFromSources(attributeSources.value, ['fleet_id']) },
++  { label: 'Company', value: contactCompany.value },
++  { label: 'Status', value: clientStatusValue.value },
++]);
++
++const clientAttributeKeys = new Set([
++  ...CLIENT_ATTRIBUTE_KEYS,
++  ...MARKETING_KEYS,
++  ...TRACKING_KEYS,
++  'country',
++  'country_code',
++  'city',
++  'social_profiles',
++]);
++
++const visibleClientAttributes = computed(() => {
++  return Object.entries(contactAttributes.value)
++    .filter(([key, value]) => !clientAttributeKeys.has(key) && hasDisplayValue(value))
++    .map(([key, value]) => ({
++      key,
++      label: humanizeKey(key),
++      value,
++    }));
++});
++
++const marketingFields = [
++  { key: 'source_request', label: 'Source request' },
++  { key: 'source', label: 'Source' },
++  { key: 'first_message', label: 'First message' },
++  { key: 'landing_url', label: 'Landing URL' },
++  { key: 'requested_car', label: 'Requested car' },
++  { key: 'utm_source', label: 'UTM source' },
++  { key: 'utm_campaign', label: 'UTM campaign' },
++  { key: 'utm_content', label: 'UTM content' },
++  { key: 'utm_term', label: 'UTM term' },
++];
++
++const marketingRows = computed(() => {
++  return marketingFields
++    .map(field => ({
++      ...field,
++      value: valueFromSources(attributeSources.value, [field.key]),
++    }))
++    .filter(row => hasDisplayValue(row.value));
++});
++
++const trackingRows = computed(() => {
++  return TRACKING_KEYS
++    .map(key => ({
++      key,
++      label: key.toUpperCase(),
++      value: valueFromSources(attributeSources.value, [key]),
++    }))
++    .filter(row => hasDisplayValue(row.value));
++});
++
++const hasMarketingData = computed(() => {
++  return marketingRows.value.length > 0 || trackingRows.value.length > 0;
++});
++
++const fieldsForKeys = keys => {
++  return visibleFields.value.filter(field => keys.includes(field.key) && field.key !== 'title');
++};
++
++const allExplicitDealKeys = new Set(Object.values(FIELD_GROUP_KEYS).flat());
++
++const mainDealFields = computed(() => {
++  const explicitMainFields = fieldsForKeys(FIELD_GROUP_KEYS.main);
++  const fallbackMainFields = visibleFields.value.filter(field => {
++    if (field.key === 'title') return false;
++    if (allExplicitDealKeys.has(field.key)) return false;
++    return !HIDDEN_DEAL_FIELD_KEYS.has(field.key);
++  });
++
++  return [...explicitMainFields, ...fallbackMainFields];
++});
++
++const dealSidebarGroups = computed(() => {
++  return [
++    { id: 'main', label: 'Main', showStage: true, fields: mainDealFields.value },
++    { id: 'car', label: 'Car', fields: fieldsForKeys(FIELD_GROUP_KEYS.car) },
++    { id: 'booking', label: 'Booking', fields: fieldsForKeys(FIELD_GROUP_KEYS.booking) },
++    { id: 'finance', label: 'Finance', fields: fieldsForKeys(FIELD_GROUP_KEYS.finance) },
++  ].filter(group => group.showStage || group.fields.length);
++});
++
++const visibleSidebarTabs = computed(() => {
++  const tabs = [
++    { id: 'deal', label: 'Deal' },
++    { id: 'client', label: 'Client' },
++    { id: 'marketing', label: 'Marketing' },
++  ];
++
++  if (isAdmin.value) tabs.push({ id: 'settings', label: 'Settings' });
++  return tabs;
++});
++
+ const conversationDisplayId = computed(() => deal.value?.conversation?.display_id);
+ const hasConversation = computed(() => !!conversationDisplayId.value);
+ const activeChatId = computed(() => Number(conversationDisplayId.value || 0));
+@@ -220,6 +442,7 @@ const displayValueForField = field => {
+ 
+   if (field.field_type === 'boolean') return value ? 'Yes' : 'No';
+   if (field.field_type === 'date') return formatDate(value) || '...';
++  if (['amount', 'debt_amount'].includes(field.key)) return formatAmount(value) || '...';
+   return value === null || value === undefined || value === '' ? '...' : value;
+ };
+ 
+@@ -469,6 +692,11 @@ const saveStageRequirements = async () => {
+ 
+ watch(() => route.params.dealId, loadWorkspace, { immediate: true });
+ watch(requiredConfigStageId, syncRequiredDraft);
++watch(isAdmin, () => {
++  if (!visibleSidebarTabs.value.some(tab => tab.id === activeSidebarTab.value)) {
++    activeSidebarTab.value = 'deal';
++  }
++});
+ onMounted(async () => {
+   await store.dispatch('agents/get');
+ });
+@@ -608,139 +836,110 @@ onUnmounted(() => {
+         </ConversationBox>
+       </main>
+ 
+-      <aside class="min-h-0 overflow-y-auto bg-n-surface-1 px-4 py-4">
+-        <div class="grid gap-4">
+-          <section class="rounded-xl border border-n-weak bg-n-background p-4">
+-            <div class="flex items-start gap-3">
+-              <div
+-                class="grid size-14 shrink-0 place-items-center rounded-xl bg-n-indigo-3 text-lg font-semibold text-n-indigo-11"
+-              >
+-                {{ contactInitials }}
+-              </div>
+-              <div class="min-w-0 flex-1">
+-                <div class="flex items-center justify-between gap-2">
+-                  <h2 class="m-0 truncate text-base font-semibold text-n-slate-12">
+-                    {{ contactName }}
+-                  </h2>
+-                  <div class="flex shrink-0 items-center gap-1">
+-                    <Button
+-                      v-if="conversationDisplayId"
+-                      icon="i-lucide-message-circle"
+-                      size="xs"
+-                      slate
+-                      faded
+-                      type="button"
+-                      aria-label="Open conversation"
+-                      @click="openInboxConversation"
+-                    />
+-                    <Button
+-                      icon="i-lucide-pencil"
+-                      size="xs"
+-                      slate
+-                      faded
+-                      type="button"
+-                      aria-label="Edit deal"
+-                      @click="isDealEditing = !isDealEditing"
+-                    />
+-                  </div>
+-                </div>
++      <aside class="min-h-0 overflow-y-auto bg-n-surface-1 px-4 pb-4">
++        <div class="sticky top-0 z-10 -mx-4 bg-n-surface-1 px-4 pt-3">
++          <div class="flex items-center gap-4 border-b border-n-weak">
++            <button
++              v-for="tab in visibleSidebarTabs"
++              :key="tab.id"
++              class="h-10 border-b-2 px-0 text-sm font-medium outline-none transition-colors"
++              :class="activeSidebarTab === tab.id ? 'border-n-brand text-n-brand' : 'border-transparent text-n-slate-10 hover:text-n-slate-12'"
++              type="button"
++              :aria-pressed="activeSidebarTab === tab.id"
++              @click="activeSidebarTab = tab.id"
++            >
++              {{ tab.label }}
++            </button>
++          </div>
++        </div>
+ 
+-                <div class="mt-3 grid gap-2 text-sm text-n-slate-11">
+-                  <div v-if="contactEmail" class="flex min-w-0 items-center gap-2">
+-                    <i class="i-lucide-mail size-4 shrink-0" />
+-                    <span class="truncate">{{ contactEmail }}</span>
+-                  </div>
+-                  <div v-if="contactPhone" class="flex min-w-0 items-center gap-2">
+-                    <i class="i-lucide-phone size-4 shrink-0" />
+-                    <span class="truncate">{{ contactPhone }}</span>
+-                  </div>
+-                  <div v-if="contactIdentifier" class="flex min-w-0 items-center gap-2">
+-                    <i class="i-lucide-users size-4 shrink-0" />
+-                    <span class="truncate">{{ contactIdentifier }}</span>
+-                  </div>
+-                  <div class="flex min-w-0 items-center gap-2">
+-                    <i class="i-lucide-building-2 size-4 shrink-0" />
+-                    <span class="truncate">{{ contactCompany }}</span>
+-                  </div>
+-                </div>
+-              </div>
++        <form
++          v-if="activeSidebarTab === 'deal'"
++          class="grid gap-4 pt-4"
++          @submit.prevent="saveDeal"
++        >
++          <div class="flex items-center justify-between gap-3">
++            <div class="flex min-w-0 items-center gap-2">
++              <i class="i-lucide-briefcase size-4 shrink-0 text-n-slate-11" />
++              <h2 class="m-0 truncate text-base font-semibold text-n-slate-12">
++                CRM Deal
++              </h2>
+             </div>
+-          </section>
+-
+-          <form
+-            class="rounded-xl border border-n-weak bg-n-background p-4"
+-            @submit.prevent="saveDeal"
+-          >
+-            <div class="flex items-center justify-between gap-3">
+-              <div class="flex min-w-0 items-center gap-2">
+-                <i class="i-lucide-briefcase size-4 shrink-0 text-n-slate-11" />
+-                <h2 class="m-0 truncate text-base font-semibold text-n-slate-12">
+-                  CRM Deal
+-                </h2>
+-              </div>
+-              <div class="flex shrink-0 items-center gap-2">
+-                <span
+-                  v-if="saveMessage"
+-                  class="rounded-md bg-n-teal-3 px-2 py-1 text-xs font-medium text-n-teal-11"
+-                >
+-                  {{ saveMessage }}
+-                </span>
+-                <Button
+-                  v-if="isDealEditing"
+-                  label="Save"
+-                  icon="i-lucide-save"
+-                  size="xs"
+-                  type="submit"
+-                  :is-loading="isSaving"
+-                />
+-                <Button
+-                  v-else
+-                  icon="i-lucide-pencil"
+-                  size="xs"
+-                  slate
+-                  faded
+-                  type="button"
+-                  aria-label="Edit deal fields"
+-                  @click="isDealEditing = true"
+-                />
+-              </div>
++            <div class="flex shrink-0 items-center gap-2">
++              <span
++                v-if="saveMessage"
++                class="rounded-md bg-n-teal-3 px-2 py-1 text-xs font-medium text-n-teal-11"
++              >
++                {{ saveMessage }}
++              </span>
++              <Button
++                v-if="isDealEditing"
++                label="Save"
++                icon="i-lucide-save"
++                size="xs"
++                type="submit"
++                :is-loading="isSaving"
++              />
++              <Button
++                v-else
++                icon="i-lucide-pencil"
++                size="xs"
++                slate
++                faded
++                type="button"
++                aria-label="Edit deal fields"
++                @click="isDealEditing = true"
++              />
+             </div>
++          </div>
+ 
+-            <div class="mt-3 rounded-lg border border-n-weak bg-n-surface-1">
+-              <div class="flex items-center justify-between gap-3 px-3 py-2 text-sm">
+-                <span class="text-n-slate-11">Stage</span>
+-                <select
+-                  v-if="isDealEditing"
+-                  v-model="dealForm.stage_id"
+-                  :class="compactFieldClass"
++          <div v-if="isLoadingFields" class="grid place-items-center py-8 text-n-slate-11">
++            <Spinner :size="18" />
++          </div>
++
++          <template v-else>
++            <section
++              v-for="group in dealSidebarGroups"
++              :key="group.id"
++              class="border-b border-n-weak pb-4 last:border-b-0"
++            >
++              <h3 class="m-0 text-xs font-semibold uppercase text-n-slate-10">
++                {{ group.label }}
++              </h3>
++
++              <div class="mt-2 divide-y divide-n-weak border-y border-n-weak">
++                <div
++                  v-if="group.showStage"
++                  class="flex min-h-[2.75rem] items-center justify-between gap-3 py-2 text-sm"
+                 >
+-                  <option
+-                    v-for="stage in orderedStages"
+-                    :key="stage.id"
+-                    :value="stage.id"
++                  <span class="text-n-slate-11">Stage</span>
++                  <select
++                    v-if="isDealEditing"
++                    v-model="dealForm.stage_id"
++                    :class="compactFieldClass"
+                   >
+-                    {{ stage.name }}
+-                  </option>
+-                </select>
+-                <span
+-                  v-else-if="selectedStage"
+-                  class="rounded-md px-2 py-1 text-xs font-medium text-white"
+-                  :style="{ backgroundColor: selectedStage.color || '#6B7280' }"
+-                >
+-                  {{ selectedStage.name }}
+-                </span>
+-                <span v-else class="text-n-slate-10">...</span>
+-              </div>
+-
+-              <div v-if="isLoadingFields" class="grid place-items-center py-4 text-n-slate-11">
+-                <Spinner :size="18" />
+-              </div>
++                    <option
++                      v-for="stage in orderedStages"
++                      :key="stage.id"
++                      :value="stage.id"
++                    >
++                      {{ stage.name }}
++                    </option>
++                  </select>
++                  <span
++                    v-else-if="selectedStage"
++                    class="rounded-md px-2 py-1 text-xs font-medium text-white"
++                    :style="{ backgroundColor: selectedStage.color || '#6B7280' }"
++                  >
++                    {{ selectedStage.name }}
++                  </span>
++                  <span v-else class="text-n-slate-10">...</span>
++                </div>
+ 
+-              <template v-else>
+                 <div
+-                  v-for="field in visibleFields"
++                  v-for="field in group.fields"
+                   :key="field.key"
+-                  class="border-t border-n-weak px-3 py-2"
++                  class="py-2"
+                 >
+                   <div class="flex items-start justify-between gap-3">
+                     <div class="min-w-0 pt-1">
+@@ -809,67 +1008,149 @@ onUnmounted(() => {
+                     </div>
+                   </div>
+                 </div>
+-              </template>
+-            </div>
+-          </form>
++              </div>
++            </section>
++          </template>
++        </form>
+ 
+-          <section class="rounded-xl border border-n-weak bg-n-background p-4">
+-            <h2 class="m-0 text-base font-semibold text-n-slate-12">
+-              Client
+-            </h2>
+-            <div class="mt-3 grid gap-2 text-sm">
+-              <div class="flex items-center justify-between gap-3">
+-                <span class="text-n-slate-11">Name</span>
+-                <span class="min-w-0 truncate text-right text-n-slate-12">{{ contactName }}</span>
++        <div v-else-if="activeSidebarTab === 'client'" class="grid gap-4 pt-4">
++          <section class="border-b border-n-weak pb-4">
++            <div class="flex items-start gap-3">
++              <div
++                class="grid size-14 shrink-0 place-items-center rounded-xl bg-n-indigo-3 text-lg font-semibold text-n-indigo-11"
++              >
++                {{ contactInitials }}
+               </div>
+-              <div v-if="contactEmail" class="flex items-center justify-between gap-3">
+-                <span class="text-n-slate-11">Email</span>
+-                <span class="min-w-0 truncate text-right text-n-slate-12">{{ contactEmail }}</span>
++              <div class="min-w-0 flex-1">
++                <div class="flex items-center justify-between gap-2">
++                  <h2 class="m-0 truncate text-base font-semibold text-n-slate-12">
++                    {{ contactName }}
++                  </h2>
++                  <Button
++                    v-if="conversationDisplayId"
++                    icon="i-lucide-message-circle"
++                    size="xs"
++                    slate
++                    faded
++                    type="button"
++                    aria-label="Open conversation"
++                    @click="openInboxConversation"
++                  />
++                </div>
++                <span
++                  v-if="clientTypeDisplay"
++                  class="mt-2 inline-flex rounded-md bg-n-alpha-2 px-2 py-1 text-xs font-medium text-n-slate-11"
++                >
++                  {{ clientTypeDisplay }}
++                </span>
+               </div>
+             </div>
+           </section>
+ 
+-          <section class="rounded-xl border border-n-weak bg-n-background p-4">
+-            <h2 class="m-0 text-base font-semibold text-n-slate-12">
+-              Conversation
+-            </h2>
+-            <div class="mt-3 grid gap-2 text-sm">
+-              <div class="flex items-center justify-between gap-3">
+-                <span class="text-n-slate-11">Display ID</span>
+-                <span class="text-n-slate-12">{{ conversationDisplayId ? `#${conversationDisplayId}` : '-' }}</span>
+-              </div>
+-              <div class="flex items-center justify-between gap-3">
+-                <span class="text-n-slate-11">Inbox</span>
+-                <span class="text-n-slate-12">{{ deal?.conversation?.inbox_id || '-' }}</span>
+-              </div>
+-              <div class="flex items-center justify-between gap-3">
+-                <span class="text-n-slate-11">Status</span>
+-                <span class="capitalize text-n-slate-12">{{ conversationStatus || '-' }}</span>
++          <section class="border-b border-n-weak pb-4">
++            <h3 class="m-0 text-xs font-semibold uppercase text-n-slate-10">
++              Contact
++            </h3>
++            <div class="mt-2 divide-y divide-n-weak border-y border-n-weak text-sm">
++              <div
++                v-for="row in clientRows"
++                :key="row.label"
++                class="flex min-h-[2.5rem] items-center justify-between gap-3 py-2"
++              >
++                <span class="text-n-slate-11">{{ row.label }}</span>
++                <span
++                  class="min-w-0 max-w-[13rem] truncate text-right text-n-slate-12"
++                  :class="{ 'text-n-slate-10': !hasDisplayValue(row.value) }"
++                >
++                  {{ displayScalar(row.value) }}
++                </span>
+               </div>
+-              <div class="flex items-center justify-between gap-3">
+-                <span class="text-n-slate-11">Reply</span>
+-                <span class="text-n-slate-12">{{ canReply ? 'Available' : 'Unavailable' }}</span>
++            </div>
++          </section>
++
++          <section v-if="visibleClientAttributes.length" class="border-b border-n-weak pb-4">
++            <h3 class="m-0 text-xs font-semibold uppercase text-n-slate-10">
++              Attributes
++            </h3>
++            <div class="mt-2 divide-y divide-n-weak border-y border-n-weak text-sm">
++              <div
++                v-for="attribute in visibleClientAttributes"
++                :key="attribute.key"
++                class="flex min-h-[2.5rem] items-center justify-between gap-3 py-2"
++              >
++                <span class="text-n-slate-11">{{ attribute.label }}</span>
++                <span class="min-w-0 max-w-[13rem] truncate text-right text-n-slate-12">
++                  {{ displayScalar(attribute.value) }}
++                </span>
+               </div>
+             </div>
+           </section>
++        </div>
+ 
+-          <section class="rounded-xl border border-n-weak bg-n-background p-4">
+-            <h2 class="m-0 text-base font-semibold text-n-slate-12">
+-              Value
+-            </h2>
+-            <div class="mt-3 grid gap-2 text-sm">
+-              <div class="flex items-center justify-between gap-3">
+-                <span class="text-n-slate-11">Amount</span>
+-                <span class="font-medium text-n-slate-12">{{ formatAmount(deal?.amount) || '-' }}</span>
++        <div v-else-if="activeSidebarTab === 'marketing'" class="grid gap-4 pt-4">
++          <div
++            v-if="!hasMarketingData"
++            class="rounded-lg border border-dashed border-n-weak px-4 py-8 text-center text-sm text-n-slate-10"
++          >
++            No marketing data yet
++          </div>
++
++          <template v-else>
++            <section v-if="marketingRows.length" class="border-b border-n-weak pb-4">
++              <h3 class="m-0 text-xs font-semibold uppercase text-n-slate-10">
++                Source
++              </h3>
++              <div class="mt-2 divide-y divide-n-weak border-y border-n-weak text-sm">
++                <div
++                  v-for="row in marketingRows"
++                  :key="row.key"
++                  class="flex min-h-[2.5rem] items-start justify-between gap-3 py-2"
++                >
++                  <span class="shrink-0 text-n-slate-11">{{ row.label }}</span>
++                  <span class="min-w-0 max-w-[13rem] break-words text-right text-n-slate-12">
++                    {{ displayScalar(row.value) }}
++                  </span>
++                </div>
+               </div>
++            </section>
++
++            <section v-if="trackingRows.length" class="border-b border-n-weak pb-4">
+               <div class="flex items-center justify-between gap-3">
+-                <span class="text-n-slate-11">Debt</span>
+-                <span class="font-medium text-n-slate-12">{{ formatAmount(deal?.debt_amount) || '-' }}</span>
++                <h3 class="m-0 text-xs font-semibold uppercase text-n-slate-10">
++                  Click IDs
++                </h3>
++                <Button
++                  :label="showTrackingFields ? 'Hide tracking' : 'Show tracking'"
++                  icon="i-lucide-mouse-pointer-click"
++                  size="xs"
++                  slate
++                  faded
++                  type="button"
++                  @click="showTrackingFields = !showTrackingFields"
++                />
+               </div>
+-            </div>
+-          </section>
+ 
+-          <section class="rounded-xl border border-n-weak bg-n-background p-4">
++              <div
++                v-if="showTrackingFields"
++                class="mt-2 divide-y divide-n-weak border-y border-n-weak text-sm"
++              >
++                <div
++                  v-for="row in trackingRows"
++                  :key="row.key"
++                  class="flex min-h-[2.5rem] items-start justify-between gap-3 py-2"
++                >
++                  <span class="shrink-0 text-n-slate-11">{{ row.label }}</span>
++                  <span class="min-w-0 max-w-[13rem] break-all text-right text-n-slate-12">
++                    {{ displayScalar(row.value) }}
++                  </span>
++                </div>
++              </div>
++            </section>
++          </template>
++        </div>
++
++        <div v-else-if="activeSidebarTab === 'settings' && isAdmin" class="grid gap-4 pt-4">
++          <section class="border-b border-n-weak pb-4">
+             <div class="flex items-center justify-between gap-3">
+               <h2 class="m-0 text-base font-semibold text-n-slate-12">
+                 Field setup
+@@ -885,7 +1166,7 @@ onUnmounted(() => {
+               />
+             </div>
+ 
+-            <div v-if="showFieldConfig" class="mt-3 grid gap-4">
++            <div v-if="showFieldConfig" class="mt-4 grid gap-4">
+               <div
+                 v-if="fieldConfigError"
+                 class="rounded-md bg-n-ruby-3 px-3 py-2 text-sm text-n-ruby-11"

@@ -1,0 +1,269 @@
+diff --git a/app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue b/app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue
+index 5e2b060..57d1d52 100644
+--- a/app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue
++++ b/app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue
+@@ -7,6 +7,7 @@ import Button from 'dashboard/components-next/button/Button.vue';
+ import Spinner from 'dashboard/components-next/spinner/Spinner.vue';
+ import SidepanelSwitch from 'dashboard/components-next/Conversation/SidepanelSwitch.vue';
+ import ConversationBox from 'dashboard/components/widgets/conversation/ConversationBox.vue';
++import ContactInfo from '../conversation/contact/ContactInfo.vue';
+ import { useAccount } from 'dashboard/composables/useAccount';
+ import { useAdmin } from 'dashboard/composables/useAdmin';
+ import { useMapGetter, useStore } from 'dashboard/composables/store';
+@@ -124,6 +125,10 @@ const visibleFields = computed(() => {
+     .sort((a, b) => a.position - b.position);
+ });
+ 
++const visibleConfigFields = computed(() => {
++  return visibleFields.value.filter(field => field.key !== 'title');
++});
++
+ const customFields = computed(() => {
+   return visibleFields.value.filter(field => isCustomField(field));
+ });
+@@ -142,19 +147,6 @@ const configuredRequiredKeys = computed(() => {
+ 
+ const contact = computed(() => deal.value?.contact || {});
+ const contactName = computed(() => contact.value?.name || deal.value?.title || 'Client');
+-const contactPhone = computed(() => contact.value?.phone_number || deal.value?.client_phone || '');
+-const contactEmail = computed(() => contact.value?.email || '');
+-const contactInitial = computed(() => contactName.value.slice(0, 1).toUpperCase());
+-const contactInitials = computed(() => {
+-  const parts = contactName.value.trim().split(/\s+/).filter(Boolean);
+-  return (parts.length > 1 ? `${parts[0][0]}${parts[1][0]}` : contactInitial.value).toUpperCase();
+-});
+-const contactIdentifier = computed(() => {
+-  return contact.value?.identifier || contact.value?.additional_attributes?.identifier || '';
+-});
+-const contactCompany = computed(() => {
+-  return contact.value?.additional_attributes?.company_name || contact.value?.company_name || 'Not Available';
+-});
+ 
+ const hasDisplayValue = value => {
+   if (Array.isArray(value)) return value.length > 0;
+@@ -211,34 +203,6 @@ const attributeSources = computed(() => [
+   conversationAttributes.value,
+ ]);
+ 
+-const clientTypeValue = computed(() => {
+-  return valueFromSources(attributeSources.value, ['client_type', 'customer_type', 'type']);
+-});
+-
+-const clientTypeDisplay = computed(() => {
+-  const value = clientTypeValue.value;
+-  if (!hasDisplayValue(value)) return '';
+-
+-  const normalizedValue = String(value).trim().toLowerCase();
+-  if (normalizedValue.includes('vip')) return 'VIP';
+-  if (normalizedValue.includes('company') || normalizedValue.includes('corporate')) return 'Company';
+-  if (normalizedValue.includes('individual') || normalizedValue.includes('person')) return 'Individual';
+-  return value;
+-});
+-
+-const clientStatusValue = computed(() => {
+-  return valueFromSources(attributeSources.value, ['client_status', 'status']);
+-});
+-
+-const clientRows = computed(() => [
+-  { label: 'Name', value: contactName.value },
+-  { label: 'Email', value: contactEmail.value },
+-  { label: 'Phone', value: contactPhone.value },
+-  { label: 'Fleet ID', value: contactIdentifier.value || valueFromSources(attributeSources.value, ['fleet_id']) },
+-  { label: 'Company', value: contactCompany.value },
+-  { label: 'Status', value: clientStatusValue.value },
+-]);
+-
+ const clientAttributeKeys = new Set([
+   ...CLIENT_ATTRIBUTE_KEYS,
+   ...MARKETING_KEYS,
+@@ -347,6 +311,12 @@ const canReply = computed(() => {
+   return hasConversation.value && activeConversation.value?.can_reply !== false;
+ });
+ 
++const dealTitle = computed(() => {
++  const carName = dealForm.value.car_model || deal.value?.car_model || '';
++  const clientName = contactName.value || 'Client';
++  return carName ? `${clientName} - ${carName}` : deal.value?.title || clientName;
++});
++
+ const fieldClass =
+   'h-9 w-full rounded-md border border-n-weak bg-n-background px-3 text-sm text-n-slate-12 outline-none focus:border-n-brand';
+ 
+@@ -394,7 +364,7 @@ const syncRequiredDraft = () => {
+ };
+ 
+ const isFieldRequired = field => {
+-  return field.key === 'title' || activeRequiredKeys.value.has(field.key);
++  return field.key !== 'title' && activeRequiredKeys.value.has(field.key);
+ };
+ 
+ const isFieldMissing = field => {
+@@ -561,7 +531,7 @@ const openInboxConversation = () => {
+ };
+ 
+ const dealPayload = () => ({
+-  title: dealForm.value.title,
++  title: dealTitle.value,
+   stage_id: dealForm.value.stage_id,
+   client_phone: dealForm.value.client_phone,
+   car_model: dealForm.value.car_model,
+@@ -574,7 +544,7 @@ const dealPayload = () => ({
+ });
+ 
+ const saveDeal = async () => {
+-  if (!deal.value?.id || !dealForm.value.title.trim()) return;
++  if (!deal.value?.id) return;
+ 
+   isSaving.value = true;
+   errorMessage.value = '';
+@@ -722,7 +692,7 @@ onUnmounted(() => {
+           <div class="min-w-0">
+             <div class="flex min-w-0 items-center gap-2">
+               <h1 class="m-0 truncate text-xl font-semibold text-n-slate-12">
+-                {{ deal?.title || 'Deal' }}
++                {{ dealTitle }}
+               </h1>
+               <label
+                 v-if="selectedStage"
+@@ -732,7 +702,13 @@ onUnmounted(() => {
+                 <select
+                   v-model="dealForm.stage_id"
+                   class="h-8 max-w-[9rem] appearance-none rounded-md border-0 py-1 pl-2 pr-6 text-xs font-medium text-white outline-none focus:ring-2 focus:ring-n-brand/30"
+-                  :style="{ backgroundColor: selectedStage.color || '#6B7280' }"
++                  :style="{
++                    backgroundColor: selectedStage.color || '#6B7280',
++                    backgroundImage: 'none',
++                    appearance: 'none',
++                    WebkitAppearance: 'none',
++                    MozAppearance: 'none',
++                  }"
+                   @change="saveDeal"
+                 >
+                   <option
+@@ -760,6 +736,21 @@ onUnmounted(() => {
+         </div>
+ 
+         <div class="flex shrink-0 items-center gap-2">
++          <span
++            v-if="saveMessage"
++            class="rounded-md bg-n-teal-3 px-2 py-1 text-xs font-medium text-n-teal-11"
++          >
++            {{ saveMessage }}
++          </span>
++          <Button
++            v-if="isDealEditing"
++            label="Save"
++            icon="i-lucide-save"
++            size="sm"
++            type="button"
++            :is-loading="isSaving"
++            @click="saveDeal"
++          />
+           <Button
+             v-if="conversationDisplayId"
+             label="Open in Inbox"
+@@ -866,29 +857,14 @@ onUnmounted(() => {
+               </h2>
+             </div>
+             <div class="flex shrink-0 items-center gap-2">
+-              <span
+-                v-if="saveMessage"
+-                class="rounded-md bg-n-teal-3 px-2 py-1 text-xs font-medium text-n-teal-11"
+-              >
+-                {{ saveMessage }}
+-              </span>
+               <Button
+-                v-if="isDealEditing"
+-                label="Save"
+-                icon="i-lucide-save"
+-                size="xs"
+-                type="submit"
+-                :is-loading="isSaving"
+-              />
+-              <Button
+-                v-else
+                 icon="i-lucide-pencil"
+                 size="xs"
+                 slate
+                 faded
+                 type="button"
+                 aria-label="Edit deal fields"
+-                @click="isDealEditing = true"
++                @click="isDealEditing = !isDealEditing"
+               />
+             </div>
+           </div>
+@@ -1014,59 +990,11 @@ onUnmounted(() => {
+         </form>
+ 
+         <div v-else-if="activeSidebarTab === 'client'" class="grid gap-4 pt-4">
+-          <section class="border-b border-n-weak pb-4">
+-            <div class="flex items-start gap-3">
+-              <div
+-                class="grid size-14 shrink-0 place-items-center rounded-xl bg-n-indigo-3 text-lg font-semibold text-n-indigo-11"
+-              >
+-                {{ contactInitials }}
+-              </div>
+-              <div class="min-w-0 flex-1">
+-                <div class="flex items-center justify-between gap-2">
+-                  <h2 class="m-0 truncate text-base font-semibold text-n-slate-12">
+-                    {{ contactName }}
+-                  </h2>
+-                  <Button
+-                    v-if="conversationDisplayId"
+-                    icon="i-lucide-message-circle"
+-                    size="xs"
+-                    slate
+-                    faded
+-                    type="button"
+-                    aria-label="Open conversation"
+-                    @click="openInboxConversation"
+-                  />
+-                </div>
+-                <span
+-                  v-if="clientTypeDisplay"
+-                  class="mt-2 inline-flex rounded-md bg-n-alpha-2 px-2 py-1 text-xs font-medium text-n-slate-11"
+-                >
+-                  {{ clientTypeDisplay }}
+-                </span>
+-              </div>
+-            </div>
+-          </section>
+-
+-          <section class="border-b border-n-weak pb-4">
+-            <h3 class="m-0 text-xs font-semibold uppercase text-n-slate-10">
+-              Contact
+-            </h3>
+-            <div class="mt-2 divide-y divide-n-weak border-y border-n-weak text-sm">
+-              <div
+-                v-for="row in clientRows"
+-                :key="row.label"
+-                class="flex min-h-[2.5rem] items-center justify-between gap-3 py-2"
+-              >
+-                <span class="text-n-slate-11">{{ row.label }}</span>
+-                <span
+-                  class="min-w-0 max-w-[13rem] truncate text-right text-n-slate-12"
+-                  :class="{ 'text-n-slate-10': !hasDisplayValue(row.value) }"
+-                >
+-                  {{ displayScalar(row.value) }}
+-                </span>
+-              </div>
+-            </div>
+-          </section>
++          <ContactInfo
++            v-if="contact?.id"
++            :contact="contact"
++            @panel-close="openPipeline"
++          />
+ 
+           <section v-if="visibleClientAttributes.length" class="border-b border-n-weak pb-4">
+             <h3 class="m-0 text-xs font-semibold uppercase text-n-slate-10">
+@@ -1236,7 +1164,7 @@ onUnmounted(() => {
+ 
+                 <div class="grid gap-2 rounded-lg border border-n-weak bg-n-surface-2 p-3">
+                   <label
+-                    v-for="field in visibleFields"
++                    v-for="field in visibleConfigFields"
+                     :key="`required-${field.key}`"
+                     class="flex items-center justify-between gap-3 text-sm text-n-slate-12"
+                   >

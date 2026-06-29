@@ -5,11 +5,19 @@ RUN apk add --no-cache npm && npm install -g pnpm@10.2.0
 COPY chatwoot-patches/crm-pipeline-vue.patch /tmp/crm-pipeline-vue.patch
 COPY chatwoot-patches/crm-deal-workspace-vue.patch /tmp/crm-deal-workspace-vue.patch
 COPY chatwoot-patches/crm-deal-fields-vue.patch /tmp/crm-deal-fields-vue.patch
+COPY chatwoot-patches/crm-deal-workspace-inbox-chat-vue.patch /tmp/crm-deal-workspace-inbox-chat-vue.patch
+COPY chatwoot-patches/crm-deal-workspace-sidebar-style-vue.patch /tmp/crm-deal-workspace-sidebar-style-vue.patch
+COPY chatwoot-patches/crm-deal-workspace-emoji-picker-vue.patch /tmp/crm-deal-workspace-emoji-picker-vue.patch
+COPY chatwoot-patches/crm-deal-workspace-tabs-vue.patch /tmp/crm-deal-workspace-tabs-vue.patch
 
 RUN cd /app && \
     git apply /tmp/crm-pipeline-vue.patch && \
     git apply /tmp/crm-deal-workspace-vue.patch && \
     git apply /tmp/crm-deal-fields-vue.patch && \
+    git apply /tmp/crm-deal-workspace-inbox-chat-vue.patch && \
+    git apply /tmp/crm-deal-workspace-sidebar-style-vue.patch && \
+    git apply /tmp/crm-deal-workspace-emoji-picker-vue.patch && \
+    git apply /tmp/crm-deal-workspace-tabs-vue.patch && \
     pnpm install --frozen-lockfile && \
     (node node_modules/esbuild/install.js 2>/dev/null || true)
 
@@ -26,9 +34,14 @@ COPY chatwoot-patches/crm-models.rb.patch /tmp/crm-models.rb.patch
 COPY chatwoot-patches/crm-controllers.rb.patch /tmp/crm-controllers.rb.patch
 COPY chatwoot-patches/crm-routes.rb.patch /tmp/crm-routes.rb.patch
 COPY chatwoot-patches/crm-deal-fields-backend.patch /tmp/crm-deal-fields-backend.patch
+COPY chatwoot-patches/crm-deal-query-backend.patch /tmp/crm-deal-query-backend.patch
 COPY chatwoot-patches/crm-pipeline-vue.patch /tmp/crm-pipeline-vue.patch
 COPY chatwoot-patches/crm-deal-workspace-vue.patch /tmp/crm-deal-workspace-vue.patch
 COPY chatwoot-patches/crm-deal-fields-vue.patch /tmp/crm-deal-fields-vue.patch
+COPY chatwoot-patches/crm-deal-workspace-inbox-chat-vue.patch /tmp/crm-deal-workspace-inbox-chat-vue.patch
+COPY chatwoot-patches/crm-deal-workspace-sidebar-style-vue.patch /tmp/crm-deal-workspace-sidebar-style-vue.patch
+COPY chatwoot-patches/crm-deal-workspace-emoji-picker-vue.patch /tmp/crm-deal-workspace-emoji-picker-vue.patch
+COPY chatwoot-patches/crm-deal-workspace-tabs-vue.patch /tmp/crm-deal-workspace-tabs-vue.patch
 
 RUN cd /app && \
     git apply /tmp/patch.patch && \
@@ -36,6 +49,11 @@ RUN cd /app && \
     git apply /tmp/crm-controllers.rb.patch && \
     git apply /tmp/crm-routes.rb.patch && \
     git apply /tmp/crm-deal-fields-backend.patch && \
+    git apply /tmp/crm-deal-query-backend.patch && \
     git apply /tmp/crm-pipeline-vue.patch && \
     git apply /tmp/crm-deal-workspace-vue.patch && \
-    git apply /tmp/crm-deal-fields-vue.patch
+    git apply /tmp/crm-deal-fields-vue.patch && \
+    git apply /tmp/crm-deal-workspace-inbox-chat-vue.patch && \
+    git apply /tmp/crm-deal-workspace-sidebar-style-vue.patch && \
+    git apply /tmp/crm-deal-workspace-emoji-picker-vue.patch && \
+    git apply /tmp/crm-deal-workspace-tabs-vue.patch
