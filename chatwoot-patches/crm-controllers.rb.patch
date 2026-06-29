@@ -149,6 +149,7 @@ index 0000000..ad35c89
 +
 +  def create
 +    attrs = deal_params
++    attrs[:conversation_id] = fallback_conversation_id_for_contact(attrs[:contact_id]) if attrs[:conversation_id].blank?
 +    stage = stage_scope.find(attrs[:stage_id])
 +
 +    ActiveRecord::Base.transaction do
@@ -191,6 +192,15 @@ index 0000000..ad35c89
 +
 +  def set_deal
 +    @deal = deal_scope.includes(:contact, :conversation, :assignee).find(params[:id])
++  end
++
++  def fallback_conversation_id_for_contact(contact_id)
++    return if contact_id.blank?
++
++    Conversation.where(account_id: Current.account.id, contact_id: contact_id)
++      .order(updated_at: :desc)
++      .limit(1)
++      .pick(:id)
 +  end
 +
 +  def deal_params
