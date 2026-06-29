@@ -1,6 +1,6 @@
 diff --git a/app/javascript/dashboard/api/crmPipeline.js b/app/javascript/dashboard/api/crmPipeline.js
 new file mode 100644
-index 0000000..598b9e4
+index 0000000..1841687
 --- /dev/null
 +++ b/app/javascript/dashboard/api/crmPipeline.js
 @@ -0,0 +1,38 @@
@@ -42,9 +42,48 @@ index 0000000..598b9e4
 +}
 +
 +export default new CrmPipelineAPI();
+diff --git a/app/javascript/dashboard/components-next/sidebar/Sidebar.vue b/app/javascript/dashboard/components-next/sidebar/Sidebar.vue
+index d9f523d..52768dc 100644
+--- a/app/javascript/dashboard/components-next/sidebar/Sidebar.vue
++++ b/app/javascript/dashboard/components-next/sidebar/Sidebar.vue
+@@ -381,6 +381,12 @@ const menuItems = computed(() => {
+         },
+       ],
+     },
++    {
++      name: 'Pipeline',
++      label: 'Pipeline',
++      icon: 'i-lucide-table',
++      to: accountScopedRoute('crm_pipeline_index'),
++    },
+     {
+       name: 'Captain',
+       icon: 'i-woot-captain',
+diff --git a/app/javascript/dashboard/routes/dashboard/conversation/ContactPanel.vue b/app/javascript/dashboard/routes/dashboard/conversation/ContactPanel.vue
+index 05bb9ac..42c0c85 100644
+--- a/app/javascript/dashboard/routes/dashboard/conversation/ContactPanel.vue
++++ b/app/javascript/dashboard/routes/dashboard/conversation/ContactPanel.vue
+@@ -17,6 +17,7 @@ import ContactInfo from './contact/ContactInfo.vue';
+ import ContactNotes from './contact/ContactNotes.vue';
+ import ConversationInfo from './ConversationInfo.vue';
+ import CustomAttributes from './customAttributes/CustomAttributes.vue';
++import CrmDealWidget from './CrmDealWidget.vue';
+ import SharedFiles from './SharedFiles.vue';
+ import Draggable from 'vuedraggable';
+ import MacrosList from './Macros/List.vue';
+@@ -138,6 +139,9 @@ onMounted(() => {
+       @close="closeContactPanel"
+     />
+     <ContactInfo :contact="contact" :channel-type="channelType" />
++    <div class="px-2 pb-3">
++      <CrmDealWidget :conversation-id="conversationId" :contact="contact" />
++    </div>
+     <div class="px-2 pb-8 list-group">
+       <Draggable
+         :list="conversationSidebarItems"
 diff --git a/app/javascript/dashboard/routes/dashboard/conversation/CrmDealWidget.vue b/app/javascript/dashboard/routes/dashboard/conversation/CrmDealWidget.vue
 new file mode 100644
-index 0000000..8b76657
+index 0000000..c49e592
 --- /dev/null
 +++ b/app/javascript/dashboard/routes/dashboard/conversation/CrmDealWidget.vue
 @@ -0,0 +1,207 @@
@@ -255,65 +294,46 @@ index 0000000..8b76657
 +    </div>
 +  </section>
 +</template>
-diff --git a/app/javascript/dashboard/routes/dashboard/conversation/ContactPanel.vue b/app/javascript/dashboard/routes/dashboard/conversation/ContactPanel.vue
-index 07789a1..91db2e1 100644
---- a/app/javascript/dashboard/routes/dashboard/conversation/ContactPanel.vue
-+++ b/app/javascript/dashboard/routes/dashboard/conversation/ContactPanel.vue
-@@ -12,6 +12,7 @@ import ContactInfo from './contact/ContactInfo.vue';
- import ContactNotes from './contact/ContactNotes.vue';
- import ConversationInfo from './ConversationInfo.vue';
- import CustomAttributes from './customAttributes/CustomAttributes.vue';
-+import CrmDealWidget from './CrmDealWidget.vue';
- import SharedFiles from './SharedFiles.vue';
- import Draggable from 'vuedraggable';
- import MacrosList from './Macros/List.vue';
-@@ -140,6 +141,9 @@ onMounted(() => {
-       @close="closeContactPanel"
-     />
-     <ContactInfo :contact="contact" :channel-type="channelType" />
-+    <div class="px-2 pb-3">
-+      <CrmDealWidget :conversation-id="conversationId" :contact="contact" />
-+    </div>
-     <div class="px-2 pb-8 list-group">
-       <Draggable
-         :list="conversationSidebarItems"
 diff --git a/app/javascript/dashboard/routes/dashboard/crm/Pipeline.vue b/app/javascript/dashboard/routes/dashboard/crm/Pipeline.vue
 new file mode 100644
-index 0000000..22e2836
+index 0000000..82c5d24
 --- /dev/null
 +++ b/app/javascript/dashboard/routes/dashboard/crm/Pipeline.vue
-@@ -0,0 +1,1720 @@
+@@ -0,0 +1,2242 @@
 +<script setup>
 +import { computed, onBeforeUnmount, ref, watch } from 'vue';
 +import { useRoute, useRouter } from 'vue-router';
 +
++import ContactAPI from 'dashboard/api/contacts';
 +import CrmPipelineAPI from 'dashboard/api/crmPipeline';
 +import Button from 'dashboard/components-next/button/Button.vue';
 +import Spinner from 'dashboard/components-next/spinner/Spinner.vue';
++import { useMapGetter } from 'dashboard/composables/store';
 +import { useAccount } from 'dashboard/composables/useAccount';
 +
 +const route = useRoute();
 +const router = useRouter();
 +const { accountId } = useAccount();
++const currentUser = useMapGetter('getCurrentUser');
 +
-+const buildDealForm = () => ({
-+  title: '',
-+  client_phone: '',
-+  car_model: '',
-+  rental_start: '',
-+  rental_end: '',
-+  amount: '',
-+  booking_id: '',
++const buildContactForm = () => ({
++  phone_number: '',
++  first_name: '',
++  last_name: '',
++  email: '',
++  client_type: 'individual',
++  language: 'ru',
 +});
 +
-+const optionalDealFields = [
-+  'client_phone',
-+  'car_model',
-+  'rental_start',
-+  'rental_end',
-+  'amount',
-+  'booking_id',
-+];
++const buildDealForm = stageId => ({
++  stage_id: stageId || '',
++  requested_car: '',
++  rental_start: '',
++  rental_end: '',
++  budget: '',
++  source_request: '',
++  assigned_to: currentUser.value?.id ? String(currentUser.value.id) : '',
++});
 +
 +const buildEmptyFilters = () => ({
 +  q: '',
@@ -342,6 +362,15 @@ index 0000000..22e2836
 +const savingStageId = ref(null);
 +const draggingDealId = ref(null);
 +const selectedDeal = ref(null);
++const isNewDealDrawerOpen = ref(false);
++const selectedClient = ref(null);
++const contactSearchQuery = ref('');
++const contactSearchResults = ref([]);
++const isSearchingContacts = ref(false);
++const isCreatingContact = ref(false);
++const showCreateClientForm = ref(false);
++const contactForm = ref(buildContactForm());
++const newDealError = ref('');
 +const appliedFilters = ref(buildEmptyFilters());
 +const draftFilters = ref(buildEmptyFilters());
 +const isFilterPanelOpen = ref(false);
@@ -351,6 +380,9 @@ index 0000000..22e2836
 +const exportFormat = ref('csv');
 +const viewMode = ref('kanban');
 +const filterShellRef = ref(null);
++
++let contactSearchTimeout = null;
++let contactSearchController = null;
 +
 +const dateRangeFilters = [
 +  { key: '', label: 'Any date' },
@@ -383,6 +415,48 @@ index 0000000..22e2836
 +
 +const orderedStages = computed(() => {
 +  return [...stages.value].sort((a, b) => a.position - b.position);
++});
++
++const currentUserId = computed(() => {
++  return currentUser.value?.id ? String(currentUser.value.id) : '';
++});
++
++const defaultStageId = computed(() => {
++  return activeStageId.value || orderedStages.value[0]?.id || '';
++});
++
++const sourceRequestField = computed(() => {
++  return fieldDefinitions.value.find(field => field.key === 'source_request') ||
++    fieldDefinitions.value.find(field => field.key === 'source_requect');
++});
++
++const sourceRequestOptions = computed(() => {
++  const options = sourceRequestField.value?.options || [];
++  return options.map(option => ({ value: String(option), label: String(option) }));
++});
++
++const assignedUserOptions = computed(() => {
++  const users = new Map();
++  const user = currentUser.value;
++
++  if (user?.id) {
++    users.set(String(user.id), user.name || user.email || 'Current user');
++  }
++
++  deals.value.forEach(deal => {
++    const assignedUser = deal.assigned_user;
++    if (!assignedUser?.id) return;
++
++    users.set(
++      String(assignedUser.id),
++      assignedUser.name || assignedUser.email || `#${assignedUser.id}`
++    );
++  });
++
++  return [
++    { value: '', label: 'Unassigned' },
++    ...[...users.entries()].map(([value, label]) => ({ value, label })),
++  ];
 +});
 +
 +const dealsByStage = computed(() => {
@@ -912,6 +986,8 @@ index 0000000..22e2836
 +
 +onBeforeUnmount(() => {
 +  document.removeEventListener('click', handleOutsideClick);
++  window.clearTimeout(contactSearchTimeout);
++  contactSearchController?.abort();
 +});
 +
 +const applyDraftFilters = () => {
@@ -1004,6 +1080,39 @@ index 0000000..22e2836
 +  return selectedDeal.value ? stageName(selectedDeal.value.stage_id) : '';
 +});
 +
++const selectedClientType = computed(() => {
++  return selectedClient.value?.custom_attributes?.client_type ||
++    selectedClient.value?.custom_attributes?.type ||
++    contactForm.value.client_type ||
++    'individual';
++});
++
++const selectedClientLanguage = computed(() => {
++  return selectedClient.value?.custom_attributes?.language ||
++    contactForm.value.language ||
++    'ru';
++});
++
++const isNewDealPristine = computed(() => {
++  const form = newDealForm.value;
++  const baseStageId = String(defaultStageId.value || '');
++
++  return !selectedClient.value &&
++    !contactSearchQuery.value.trim() &&
++    !showCreateClientForm.value &&
++    !contactForm.value.phone_number.trim() &&
++    !contactForm.value.first_name.trim() &&
++    !contactForm.value.last_name.trim() &&
++    !contactForm.value.email.trim() &&
++    String(form.stage_id || '') === baseStageId &&
++    String(form.assigned_to || '') === currentUserId.value &&
++    !form.requested_car.trim() &&
++    !form.rental_start &&
++    !form.rental_end &&
++    !String(form.budget).trim() &&
++    !form.source_request;
++});
++
 +const setError = error => {
 +  errorMessage.value = error?.response?.data?.error || error?.message || 'Request failed';
 +};
@@ -1065,49 +1174,200 @@ index 0000000..22e2836
 +  fetchPipeline();
 +};
 +
++const contactDisplayName = contact => {
++  return contact?.name || contact?.phone_number || contact?.email || 'Unknown';
++};
++
++const contactInitials = contact => {
++  const label = contactDisplayName(contact);
++  const parts = label.trim().split(/\s+/).filter(Boolean);
++  const initials = parts.length > 1
++    ? `${parts[0][0]}${parts[1][0]}`
++    : label.slice(0, 2);
++
++  return initials.toUpperCase();
++};
++
++const resetContactSearch = () => {
++  window.clearTimeout(contactSearchTimeout);
++  contactSearchController?.abort();
++  contactSearchController = null;
++  contactSearchQuery.value = '';
++  contactSearchResults.value = [];
++  isSearchingContacts.value = false;
++};
++
++const resetContactForm = () => {
++  contactForm.value = buildContactForm();
++};
++
 +const openNewDealForm = stageId => {
-+  activeStageId.value = stageId;
-+  newDealForm.value = buildDealForm();
++  const nextStageId = stageId || orderedStages.value[0]?.id || '';
++
++  activeStageId.value = nextStageId;
++  newDealForm.value = buildDealForm(nextStageId);
++  selectedClient.value = null;
++  resetContactSearch();
++  resetContactForm();
++  showCreateClientForm.value = false;
++  newDealError.value = '';
++  isNewDealDrawerOpen.value = true;
 +};
 +
 +const closeNewDealForm = () => {
 +  activeStageId.value = null;
 +  newDealForm.value = buildDealForm();
++  selectedClient.value = null;
++  resetContactSearch();
++  resetContactForm();
++  showCreateClientForm.value = false;
++  newDealError.value = '';
++  isNewDealDrawerOpen.value = false;
 +};
 +
-+const dealPayloadFromForm = stage => {
-+  const title = newDealForm.value.title.trim();
-+  if (!title) return null;
++const closeNewDealDrawerIfPristine = () => {
++  if (isNewDealPristine.value) closeNewDealForm();
++};
 +
-+  const deal = {
-+    title,
-+    stage_id: stage.id,
-+  };
++const selectClient = contact => {
++  selectedClient.value = contact;
++  showCreateClientForm.value = false;
++  resetContactSearch();
++  newDealError.value = '';
++};
 +
-+  optionalDealFields.forEach(field => {
-+    const value = newDealForm.value[field];
-+    if (value !== null && value !== undefined && String(value).trim() !== '') {
-+      deal[field] = value;
++const changeClient = () => {
++  selectedClient.value = null;
++  showCreateClientForm.value = false;
++};
++
++const searchContacts = async query => {
++  const search = query.trim();
++  if (search.length < 2) {
++    contactSearchResults.value = [];
++    return;
++  }
++
++  contactSearchController?.abort();
++  const controller = new AbortController();
++  contactSearchController = controller;
++  isSearchingContacts.value = true;
++
++  try {
++    const response = await ContactAPI.search(search, 1, 'name', '', {
++      signal: controller.signal,
++    });
++    contactSearchResults.value = response.data?.payload || [];
++  } catch (error) {
++    if (error.name === 'CanceledError' || error.code === 'ERR_CANCELED') return;
++
++    newDealError.value = error?.response?.data?.error || error?.message || 'Contact search failed';
++  } finally {
++    if (contactSearchController === controller) {
++      contactSearchController = null;
++      isSearchingContacts.value = false;
 +    }
-+  });
-+
-+  return deal;
++  }
 +};
 +
-+const createDeal = async stage => {
-+  const deal = dealPayloadFromForm(stage);
++const createClientName = () => {
++  const firstName = contactForm.value.first_name.trim();
++  const lastName = contactForm.value.last_name.trim();
++  const name = [firstName, lastName].filter(Boolean).join(' ');
++
++  return name ||
++    contactForm.value.phone_number.trim() ||
++    contactForm.value.email.trim() ||
++    'Unknown';
++};
++
++const createClient = async () => {
++  const phone = contactForm.value.phone_number.trim();
++  const email = contactForm.value.email.trim();
++
++  if (!phone && !email) {
++    newDealError.value = 'Phone or email required';
++    return;
++  }
++
++  isCreatingContact.value = true;
++  newDealError.value = '';
++
++  try {
++    const payload = {
++      name: createClientName(),
++      custom_attributes: {
++        client_type: contactForm.value.client_type,
++        language: contactForm.value.language,
++      },
++    };
++
++    if (phone) payload.phone_number = phone;
++    if (email) payload.email = email;
++
++    const response = await ContactAPI.create(payload);
++    const contact = response.data?.payload?.contact;
++    if (contact) selectClient(contact);
++  } catch (error) {
++    newDealError.value = error?.response?.data?.message ||
++      error?.response?.data?.error ||
++      error?.message ||
++      'Client create failed';
++  } finally {
++    isCreatingContact.value = false;
++  }
++};
++
++const dealPayloadFromForm = () => {
++  if (!selectedClient.value?.id) {
++    newDealError.value = 'Select or create a client';
++    return null;
++  }
++
++  const form = newDealForm.value;
++  const stageId = form.stage_id || defaultStageId.value;
++  const requestedCar = form.requested_car.trim();
++
++  if (!stageId) {
++    newDealError.value = 'Select stage';
++    return null;
++  }
++
++  return {
++    stage_id: stageId,
++    contact_id: selectedClient.value.id,
++    assigned_to: form.assigned_to || null,
++    car_model: requestedCar,
++    rental_start: form.rental_start || null,
++    rental_end: form.rental_end || null,
++    amount: form.budget || null,
++    custom_attributes: {
++      requested_car: requestedCar,
++      source_request: form.source_request || '',
++      language: selectedClientLanguage.value,
++      client_type: selectedClientType.value,
++    },
++  };
++};
++
++const createDeal = async () => {
++  const deal = dealPayloadFromForm();
 +  if (!deal) return;
 +
-+  savingStageId.value = stage.id;
++  savingStageId.value = deal.stage_id;
 +  errorMessage.value = '';
++  newDealError.value = '';
 +
 +  try {
 +    const response = await CrmPipelineAPI.createDeal({ deal });
++    const createdDeal = response.data;
 +
-+    deals.value = [response.data, ...deals.value];
++    deals.value = [createdDeal, ...deals.value];
 +    closeNewDealForm();
++    openDeal(createdDeal);
++    fetchPipeline();
 +  } catch (error) {
-+    setError(error);
++    newDealError.value = error?.response?.data?.error || error?.message || 'Deal create failed';
 +  } finally {
 +    savingStageId.value = null;
 +  }
@@ -1217,6 +1477,27 @@ index 0000000..22e2836
 +    },
 +  });
 +};
++
++watch(contactSearchQuery, query => {
++  window.clearTimeout(contactSearchTimeout);
++
++  if (selectedClient.value) return;
++  if (query.trim().length < 2) {
++    contactSearchController?.abort();
++    contactSearchController = null;
++    contactSearchResults.value = [];
++    isSearchingContacts.value = false;
++    return;
++  }
++
++  contactSearchTimeout = window.setTimeout(() => searchContacts(query), 400);
++});
++
++watch(currentUserId, userId => {
++  if (!isNewDealDrawerOpen.value || newDealForm.value.assigned_to) return;
++
++  newDealForm.value.assigned_to = userId;
++});
 +
 +watch(
 +  accountId,
@@ -1755,79 +2036,11 @@ index 0000000..22e2836
 +            </article>
 +
 +            <div
-+              v-if="!dealsForStage(stage.id).length && activeStageId !== stage.id"
++              v-if="!dealsForStage(stage.id).length"
 +              class="rounded-lg border border-dashed border-n-weak px-3 py-6 text-center text-sm text-n-slate-10"
 +            >
 +              No deals
 +            </div>
-+
-+            <form
-+              v-if="activeStageId === stage.id"
-+              class="rounded-lg border border-n-weak bg-n-surface-1 p-3 shadow-sm"
-+              @submit.prevent="createDeal(stage)"
-+            >
-+              <div class="grid grid-cols-2 gap-2">
-+                <input
-+                  v-model="newDealForm.title"
-+                  class="col-span-2 h-9 w-full rounded-md border border-n-weak bg-n-background px-3 text-sm text-n-slate-12 outline-none focus:border-n-brand"
-+                  placeholder="Deal title"
-+                  type="text"
-+                  autofocus
-+                />
-+                <input
-+                  v-model="newDealForm.client_phone"
-+                  class="h-9 w-full rounded-md border border-n-weak bg-n-background px-3 text-sm text-n-slate-12 outline-none focus:border-n-brand"
-+                  placeholder="Phone"
-+                  type="tel"
-+                />
-+                <input
-+                  v-model="newDealForm.car_model"
-+                  class="h-9 w-full rounded-md border border-n-weak bg-n-background px-3 text-sm text-n-slate-12 outline-none focus:border-n-brand"
-+                  placeholder="Car model"
-+                  type="text"
-+                />
-+                <input
-+                  v-model="newDealForm.rental_start"
-+                  class="h-9 w-full rounded-md border border-n-weak bg-n-background px-3 text-sm text-n-slate-12 outline-none focus:border-n-brand"
-+                  type="date"
-+                />
-+                <input
-+                  v-model="newDealForm.rental_end"
-+                  class="h-9 w-full rounded-md border border-n-weak bg-n-background px-3 text-sm text-n-slate-12 outline-none focus:border-n-brand"
-+                  type="date"
-+                />
-+                <input
-+                  v-model="newDealForm.amount"
-+                  class="h-9 w-full rounded-md border border-n-weak bg-n-background px-3 text-sm text-n-slate-12 outline-none focus:border-n-brand"
-+                  min="0"
-+                  placeholder="Amount"
-+                  step="0.01"
-+                  type="number"
-+                />
-+                <input
-+                  v-model="newDealForm.booking_id"
-+                  class="h-9 w-full rounded-md border border-n-weak bg-n-background px-3 text-sm text-n-slate-12 outline-none focus:border-n-brand"
-+                  placeholder="Booking ID"
-+                  type="text"
-+                />
-+              </div>
-+              <div class="mt-3 flex items-center gap-2">
-+                <Button
-+                  label="Save"
-+                  size="sm"
-+                  type="submit"
-+                  :is-loading="savingStageId === stage.id"
-+                />
-+                <Button
-+                  label="Cancel"
-+                  size="sm"
-+                  slate
-+                  ghost
-+                  type="button"
-+                  @click="closeNewDealForm"
-+                />
-+              </div>
-+            </form>
 +          </div>
 +
 +          <footer class="border-t border-n-weak p-3">
@@ -1850,6 +2063,332 @@ index 0000000..22e2836
 +      >
 +        No pipeline stages found.
 +      </div>
++    </div>
++
++    <div
++      v-if="isNewDealDrawerOpen"
++      class="fixed inset-0 z-50 flex justify-end bg-n-slate-12/40"
++      @click.self="closeNewDealDrawerIfPristine"
++    >
++      <aside class="flex h-full w-full max-w-[30rem] flex-col bg-n-surface-1 shadow-2xl">
++        <header class="flex items-center justify-between gap-4 border-b border-n-weak px-6 py-5">
++          <h2 class="m-0 text-xl font-semibold text-n-slate-12">
++            New deal
++          </h2>
++          <Button
++            icon="i-lucide-x"
++            size="sm"
++            slate
++            ghost
++            type="button"
++            aria-label="Close new deal"
++            @click="closeNewDealForm"
++          />
++        </header>
++
++        <main class="min-h-0 flex-1 overflow-y-auto px-6 py-5">
++          <section class="border-b border-n-weak pb-5">
++            <h3 class="m-0 text-sm font-semibold text-n-slate-12">
++              Client
++            </h3>
++
++            <div
++              v-if="selectedClient"
++              class="mt-3 flex items-center justify-between gap-3 rounded-lg border border-n-weak bg-n-background p-3"
++            >
++              <div class="flex min-w-0 items-center gap-3">
++                <img
++                  v-if="selectedClient.thumbnail"
++                  :src="selectedClient.thumbnail"
++                  class="h-10 w-10 rounded-full object-cover"
++                  alt=""
++                />
++                <div
++                  v-else
++                  class="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-n-alpha-2 text-sm font-medium text-n-slate-11"
++                >
++                  {{ contactInitials(selectedClient) }}
++                </div>
++                <div class="min-w-0">
++                  <div class="truncate text-sm font-medium text-n-slate-12">
++                    {{ contactDisplayName(selectedClient) }}
++                  </div>
++                  <div
++                    v-if="selectedClient.phone_number"
++                    class="truncate text-xs text-n-slate-11"
++                  >
++                    {{ selectedClient.phone_number }}
++                  </div>
++                  <div
++                    v-if="selectedClient.email"
++                    class="truncate text-xs text-n-slate-11"
++                  >
++                    {{ selectedClient.email }}
++                  </div>
++                </div>
++              </div>
++              <Button
++                label="Change client"
++                size="sm"
++                slate
++                ghost
++                type="button"
++                @click="changeClient"
++              />
++            </div>
++
++            <div v-else class="mt-3 grid gap-3">
++              <div class="relative">
++                <i class="i-lucide-search pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-n-slate-10" />
++                <input
++                  v-model="contactSearchQuery"
++                  class="h-10 w-full rounded-lg border border-n-weak bg-n-background py-0 pl-9 pr-3 text-sm text-n-slate-12 outline-none placeholder:text-n-slate-9 focus:border-n-brand"
++                  placeholder="Search by phone, name or email..."
++                  type="search"
++                />
++              </div>
++
++              <div
++                v-if="isSearchingContacts"
++                class="flex items-center gap-2 rounded-lg border border-n-weak bg-n-background px-3 py-3 text-sm text-n-slate-11"
++              >
++                <Spinner :size="16" />
++                <span>Searching...</span>
++              </div>
++
++              <div
++                v-else-if="contactSearchQuery.trim().length >= 2 && contactSearchResults.length"
++                class="overflow-hidden rounded-lg border border-n-weak"
++              >
++                <button
++                  v-for="contact in contactSearchResults"
++                  :key="contact.id"
++                  type="button"
++                  class="flex w-full items-center gap-3 border-b border-n-weak bg-n-background px-3 py-3 text-left transition last:border-b-0 hover:bg-n-alpha-2"
++                  @click="selectClient(contact)"
++                >
++                  <img
++                    v-if="contact.thumbnail"
++                    :src="contact.thumbnail"
++                    class="h-9 w-9 rounded-full object-cover"
++                    alt=""
++                  />
++                  <div
++                    v-else
++                    class="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-n-alpha-2 text-xs font-medium text-n-slate-11"
++                  >
++                    {{ contactInitials(contact) }}
++                  </div>
++                  <div class="min-w-0">
++                    <div class="truncate text-sm font-medium text-n-slate-12">
++                      {{ contactDisplayName(contact) }}
++                    </div>
++                    <div class="truncate text-xs text-n-slate-11">
++                      {{ contact.phone_number || contact.email || '-' }}
++                    </div>
++                  </div>
++                </button>
++              </div>
++
++              <div
++                v-else-if="contactSearchQuery.trim().length >= 2"
++                class="rounded-lg border border-dashed border-n-weak px-3 py-4 text-sm text-n-slate-11"
++              >
++                <div>No client found</div>
++                <Button
++                  class="mt-3"
++                  label="Create new client"
++                  icon="i-lucide-user-plus"
++                  size="sm"
++                  type="button"
++                  @click="showCreateClientForm = true"
++                />
++              </div>
++
++              <form
++                v-if="showCreateClientForm"
++                class="grid grid-cols-2 gap-3 rounded-lg border border-n-weak bg-n-background p-3"
++                @submit.prevent="createClient"
++              >
++                <input
++                  v-model="contactForm.phone_number"
++                  class="col-span-2 h-9 rounded-md border border-n-weak bg-n-surface-1 px-3 text-sm text-n-slate-12 outline-none focus:border-n-brand"
++                  placeholder="Phone"
++                  type="tel"
++                />
++                <input
++                  v-model="contactForm.first_name"
++                  class="h-9 rounded-md border border-n-weak bg-n-surface-1 px-3 text-sm text-n-slate-12 outline-none focus:border-n-brand"
++                  placeholder="First name"
++                  type="text"
++                />
++                <input
++                  v-model="contactForm.last_name"
++                  class="h-9 rounded-md border border-n-weak bg-n-surface-1 px-3 text-sm text-n-slate-12 outline-none focus:border-n-brand"
++                  placeholder="Last name"
++                  type="text"
++                />
++                <input
++                  v-model="contactForm.email"
++                  class="col-span-2 h-9 rounded-md border border-n-weak bg-n-surface-1 px-3 text-sm text-n-slate-12 outline-none focus:border-n-brand"
++                  placeholder="Email"
++                  type="email"
++                />
++                <label class="grid gap-1 text-xs font-medium text-n-slate-11">
++                  Type
++                  <select
++                    v-model="contactForm.client_type"
++                    class="h-9 rounded-md border border-n-weak bg-n-surface-1 px-2 text-sm text-n-slate-12 outline-none focus:border-n-brand"
++                  >
++                    <option value="individual">Individual</option>
++                    <option value="company">Company</option>
++                  </select>
++                </label>
++                <label class="grid gap-1 text-xs font-medium text-n-slate-11">
++                  Language
++                  <select
++                    v-model="contactForm.language"
++                    class="h-9 rounded-md border border-n-weak bg-n-surface-1 px-2 text-sm text-n-slate-12 outline-none focus:border-n-brand"
++                  >
++                    <option value="ru">RU</option>
++                    <option value="en">EN</option>
++                    <option value="ar">AR</option>
++                  </select>
++                </label>
++                <div class="col-span-2 flex items-center justify-end gap-2">
++                  <Button
++                    label="Create new client"
++                    icon="i-lucide-user-plus"
++                    size="sm"
++                    type="submit"
++                    :is-loading="isCreatingContact"
++                  />
++                </div>
++              </form>
++            </div>
++          </section>
++
++          <section class="grid gap-4 py-5">
++            <h3 class="m-0 text-sm font-semibold text-n-slate-12">
++              Deal
++            </h3>
++
++            <label class="grid gap-1.5 text-xs font-medium text-n-slate-11">
++              Stage
++              <select
++                v-model="newDealForm.stage_id"
++                class="h-10 rounded-md border border-n-weak bg-n-background px-3 text-sm text-n-slate-12 outline-none focus:border-n-brand"
++              >
++                <option
++                  v-for="stage in orderedStages"
++                  :key="stage.id"
++                  :value="stage.id"
++                >
++                  {{ stage.name }}
++                </option>
++              </select>
++            </label>
++
++            <label class="grid gap-1.5 text-xs font-medium text-n-slate-11">
++              Requested car
++              <input
++                v-model="newDealForm.requested_car"
++                class="h-10 rounded-md border border-n-weak bg-n-background px-3 text-sm text-n-slate-12 outline-none focus:border-n-brand"
++                type="text"
++              />
++            </label>
++
++            <div class="grid grid-cols-2 gap-3">
++              <label class="grid gap-1.5 text-xs font-medium text-n-slate-11">
++                Rental start
++                <input
++                  v-model="newDealForm.rental_start"
++                  class="h-10 rounded-md border border-n-weak bg-n-background px-3 text-sm text-n-slate-12 outline-none focus:border-n-brand"
++                  type="date"
++                />
++              </label>
++              <label class="grid gap-1.5 text-xs font-medium text-n-slate-11">
++                Rental end
++                <input
++                  v-model="newDealForm.rental_end"
++                  class="h-10 rounded-md border border-n-weak bg-n-background px-3 text-sm text-n-slate-12 outline-none focus:border-n-brand"
++                  type="date"
++                />
++              </label>
++            </div>
++
++            <label class="grid gap-1.5 text-xs font-medium text-n-slate-11">
++              Budget AED
++              <input
++                v-model="newDealForm.budget"
++                class="h-10 rounded-md border border-n-weak bg-n-background px-3 text-sm text-n-slate-12 outline-none focus:border-n-brand"
++                min="0"
++                step="0.01"
++                type="number"
++              />
++            </label>
++
++            <label class="grid gap-1.5 text-xs font-medium text-n-slate-11">
++              Source Request
++              <select
++                v-model="newDealForm.source_request"
++                class="h-10 rounded-md border border-n-weak bg-n-background px-3 text-sm text-n-slate-12 outline-none focus:border-n-brand"
++              >
++                <option value="">Select source</option>
++                <option
++                  v-for="item in sourceRequestOptions"
++                  :key="item.value"
++                  :value="item.value"
++                >
++                  {{ item.label }}
++                </option>
++              </select>
++            </label>
++
++            <label class="grid gap-1.5 text-xs font-medium text-n-slate-11">
++              Assigned to
++              <select
++                v-model="newDealForm.assigned_to"
++                class="h-10 rounded-md border border-n-weak bg-n-background px-3 text-sm text-n-slate-12 outline-none focus:border-n-brand"
++              >
++                <option
++                  v-for="item in assignedUserOptions"
++                  :key="item.value"
++                  :value="item.value"
++                >
++                  {{ item.label }}
++                </option>
++              </select>
++            </label>
++
++            <div
++              v-if="newDealError"
++              class="rounded-lg border border-n-ruby-7 bg-n-ruby-3 px-3 py-2 text-sm text-n-ruby-11"
++            >
++              {{ newDealError }}
++            </div>
++          </section>
++        </main>
++
++        <footer class="flex items-center justify-end gap-2 border-t border-n-weak px-6 py-4">
++          <Button
++            label="Cancel"
++            size="sm"
++            slate
++            ghost
++            type="button"
++            @click="closeNewDealForm"
++          />
++          <Button
++            label="Create deal"
++            icon="i-lucide-check"
++            size="sm"
++            type="button"
++            :is-loading="savingStageId === newDealForm.stage_id"
++            @click="createDeal"
++          />
++        </footer>
++      </aside>
 +    </div>
 +
 +    <div
@@ -2005,7 +2544,7 @@ index 0000000..22e2836
 +</template>
 diff --git a/app/javascript/dashboard/routes/dashboard/crm/routes.js b/app/javascript/dashboard/routes/dashboard/crm/routes.js
 new file mode 100644
-index 0000000..251489d
+index 0000000..0a27b7d
 --- /dev/null
 +++ b/app/javascript/dashboard/routes/dashboard/crm/routes.js
 @@ -0,0 +1,12 @@
@@ -2022,7 +2561,7 @@ index 0000000..251489d
 +  },
 +];
 diff --git a/app/javascript/dashboard/routes/dashboard/dashboard.routes.js b/app/javascript/dashboard/routes/dashboard/dashboard.routes.js
-index 878b935..5287168 100644
+index 87bae7d..a517adc 100644
 --- a/app/javascript/dashboard/routes/dashboard/dashboard.routes.js
 +++ b/app/javascript/dashboard/routes/dashboard/dashboard.routes.js
 @@ -9,6 +9,7 @@ import { frontendURL } from '../../helper/URLHelper';
@@ -2033,7 +2572,7 @@ index 878b935..5287168 100644
  import AppContainer from './Dashboard.vue';
  import Suspended from './suspended/Index.vue';
  import NoAccounts from './noAccounts/Index.vue';
-@@ -22,6 +23,7 @@ export default {
+@@ -23,6 +24,7 @@ export default {
          ...captainRoutes,
          ...inboxRoutes,
          ...conversation.routes,
@@ -2041,20 +2580,3 @@ index 878b935..5287168 100644
          ...settings.routes,
          ...contactRoutes,
          ...companyRoutes,
-diff --git a/app/javascript/dashboard/components-next/sidebar/Sidebar.vue b/app/javascript/dashboard/components-next/sidebar/Sidebar.vue
-index 28449df..3b5fc22 100644
---- a/app/javascript/dashboard/components-next/sidebar/Sidebar.vue
-+++ b/app/javascript/dashboard/components-next/sidebar/Sidebar.vue
-@@ -380,6 +380,12 @@ const menuItems = computed(() => {
-         },
-       ],
-     },
-+    {
-+      name: 'Pipeline',
-+      label: 'Pipeline',
-+      icon: 'i-lucide-table',
-+      to: accountScopedRoute('crm_pipeline_index'),
-+    },
-     {
-       name: 'Captain',
-       icon: 'i-woot-captain',

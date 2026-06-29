@@ -308,12 +308,13 @@ index 7dfa2d8..57ad8ac 100644
    belongs_to :account
    belongs_to :stage, class_name: 'CrmPipelineStage'
    belongs_to :contact, optional: true
-@@ -13,4 +24,24 @@ class CrmDeal < ApplicationRecord
+@@ -13,4 +24,57 @@ class CrmDeal < ApplicationRecord
    validates :fleet_sync_status, inclusion: {
      in: %w[none linked syncing error]
    }
 +
 +  before_validation :ensure_custom_attributes
++  before_validation :ensure_title
 +
 +  def self.system_field?(field_key)
 +    SYSTEM_FIELD_KEYS.include?(field_key.to_s)
@@ -331,6 +332,38 @@ index 7dfa2d8..57ad8ac 100644
 +
 +  def ensure_custom_attributes
 +    self.custom_attributes = {} unless custom_attributes.is_a?(Hash)
++  end
++
++  def ensure_title
++    self.title = generated_title if title.blank?
++  end
++
++  def generated_title
++    label = contact_label
++    car = car_model.presence ||
++          custom_attributes['requested_car'].presence ||
++          custom_attributes['selected_car'].presence
++
++    return "#{label} - #{car}" if label.present? && car.present?
++    return label if label.present?
++    return car if car.present?
++
++    "Deal ##{Time.current.to_i}"
++  end
++
++  def contact_label
++    contact_record = scoped_contact
++    contact_record&.name.presence ||
++      contact_record&.phone_number.presence ||
++      contact_record&.email.presence
++  end
++
++  def scoped_contact
++    return contact if contact.present? &&
++                     (account_id.blank? || contact.account_id == account_id)
++    return if account.blank? || contact_id.blank?
++
++    account.contacts.find_by(id: contact_id)
 +  end
  end
 diff --git a/app/models/crm_deal_field_definition.rb b/app/models/crm_deal_field_definition.rb
