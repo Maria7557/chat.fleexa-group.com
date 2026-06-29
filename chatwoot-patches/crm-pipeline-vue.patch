@@ -272,10 +272,10 @@ index 07789a1..91db2e1 100644
          :list="conversationSidebarItems"
 diff --git a/app/javascript/dashboard/routes/dashboard/crm/Pipeline.vue b/app/javascript/dashboard/routes/dashboard/crm/Pipeline.vue
 new file mode 100644
-index 0000000..9b90ff3
+index 0000000..22e2836
 --- /dev/null
 +++ b/app/javascript/dashboard/routes/dashboard/crm/Pipeline.vue
-@@ -0,0 +1,1585 @@
+@@ -0,0 +1,1591 @@
 +<script setup>
 +import { computed, onBeforeUnmount, ref, watch } from 'vue';
 +import { useRoute, useRouter } from 'vue-router';
@@ -1208,21 +1208,27 @@ index 0000000..9b90ff3
 +
 +      <div ref="filterShellRef" class="relative mt-4" @click.stop>
 +        <div
-+          class="flex min-h-[2.75rem] w-full min-w-0 flex-wrap items-center gap-2 rounded-lg border border-n-weak bg-n-background px-3 py-2 shadow-sm transition focus-within:border-n-brand hover:border-n-slate-7"
-+          role="button"
-+          tabindex="0"
-+          @click="openFilterPanel"
-+          @keyup.enter="openFilterPanel"
++          class="flex min-h-[2.75rem] w-full min-w-0 flex-wrap items-center gap-2"
 +        >
-+          <i class="i-lucide-search h-4 w-4 shrink-0 text-n-slate-10" />
-+          <input
-+            v-model="draftFilters.q"
-+            class="h-7 min-w-[14rem] flex-1 border-0 bg-transparent text-sm text-n-slate-12 outline-none placeholder:text-n-slate-9"
-+            placeholder="Search deals, clients, cars..."
-+            type="search"
-+            @focus="openFilterPanel"
-+            @keydown.enter.prevent.stop="applySearch"
-+          />
++          <div class="relative min-w-[16rem] flex-1">
++            <i class="i-lucide-search pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-n-slate-10" />
++            <input
++              v-model="draftFilters.q"
++              class="h-10 w-full rounded-lg border border-n-weak bg-n-background pl-9 pr-9 text-sm text-n-slate-12 outline-none transition placeholder:text-n-slate-9 focus:border-n-brand"
++              placeholder="Search deals, clients, cars..."
++              type="search"
++              @keydown.enter.prevent.stop="applySearch"
++            />
++            <button
++              v-if="draftFilters.q || appliedFilters.q"
++              type="button"
++              class="absolute right-2 top-1/2 grid h-6 w-6 -translate-y-1/2 place-items-center rounded-md text-n-slate-10 hover:bg-n-alpha-2 hover:text-n-slate-12"
++              aria-label="Clear search"
++              @click.stop="clearSearch"
++            >
++              <i class="i-lucide-x h-4 w-4" />
++            </button>
++          </div>
 +
 +          <div
 +            v-if="activeFilterChips.length"
@@ -1246,16 +1252,17 @@ index 0000000..9b90ff3
 +          </div>
 +
 +          <button
-+            v-if="draftFilters.q || appliedFilters.q"
 +            type="button"
-+            class="grid h-7 w-7 shrink-0 place-items-center rounded-md text-n-slate-10 hover:bg-n-alpha-2 hover:text-n-slate-12"
-+            aria-label="Clear search"
-+            @click.stop="clearSearch"
++            class="grid h-10 w-10 shrink-0 place-items-center rounded-lg border border-n-weak bg-n-background text-n-slate-10 transition hover:border-n-slate-7 hover:bg-n-alpha-2 hover:text-n-slate-12"
++            :class="{ 'border-n-brand bg-n-brand-3 text-n-brand-11': isFilterPanelOpen || hasActiveFilters }"
++            aria-label="Open filters"
++            :aria-pressed="isFilterPanelOpen"
++            @click.stop="openFilterPanel"
 +          >
-+            <i class="i-lucide-x h-4 w-4" />
++            <i class="i-lucide-sliders-horizontal h-4 w-4" />
 +          </button>
 +
-+          <div class="ml-auto flex shrink-0 items-center gap-3 border-l border-n-weak pl-3">
++          <div class="flex shrink-0 items-center gap-3">
 +            <div class="text-right">
 +              <div class="text-xs text-n-slate-10">
 +                Total
@@ -1273,28 +1280,27 @@ index 0000000..9b90ff3
 +            >
 +              <i class="i-lucide-circle-x h-4 w-4" />
 +            </button>
-+            <i class="i-lucide-sliders-horizontal h-4 w-4 text-n-slate-10" />
 +          </div>
 +        </div>
 +
 +        <div
 +          v-if="isFilterPanelOpen"
-+          class="absolute left-0 right-0 top-[calc(100%+0.5rem)] z-40 rounded-lg border border-n-weak bg-n-surface-1 shadow-xl"
++          class="absolute right-0 top-[calc(100%+0.5rem)] z-40 w-[min(42rem,calc(100vw-3rem))] overflow-hidden rounded-lg border border-n-weak bg-n-surface-1 shadow-xl"
 +        >
-+          <div class="max-h-[min(72vh,46rem)] overflow-y-auto">
-+            <main class="grid grid-cols-2 gap-4 p-4">
-+              <div class="col-span-2 flex items-center justify-between gap-3">
-+                <div class="text-xs font-semibold uppercase text-n-slate-10">
++          <div class="max-h-[min(48vh,20rem)] overflow-y-auto">
++            <main class="grid grid-cols-2 gap-x-3 gap-y-2.5 p-3">
++              <div class="col-span-2 flex items-center justify-between gap-2">
++                <div class="text-[10px] font-semibold uppercase text-n-slate-10">
 +                  Filters
 +                </div>
 +                <Spinner v-if="isLoadingFields" :size="14" />
 +              </div>
 +
-+              <label class="grid gap-1 text-xs font-medium text-n-slate-11">
++              <label class="grid gap-1 text-[11px] font-medium text-n-slate-11">
 +                Stage
 +                <select
 +                  v-model="draftFilters.stageId"
-+                  class="h-9 rounded-md border border-n-weak bg-n-background px-2 text-sm text-n-slate-12 outline-none focus:border-n-brand"
++                  class="h-8 rounded-md border border-n-weak bg-n-background px-2 text-xs text-n-slate-12 outline-none focus:border-n-brand"
 +                >
 +                  <option
 +                    v-for="item in stageFilterOptions"
@@ -1306,11 +1312,11 @@ index 0000000..9b90ff3
 +                </select>
 +              </label>
 +
-+              <label class="grid gap-1 text-xs font-medium text-n-slate-11">
++              <label class="grid gap-1 text-[11px] font-medium text-n-slate-11">
 +                Operator
 +                <select
 +                  v-model="draftFilters.assignee"
-+                  class="h-9 rounded-md border border-n-weak bg-n-background px-2 text-sm text-n-slate-12 outline-none focus:border-n-brand"
++                  class="h-8 rounded-md border border-n-weak bg-n-background px-2 text-xs text-n-slate-12 outline-none focus:border-n-brand"
 +                >
 +                  <option
 +                    v-for="item in assigneeFilterOptions"
@@ -1322,11 +1328,11 @@ index 0000000..9b90ff3
 +                </select>
 +              </label>
 +
-+              <label class="grid gap-1 text-xs font-medium text-n-slate-11">
++              <label class="grid gap-1 text-[11px] font-medium text-n-slate-11">
 +                Date created
 +                <select
 +                  v-model="draftFilters.createdPreset"
-+                  class="h-9 rounded-md border border-n-weak bg-n-background px-2 text-sm text-n-slate-12 outline-none focus:border-n-brand"
++                  class="h-8 rounded-md border border-n-weak bg-n-background px-2 text-xs text-n-slate-12 outline-none focus:border-n-brand"
 +                >
 +                  <option
 +                    v-for="item in dateFilterOptions"
@@ -1340,33 +1346,33 @@ index 0000000..9b90ff3
 +
 +              <label
 +                v-if="!draftFilters.createdPreset"
-+                class="grid gap-1 text-xs font-medium text-n-slate-11"
++                class="grid gap-1 text-[11px] font-medium text-n-slate-11"
 +              >
 +                Created from
 +                <input
 +                  v-model="draftFilters.createdFrom"
-+                  class="h-9 rounded-md border border-n-weak bg-n-background px-2 text-sm text-n-slate-12 outline-none focus:border-n-brand"
++                  class="h-8 rounded-md border border-n-weak bg-n-background px-2 text-xs text-n-slate-12 outline-none focus:border-n-brand"
 +                  type="date"
 +                />
 +              </label>
 +
 +              <label
 +                v-if="!draftFilters.createdPreset"
-+                class="grid gap-1 text-xs font-medium text-n-slate-11"
++                class="grid gap-1 text-[11px] font-medium text-n-slate-11"
 +              >
 +                Created to
 +                <input
 +                  v-model="draftFilters.createdTo"
-+                  class="h-9 rounded-md border border-n-weak bg-n-background px-2 text-sm text-n-slate-12 outline-none focus:border-n-brand"
++                  class="h-8 rounded-md border border-n-weak bg-n-background px-2 text-xs text-n-slate-12 outline-none focus:border-n-brand"
 +                  type="date"
 +                />
 +              </label>
 +
-+              <label class="grid gap-1 text-xs font-medium text-n-slate-11">
++              <label class="grid gap-1 text-[11px] font-medium text-n-slate-11">
 +                Inbox
 +                <select
 +                  v-model="draftFilters.inboxId"
-+                  class="h-9 rounded-md border border-n-weak bg-n-background px-2 text-sm text-n-slate-12 outline-none focus:border-n-brand"
++                  class="h-8 rounded-md border border-n-weak bg-n-background px-2 text-xs text-n-slate-12 outline-none focus:border-n-brand"
 +                >
 +                  <option
 +                    v-for="item in inboxFilterOptions"
@@ -1384,12 +1390,12 @@ index 0000000..9b90ff3
 +              >
 +                <label
 +                  v-if="field.field_type === 'select' || field.field_type === 'boolean'"
-+                  class="grid gap-1 text-xs font-medium text-n-slate-11"
++                  class="grid gap-1 text-[11px] font-medium text-n-slate-11"
 +                >
 +                  {{ field.label }}
 +                  <select
 +                    :value="fieldFilterState(draftFilters, field).value || ''"
-+                    class="h-9 rounded-md border border-n-weak bg-n-background px-2 text-sm text-n-slate-12 outline-none focus:border-n-brand"
++                    class="h-8 rounded-md border border-n-weak bg-n-background px-2 text-xs text-n-slate-12 outline-none focus:border-n-brand"
 +                    @change="setDraftFieldFilter(field, { value: $event.target.value })"
 +                  >
 +                    <option
@@ -1403,26 +1409,26 @@ index 0000000..9b90ff3
 +                </label>
 +
 +                <template v-else-if="isRangeFilterField(field)">
-+                  <label class="grid gap-1 text-xs font-medium text-n-slate-11">
++                  <label class="grid gap-1 text-[11px] font-medium text-n-slate-11">
 +                    {{ field.label }} from
 +                    <input
 +                      :min="field.field_type === 'number' ? '0' : undefined"
 +                      :step="stepForField(field)"
 +                      :type="inputTypeForField(field)"
 +                      :value="fieldFilterState(draftFilters, field).from || ''"
-+                      class="h-9 rounded-md border border-n-weak bg-n-background px-2 text-sm text-n-slate-12 outline-none focus:border-n-brand"
++                      class="h-8 rounded-md border border-n-weak bg-n-background px-2 text-xs text-n-slate-12 outline-none focus:border-n-brand"
 +                      @input="setDraftFieldFilter(field, { from: $event.target.value })"
 +                    />
 +                  </label>
 +
-+                  <label class="grid gap-1 text-xs font-medium text-n-slate-11">
++                  <label class="grid gap-1 text-[11px] font-medium text-n-slate-11">
 +                    {{ field.label }} to
 +                    <input
 +                      :min="field.field_type === 'number' ? '0' : undefined"
 +                      :step="stepForField(field)"
 +                      :type="inputTypeForField(field)"
 +                      :value="fieldFilterState(draftFilters, field).to || ''"
-+                      class="h-9 rounded-md border border-n-weak bg-n-background px-2 text-sm text-n-slate-12 outline-none focus:border-n-brand"
++                      class="h-8 rounded-md border border-n-weak bg-n-background px-2 text-xs text-n-slate-12 outline-none focus:border-n-brand"
 +                      @input="setDraftFieldFilter(field, { to: $event.target.value })"
 +                    />
 +                  </label>
@@ -1430,12 +1436,12 @@ index 0000000..9b90ff3
 +
 +                <label
 +                  v-else-if="isTextFilterField(field)"
-+                  class="grid gap-1 text-xs font-medium text-n-slate-11"
++                  class="grid gap-1 text-[11px] font-medium text-n-slate-11"
 +                >
 +                  {{ field.label }}
 +                  <input
 +                    :value="fieldFilterState(draftFilters, field).value || ''"
-+                    class="h-9 rounded-md border border-n-weak bg-n-background px-2 text-sm text-n-slate-12 outline-none focus:border-n-brand"
++                    class="h-8 rounded-md border border-n-weak bg-n-background px-2 text-xs text-n-slate-12 outline-none focus:border-n-brand"
 +                    type="text"
 +                    @input="setDraftFieldFilter(field, { value: $event.target.value })"
 +                  />
@@ -1444,7 +1450,7 @@ index 0000000..9b90ff3
 +            </main>
 +          </div>
 +
-+          <footer class="flex items-center justify-between gap-3 border-t border-n-weak px-4 py-3">
++          <footer class="flex items-center justify-between gap-2 border-t border-n-weak px-3 py-2">
 +            <Button
 +              label="Reset"
 +              size="sm"
