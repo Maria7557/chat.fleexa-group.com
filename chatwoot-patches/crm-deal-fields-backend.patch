@@ -3,7 +3,7 @@ new file mode 100644
 index 0000000..50d6f85
 --- /dev/null
 +++ b/app/controllers/api/v1/accounts/crm/deal_fields_controller.rb
-@@ -0,0 +1,164 @@
+@@ -0,0 +1,180 @@
 +class Api::V1::Accounts::Crm::DealFieldsController < Api::V1::Accounts::BaseController
 +  before_action :check_authorization
 +  before_action :set_field_definition, only: [:update, :destroy]
@@ -28,7 +28,12 @@ index 0000000..50d6f85
 +  end
 +
 +  def update
-+    return render_validation_error('system fields cannot be updated') if @field_definition.is_system?
++    if @field_definition.is_system?
++      return render_validation_error('system fields can only update options') unless system_select_options_update?
++
++      @field_definition.update!(options: normalized_options(field_params[:options]))
++      return render json: field_payload(@field_definition)
++    end
 +
 +    @field_definition.update!(field_update_params)
 +
@@ -96,8 +101,19 @@ index 0000000..50d6f85
 +
 +  def field_update_params
 +    field_params.except(:key, :is_active).tap do |attrs|
++      attrs[:options] = normalized_options(attrs[:options]) if attrs.key?(:options)
 +      attrs[:options] = [] if attrs.key?(:field_type) && attrs[:field_type] != 'select'
 +    end
++  end
++
++  def system_select_options_update?
++    attrs = field_params.to_h.stringify_keys
++
++    @field_definition.field_type == 'select' && (attrs.keys - ['options']).blank?
++  end
++
++  def normalized_options(options)
++    Array(options).map(&:to_s).map(&:strip).reject(&:blank?).uniq
 +  end
 +
 +  def fields_payload
@@ -172,9 +188,10 @@ diff --git a/app/controllers/api/v1/accounts/crm/deals_controller.rb b/app/contr
 index d9a531d..3d6d2a7 100644
 --- a/app/controllers/api/v1/accounts/crm/deals_controller.rb
 +++ b/app/controllers/api/v1/accounts/crm/deals_controller.rb
-@@ -19,6 +19,8 @@ class Api::V1::Accounts::Crm::DealsController < Api::V1::Accounts::BaseControlle
+@@ -19,7 +19,9 @@ class Api::V1::Accounts::Crm::DealsController < Api::V1::Accounts::BaseControlle
    def create
      attrs = deal_params
+     attrs[:conversation_id] = fallback_conversation_id_for_contact(attrs[:contact_id]) if attrs[:conversation_id].blank?
      stage = stage_scope.find(attrs[:stage_id])
 +    missing_required_fields = missing_required_fields_for(stage, attrs)
 +    return render_missing_required_fields(missing_required_fields) if missing_required_fields.any?
@@ -371,7 +388,7 @@ new file mode 100644
 index 0000000..e8c3ab8
 --- /dev/null
 +++ b/app/models/crm_deal_field_definition.rb
-@@ -0,0 +1,49 @@
+@@ -0,0 +1,47 @@
 +class CrmDealFieldDefinition < ApplicationRecord
 +  FIELD_TYPES = %w[text number date boolean select].freeze
 +  STORAGE_TYPES = %w[system_column custom_attribute].freeze
@@ -397,7 +414,7 @@ index 0000000..e8c3ab8
 +  validates :label, presence: true
 +  validates :field_type, inclusion: { in: FIELD_TYPES }
 +  validates :storage_type, inclusion: { in: STORAGE_TYPES }
-+  validate :storage_type_matches_system_flag
++  validate :storage_type_matches_field_owner
 +
 +  private
 +
@@ -410,15 +427,13 @@ index 0000000..e8c3ab8
 +  end
 +
 +  def ensure_storage_type
-+    self.storage_type ||= is_system? ? 'system_column' : 'custom_attribute'
++    self.storage_type ||= 'custom_attribute'
 +  end
 +
-+  def storage_type_matches_system_flag
-+    if is_system? && storage_type != 'system_column'
-+      errors.add(:storage_type, 'must be system_column for system fields')
-+    elsif !is_system? && storage_type != 'custom_attribute'
-+      errors.add(:storage_type, 'must be custom_attribute for custom fields')
-+    end
++  def storage_type_matches_field_owner
++    return unless storage_type == 'system_column' && !is_system?
++
++    errors.add(:storage_type, 'system_column fields must be system fields')
 +  end
 +end
 diff --git a/app/models/crm_pipeline_stage_required_field.rb b/app/models/crm_pipeline_stage_required_field.rb
@@ -456,10 +471,12 @@ diff --git a/config/routes.rb b/config/routes.rb
 index 49338ad..42ff1e5 100644
 --- a/config/routes.rb
 +++ b/config/routes.rb
-@@ -121,6 +121,11 @@ Rails.application.routes.draw do
+@@ -121,8 +121,13 @@ Rails.application.routes.draw do
+             resources :deals, only: [:index, :show, :create, :update, :destroy] do
+               collection do
+                 post :ensure_from_conversation
+               end
              end
- 
-             resources :deals, only: [:index, :show, :create, :update, :destroy]
 +            resources :deal_fields, only: [:index, :create, :update, :destroy] do
 +              collection do
 +                patch :stage_requirements

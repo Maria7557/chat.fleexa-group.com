@@ -102,6 +102,7 @@ crm-vue-copy: ensure-env
 	$(COMPOSE) cp chatwoot-patches/crm-deal-workspace-sidebar-style-vue.patch rails:/tmp/crm-deal-workspace-sidebar-style-vue.patch
 	$(COMPOSE) cp chatwoot-patches/crm-deal-workspace-emoji-picker-vue.patch rails:/tmp/crm-deal-workspace-emoji-picker-vue.patch
 	$(COMPOSE) cp chatwoot-patches/crm-deal-workspace-tabs-vue.patch rails:/tmp/crm-deal-workspace-tabs-vue.patch
+	$(COMPOSE) cp chatwoot-patches/crm-deal-workspace-conversation-load-fix-vue.patch rails:/tmp/crm-deal-workspace-conversation-load-fix-vue.patch
 	@echo "CRM Vue patch copied to Rails container"
 
 crm-vue-check: crm-vue-copy
@@ -112,6 +113,7 @@ crm-vue-check: crm-vue-copy
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply --check /tmp/crm-deal-workspace-sidebar-style-vue.patch"
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply --check /tmp/crm-deal-workspace-emoji-picker-vue.patch"
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply --check /tmp/crm-deal-workspace-tabs-vue.patch"
+	$(COMPOSE) exec rails sh -lc "cd /app && git apply --check /tmp/crm-deal-workspace-conversation-load-fix-vue.patch"
 	@echo "CRM Vue patch validated"
 
 crm-vue-patch: crm-vue-copy
@@ -122,6 +124,7 @@ crm-vue-patch: crm-vue-copy
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply /tmp/crm-deal-workspace-sidebar-style-vue.patch"
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply /tmp/crm-deal-workspace-emoji-picker-vue.patch"
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply /tmp/crm-deal-workspace-tabs-vue.patch"
+	$(COMPOSE) exec rails sh -lc "cd /app && git apply /tmp/crm-deal-workspace-conversation-load-fix-vue.patch"
 	@echo "CRM Vue patch applied"
 
 crm-assets-build-host:
@@ -137,6 +140,8 @@ crm-assets-build-host:
 	trap - EXIT; \
 	cd "$$build_dir"; \
 	perl -0pi -e "s/import \\{ colors \\} from '\\.\\/theme\\/colors';/const { colors } = require('.\\/theme\\/colors.js');/; s/import \\{ icons \\} from '\\.\\/theme\\/icons';/const { icons } = require('.\\/theme\\/icons.js');/" tailwind.config.js; \
+	perl -0pi -e "s/export const colors =/const colors =/; s/\\n\\};\\s*\\z/\\n};\\nmodule.exports = { colors };\\n/s" theme/colors.js; \
+	perl -0pi -e "s/export const icons =/const icons =/; s/\\n\\};\\s*\\z/\\n};\\nmodule.exports = { icons };\\n/s" theme/icons.js; \
 	git apply "$(CURDIR)/chatwoot-patches/instagram-human-agent-activity-window.patch"; \
 	git apply "$(CURDIR)/chatwoot-patches/crm-models.rb.patch"; \
 	git apply "$(CURDIR)/chatwoot-patches/crm-controllers.rb.patch"; \
@@ -154,6 +159,7 @@ crm-assets-build-host:
 	git apply "$(CURDIR)/chatwoot-patches/crm-deal-workspace-sidebar-style-vue.patch"; \
 	git apply "$(CURDIR)/chatwoot-patches/crm-deal-workspace-emoji-picker-vue.patch"; \
 	git apply "$(CURDIR)/chatwoot-patches/crm-deal-workspace-tabs-vue.patch"; \
+	git apply "$(CURDIR)/chatwoot-patches/crm-deal-workspace-conversation-load-fix-vue.patch"; \
 	grep -n "ConversationBox" app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue; \
 	grep -n "CRM Deal" app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue; \
 	grep -n "isDealEditing" app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue; \
@@ -164,7 +170,7 @@ crm-assets-build-host:
 	grep -n "client" app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue; \
 	if grep -n "Reply to client" app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue; then exit 1; fi; \
 	if grep -nE ">Title<|Title \\*" app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue; then exit 1; fi; \
-	npx --yes pnpm@10.2.0 install --frozen-lockfile; \
+	HUSKY=0 npx --yes pnpm@10.2.0 install --frozen-lockfile; \
 	(node node_modules/esbuild/install.js 2>/dev/null || true); \
 	NODE_OPTIONS=--max-old-space-size=4096 npx --yes pnpm@10.2.0 exec vite build --mode production; \
 	test -d public/vite/assets; \
@@ -229,7 +235,7 @@ crm-assets-refresh-local: crm-assets-build-host crm-assets-install-local
 	until curl --max-time 5 -fsSI http://localhost:3000/app/accounts/1/pipeline > /tmp/fleexa-chatwoot-pipeline-headers || \
 			curl --max-time 5 -fsSI http://localhost:3000/ > /tmp/fleexa-chatwoot-pipeline-headers; do \
 		attempt=$$((attempt + 1)); \
-		if [ "$$attempt" -ge 30 ]; then exit 1; fi; \
+		if [ "$$attempt" -ge 90 ]; then exit 1; fi; \
 		sleep 2; \
 	done; \
 	head /tmp/fleexa-chatwoot-pipeline-headers; \

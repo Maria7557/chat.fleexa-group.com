@@ -390,6 +390,47 @@ END $$;
 CREATE INDEX IF NOT EXISTS idx_crm_deal_field_definitions_account_id
   ON public.crm_deal_field_definitions (account_id);
 
+INSERT INTO public.crm_deal_field_definitions (
+  account_id,
+  key,
+  label,
+  field_type,
+  storage_type,
+  position,
+  options,
+  is_active,
+  is_system,
+  created_at,
+  updated_at
+)
+SELECT
+  accounts.id,
+  'source_request',
+  'Source Request',
+  'select',
+  'custom_attribute',
+  100,
+  '["WEBSITE", "INST/FB", "DUBIZZLE", "FRIEND''S ADVICE", "REGULAR", "MAPS", "MAILING LIST", "CALL CENTER", "UNKNOWN"]'::jsonb,
+  true,
+  true,
+  NOW(),
+  NOW()
+FROM public.accounts accounts
+ON CONFLICT (account_id, key) DO UPDATE SET
+  label = EXCLUDED.label,
+  field_type = EXCLUDED.field_type,
+  storage_type = EXCLUDED.storage_type,
+  position = LEAST(public.crm_deal_field_definitions.position, EXCLUDED.position),
+  options = CASE
+    WHEN public.crm_deal_field_definitions.options IS NULL
+      OR public.crm_deal_field_definitions.options = '[]'::jsonb
+    THEN EXCLUDED.options
+    ELSE public.crm_deal_field_definitions.options
+  END,
+  is_active = true,
+  is_system = true,
+  updated_at = NOW();
+
 CREATE TABLE IF NOT EXISTS public.crm_pipeline_stage_required_fields (
   id bigserial PRIMARY KEY,
   account_id integer NOT NULL,

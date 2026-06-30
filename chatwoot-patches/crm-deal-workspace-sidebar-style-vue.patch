@@ -1,5 +1,5 @@
 diff --git a/app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue b/app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue
-index 4111bf8..b0e5393 100644
+index 36806c2..4e7aa10 100644
 --- a/app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue
 +++ b/app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue
 @@ -30,6 +30,7 @@ const showFieldConfig = ref(false);
@@ -108,7 +108,7 @@ index 4111bf8..b0e5393 100644
              </div>
              <div class="mt-1 flex flex-wrap items-center gap-2 text-xs text-n-slate-11">
                <span v-if="deal?.booking_id">Booking {{ deal.booking_id }}</span>
-@@ -568,170 +608,270 @@ onUnmounted(() => {
+@@ -568,169 +608,269 @@ onUnmounted(() => {
          </ConversationBox>
        </main>
  
@@ -211,7 +211,13 @@ index 4111bf8..b0e5393 100644
 -                    <span v-if="isFieldRequired(field)" class="text-n-ruby-10">*</span>
 -                  </span>
 -                  <span
--                    v-if="isCustomField(field)"
+-                    v-if="field.is_system"
+-                    class="rounded-md bg-n-alpha-2 px-1.5 py-0.5 text-[11px] font-medium text-n-slate-10"
+-                  >
+-                    Default
+-                  </span>
+-                  <span
+-                    v-else-if="isCustomField(field)"
 -                    class="rounded-md bg-n-alpha-2 px-1.5 py-0.5 text-[11px] font-medium text-n-slate-10"
 -                  >
 -                    Custom
@@ -338,7 +344,13 @@ index 4111bf8..b0e5393 100644
 +                          <span v-if="isFieldRequired(field)" class="text-n-ruby-10">*</span>
 +                        </span>
 +                        <span
-+                          v-if="isCustomField(field)"
++                          v-if="field.is_system"
++                          class="rounded-md bg-n-alpha-2 px-1.5 py-0.5 text-[11px] font-medium text-n-slate-10"
++                        >
++                          Default
++                        </span>
++                        <span
++                          v-else-if="isCustomField(field)"
 +                          class="rounded-md bg-n-alpha-2 px-1.5 py-0.5 text-[11px] font-medium text-n-slate-10"
 +                        >
 +                          Custom
@@ -481,12 +493,3 @@ index 4111bf8..b0e5393 100644
                </div>
              </div>
            </section>
- 
--          <section class="border-t border-n-weak pt-5">
-+          <section class="rounded-xl border border-n-weak bg-n-background p-4">
-             <div class="flex items-center justify-between gap-3">
--              <h2 class="m-0 text-sm font-semibold text-n-slate-12">
-+              <h2 class="m-0 text-base font-semibold text-n-slate-12">
-                 Field setup
-               </h2>
-               <Button

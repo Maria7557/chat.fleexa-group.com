@@ -299,7 +299,7 @@ new file mode 100644
 index 0000000..82c5d24
 --- /dev/null
 +++ b/app/javascript/dashboard/routes/dashboard/crm/Pipeline.vue
-@@ -0,0 +1,2242 @@
+@@ -0,0 +1,2789 @@
 +<script setup>
 +import { computed, onBeforeUnmount, ref, watch } from 'vue';
 +import { useRoute, useRouter } from 'vue-router';
@@ -307,6 +307,7 @@ index 0000000..82c5d24
 +import ContactAPI from 'dashboard/api/contacts';
 +import CrmPipelineAPI from 'dashboard/api/crmPipeline';
 +import Button from 'dashboard/components-next/button/Button.vue';
++import Checkbox from 'dashboard/components-next/checkbox/Checkbox.vue';
 +import Spinner from 'dashboard/components-next/spinner/Spinner.vue';
 +import { useMapGetter } from 'dashboard/composables/store';
 +import { useAccount } from 'dashboard/composables/useAccount';
@@ -346,6 +347,18 @@ index 0000000..82c5d24
 +  fieldFilters: {},
 +});
 +
++const DEALS_PER_PAGE = 200;
++const EMPTY_TABLE_VALUE = '—';
++const DEFAULT_LIST_COLUMN_KEYS = [
++  'created_at',
++  'title',
++  'stage',
++  'source_request',
++  'selected_car',
++  'budget',
++  'operator',
++];
++
 +const stages = ref([]);
 +const deals = ref([]);
 +const fieldDefinitions = ref([]);
@@ -353,8 +366,12 @@ index 0000000..82c5d24
 +  total_count: 0,
 +  total_amount: 0,
 +  total_debt_amount: 0,
++  page: 1,
++  per_page: DEALS_PER_PAGE,
++  has_more: false,
 +});
 +const isLoading = ref(false);
++const isLoadingMore = ref(false);
 +const isLoadingFields = ref(false);
 +const errorMessage = ref('');
 +const activeStageId = ref(null);
@@ -380,6 +397,11 @@ index 0000000..82c5d24
 +const exportFormat = ref('csv');
 +const viewMode = ref('kanban');
 +const filterShellRef = ref(null);
++const listSettingsRef = ref(null);
++const isListSettingsOpen = ref(false);
++const visibleListColumnKeys = ref([...DEFAULT_LIST_COLUMN_KEYS]);
++const selectedDealIds = ref(new Set());
++const currentPage = ref(1);
 +
 +let contactSearchTimeout = null;
 +let contactSearchController = null;
@@ -413,6 +435,66 @@ index 0000000..82c5d24
 +  fieldFilters: { ...(filters?.fieldFilters || {}) },
 +});
 +
++const normalizeListColumnKeys = keys => {
++  const validKeys = new Set(DEFAULT_LIST_COLUMN_KEYS);
++  const normalizedKeys = Array.isArray(keys)
++    ? keys.filter(key => validKeys.has(key))
++    : [];
++
++  return normalizedKeys.length ? normalizedKeys : [...DEFAULT_LIST_COLUMN_KEYS];
++};
++
++const loadVisibleListColumns = () => {
++  if (!accountId.value || typeof window === 'undefined') return;
++
++  try {
++    const savedKeys = window.localStorage.getItem(listColumnStorageKey.value);
++    visibleListColumnKeys.value = normalizeListColumnKeys(
++      savedKeys ? JSON.parse(savedKeys) : DEFAULT_LIST_COLUMN_KEYS
++    );
++  } catch {
++    visibleListColumnKeys.value = [...DEFAULT_LIST_COLUMN_KEYS];
++  }
++};
++
++const persistVisibleListColumns = () => {
++  if (!accountId.value || typeof window === 'undefined') return;
++
++  window.localStorage.setItem(
++    listColumnStorageKey.value,
++    JSON.stringify(visibleListColumnKeys.value)
++  );
++};
++
++const isListColumnVisible = key => visibleListColumnKeys.value.includes(key);
++
++const setListColumnVisibility = (key, visible) => {
++  if (!DEFAULT_LIST_COLUMN_KEYS.includes(key)) return;
++
++  if (visible) {
++    visibleListColumnKeys.value = normalizeListColumnKeys([
++      ...visibleListColumnKeys.value,
++      key,
++    ]);
++  } else if (visibleListColumnKeys.value.length > 1) {
++    visibleListColumnKeys.value = visibleListColumnKeys.value.filter(
++      columnKey => columnKey !== key
++    );
++  }
++
++  persistVisibleListColumns();
++};
++
++const resetListColumns = () => {
++  visibleListColumnKeys.value = [...DEFAULT_LIST_COLUMN_KEYS];
++  persistVisibleListColumns();
++};
++
++const toggleListSettings = () => {
++  isFilterPanelOpen.value = false;
++  isListSettingsOpen.value = !isListSettingsOpen.value;
++};
++
 +const orderedStages = computed(() => {
 +  return [...stages.value].sort((a, b) => a.position - b.position);
 +});
@@ -434,6 +516,84 @@ index 0000000..82c5d24
 +  const options = sourceRequestField.value?.options || [];
 +  return options.map(option => ({ value: String(option), label: String(option) }));
 +});
++
++const sourceRequestColumnLabel = computed(() => {
++  const label = String(sourceRequestField.value?.label || '').trim();
++  const normalized = label.toLowerCase().replace(/[_-]+/g, ' ');
++
++  if (normalized.includes('source') && normalized.includes('request')) {
++    return label;
++  }
++
++  return 'Source Request';
++});
++
++const listColumnDefinitions = computed(() => [
++  {
++    key: 'created_at',
++    label: 'Date created',
++    headerClass: 'w-[9rem]',
++    cellClass: 'w-[9rem] text-n-slate-11',
++  },
++  {
++    key: 'title',
++    label: 'Deal name',
++    headerClass: 'min-w-[14rem]',
++    cellClass: 'min-w-[14rem]',
++  },
++  {
++    key: 'stage',
++    label: 'Stage',
++    headerClass: 'w-[11rem]',
++    cellClass: 'w-[11rem]',
++  },
++  {
++    key: 'source_request',
++    label: sourceRequestColumnLabel.value,
++    headerClass: 'w-[11rem]',
++    cellClass: 'w-[11rem] text-n-slate-11',
++  },
++  {
++    key: 'selected_car',
++    label: 'Selected Car',
++    headerClass: 'w-[13rem]',
++    cellClass: 'w-[13rem] text-n-slate-11',
++  },
++  {
++    key: 'budget',
++    label: 'Budget',
++    headerClass: 'w-[9rem]',
++    cellClass: 'w-[9rem] text-n-slate-12',
++  },
++  {
++    key: 'operator',
++    label: 'Operator',
++    headerClass: 'w-[12rem]',
++    cellClass: 'w-[12rem] text-n-slate-11',
++  },
++]);
++
++const listColumnStorageKey = computed(() => {
++  return `fleexa.crm.pipeline.list_columns.${accountId.value}`;
++});
++
++const visibleListColumns = computed(() => {
++  const visibleKeys = new Set(visibleListColumnKeys.value);
++  return listColumnDefinitions.value.filter(column => visibleKeys.has(column.key));
++});
++
++const listResultSummary = computed(() => {
++  const loadedCount = deals.value.length;
++  const totalCount = pipelineMeta.value?.total_count ?? loadedCount;
++
++  if (pipelineMeta.value?.has_more) {
++    return `${loadedCount} of ${totalCount} deals`;
++  }
++
++  return `${loadedCount} deals`;
++});
++
++const hasMoreDeals = computed(() => Boolean(pipelineMeta.value?.has_more));
 +
 +const assignedUserOptions = computed(() => {
 +  const users = new Map();
@@ -469,6 +629,58 @@ index 0000000..82c5d24
 +});
 +
 +const dealsForStage = stageId => dealsByStage.value[stageId] || [];
++
++const visibleDealIds = computed(() => deals.value.map(deal => deal.id));
++
++const allVisibleDealsSelected = computed(() => {
++  return visibleDealIds.value.length > 0 &&
++    visibleDealIds.value.every(id => selectedDealIds.value.has(id));
++});
++
++const someVisibleDealsSelected = computed(() => {
++  return visibleDealIds.value.some(id => selectedDealIds.value.has(id)) &&
++    !allVisibleDealsSelected.value;
++});
++
++const allVisibleDealsModel = computed({
++  get: () => allVisibleDealsSelected.value,
++  set: value => toggleAllVisibleDeals(value),
++});
++
++const isDealSelected = dealId => selectedDealIds.value.has(dealId);
++
++const toggleDealSelection = (dealId, checked) => {
++  const nextSelectedIds = new Set(selectedDealIds.value);
++
++  if (checked) {
++    nextSelectedIds.add(dealId);
++  } else {
++    nextSelectedIds.delete(dealId);
++  }
++
++  selectedDealIds.value = nextSelectedIds;
++};
++
++const toggleAllVisibleDeals = checked => {
++  const nextSelectedIds = new Set(selectedDealIds.value);
++
++  visibleDealIds.value.forEach(id => {
++    if (checked) {
++      nextSelectedIds.add(id);
++    } else {
++      nextSelectedIds.delete(id);
++    }
++  });
++
++  selectedDealIds.value = nextSelectedIds;
++};
++
++const pruneSelectedDealIds = () => {
++  const loadedDealIds = new Set(visibleDealIds.value);
++  selectedDealIds.value = new Set(
++    [...selectedDealIds.value].filter(id => loadedDealIds.has(id))
++  );
++};
 +
 +const amountValue = amount => {
 +  if (amount === null || amount === undefined || amount === '') return 0;
@@ -546,7 +758,7 @@ index 0000000..82c5d24
 +};
 +
 +const isSystemField = field => {
-+  return field.storage_type === 'system_column' || field.source === 'system';
++  return field.storage_type === 'system_column';
 +};
 +
 +const customAttributeValue = (deal, key) => {
@@ -788,7 +1000,7 @@ index 0000000..82c5d24
 +  const filters = appliedFilters.value;
 +  const params = {
 +    include_meta: 1,
-+    per_page: 100,
++    per_page: DEALS_PER_PAGE,
 +  };
 +
 +  if (filters.q) params.q = filters.q;
@@ -959,6 +1171,7 @@ index 0000000..82c5d24
 +  const nextFilters = cloneFilters(filters);
 +  appliedFilters.value = nextFilters;
 +  draftFilters.value = cloneFilters(nextFilters);
++  selectedDealIds.value = new Set();
 +  await updateRouteQuery(nextFilters);
 +  await fetchPipeline();
 +  if (options.closePanel) isFilterPanelOpen.value = false;
@@ -968,6 +1181,7 @@ index 0000000..82c5d24
 +  if (!isFilterPanelOpen.value) {
 +    draftFilters.value = cloneFilters(appliedFilters.value);
 +  }
++  isListSettingsOpen.value = false;
 +  isFilterPanelOpen.value = true;
 +};
 +
@@ -977,9 +1191,13 @@ index 0000000..82c5d24
 +};
 +
 +const handleOutsideClick = event => {
-+  if (!isFilterPanelOpen.value) return;
-+  if (filterShellRef.value?.contains(event.target)) return;
-+  closeFilterPanel();
++  if (isFilterPanelOpen.value && !filterShellRef.value?.contains(event.target)) {
++    closeFilterPanel();
++  }
++
++  if (isListSettingsOpen.value && !listSettingsRef.value?.contains(event.target)) {
++    isListSettingsOpen.value = false;
++  }
 +};
 +
 +document.addEventListener('click', handleOutsideClick);
@@ -1016,6 +1234,7 @@ index 0000000..82c5d24
 +  exportScope.value = hasActiveFilters.value ? 'filtered' : 'all';
 +  exportFormat.value = 'csv';
 +  isFilterPanelOpen.value = false;
++  isListSettingsOpen.value = false;
 +  isExportModalOpen.value = true;
 +};
 +
@@ -1131,46 +1350,118 @@ index 0000000..82c5d24
 +  }
 +};
 +
-+const fetchPipeline = async () => {
-+  isLoading.value = true;
++const dealPageRequestParams = page => ({
++  ...dealRequestParams.value,
++  page,
++});
++
++const normalizedDealResponse = (response, fallbackPage) => {
++  const payload = response.data || {};
++
++  if (Array.isArray(payload)) {
++    return {
++      deals: payload,
++      meta: {
++        total_count: payload.length,
++        total_amount: null,
++        total_debt_amount: 0,
++        page: fallbackPage,
++        per_page: DEALS_PER_PAGE,
++        has_more: false,
++      },
++    };
++  }
++
++  return {
++    deals: payload.data || [],
++    meta: {
++      total_count: payload?.meta?.total_count ?? 0,
++      total_amount: payload?.meta?.total_amount ?? null,
++      total_debt_amount: payload?.meta?.total_debt_amount ?? 0,
++      page: payload?.meta?.page ?? fallbackPage,
++      per_page: payload?.meta?.per_page ?? DEALS_PER_PAGE,
++      has_more: Boolean(payload?.meta?.has_more),
++    },
++  };
++};
++
++const loadAllDealPages = async firstResponse => {
++  const firstPage = normalizedDealResponse(firstResponse, 1);
++  const allDeals = [...firstPage.deals];
++  const meta = { ...firstPage.meta };
++  let nextPage = Number(meta.page || 1) + 1;
++  let hasMore = meta.has_more;
++
++  while (hasMore) {
++    const response = await CrmPipelineAPI.getDeals(dealPageRequestParams(nextPage));
++    const page = normalizedDealResponse(response, nextPage);
++    allDeals.push(...page.deals);
++    Object.assign(meta, page.meta);
++    hasMore = page.meta.has_more;
++    nextPage = Number(page.meta.page || nextPage) + 1;
++  }
++
++  return { deals: allDeals, meta: { ...meta, has_more: false } };
++};
++
++const fetchPipeline = async ({ append = false } = {}) => {
++  const requestPage = append ? currentPage.value + 1 : 1;
++
++  if (append) {
++    isLoadingMore.value = true;
++  } else {
++    isLoading.value = true;
++  }
 +  errorMessage.value = '';
 +
 +  try {
-+    await loadDealFields();
-+    const [stageResponse, dealResponse] = await Promise.all([
-+      CrmPipelineAPI.getStages(),
-+      CrmPipelineAPI.getDeals(dealRequestParams.value),
-+    ]);
++    if (!append) await loadDealFields();
 +
-+    stages.value = stageResponse.data || [];
-+    const payload = dealResponse.data || {};
-+    if (Array.isArray(payload)) {
-+      deals.value = payload;
-+      pipelineMeta.value = {
-+        total_count: payload.length,
-+        total_amount: totalFromDeals(),
-+        total_debt_amount: 0,
-+      };
-+      return;
-+    }
++    const [stageResponse, dealResponse] = append
++      ? [null, await CrmPipelineAPI.getDeals(dealPageRequestParams(requestPage))]
++      : await Promise.all([
++        CrmPipelineAPI.getStages(),
++        CrmPipelineAPI.getDeals(dealPageRequestParams(requestPage)),
++      ]);
 +
-+    deals.value = payload.data || [];
++    if (!append) stages.value = stageResponse.data || [];
++
++    const responsePayload = append
++      ? normalizedDealResponse(dealResponse, requestPage)
++      : await loadAllDealPages(dealResponse);
++
++    deals.value = append
++      ? [...deals.value, ...responsePayload.deals]
++      : responsePayload.deals;
++    currentPage.value = responsePayload.meta.page ?? requestPage;
 +    pipelineMeta.value = {
-+      total_count: payload?.meta?.total_count ?? deals.value.length,
-+      total_amount: payload?.meta?.total_amount ?? totalFromDeals(),
-+      total_debt_amount: payload?.meta?.total_debt_amount ?? 0,
++      total_count: responsePayload.meta.total_count || deals.value.length,
++      total_amount: responsePayload.meta.total_amount ?? totalFromDeals(),
++      total_debt_amount: responsePayload.meta.total_debt_amount ?? 0,
++      page: currentPage.value,
++      per_page: responsePayload.meta.per_page ?? DEALS_PER_PAGE,
++      has_more: Boolean(responsePayload.meta.has_more),
 +    };
++    pruneSelectedDealIds();
 +  } catch (error) {
 +    setError(error);
 +  } finally {
 +    isLoading.value = false;
++    isLoadingMore.value = false;
 +  }
++};
++
++const loadMoreDeals = () => {
++  if (!hasMoreDeals.value || isLoadingMore.value) return;
++
++  fetchPipeline({ append: true });
 +};
 +
 +const initializePipeline = () => {
 +  const initialFilters = filtersFromQuery(route.query);
 +  appliedFilters.value = cloneFilters(initialFilters);
 +  draftFilters.value = cloneFilters(initialFilters);
++  selectedDealIds.value = new Set();
 +  fetchPipeline();
 +};
 +
@@ -1419,10 +1710,18 @@ index 0000000..82c5d24
 +  return Number.isFinite(value) ? moneyFormatter.format(value) : '';
 +};
 +
++const formatBudget = amount => {
++  return formatAmount(amount).replace(/\u00a0/g, ' ') || EMPTY_TABLE_VALUE;
++};
++
 +const formatDate = value => {
 +  if (!value) return '';
 +  const date = new Date(value);
 +  return Number.isNaN(date.getTime()) ? value : dateFormatter.format(date);
++};
++
++const tableValue = value => {
++  return hasDisplayValue(value) ? value : EMPTY_TABLE_VALUE;
 +};
 +
 +const formatRentalPeriod = deal => {
@@ -1445,9 +1744,61 @@ index 0000000..82c5d24
 +    : 'bg-n-amber-3 text-n-amber-11';
 +};
 +
++const dealTitle = deal => deal.title || contactName(deal) || `Deal #${deal.id}`;
 +const contactName = deal => deal.contact?.name || deal.title;
 +const phoneNumber = deal => deal.contact?.phone_number || deal.client_phone;
-+const assignedName = deal => deal.assigned_user?.name || '';
++const sourceRequestValue = deal => {
++  return deal.custom_attributes?.source_request ||
++    deal.custom_attributes?.source_requect ||
++    '';
++};
++
++const selectedCarValue = deal => {
++  return deal.car_model ||
++    deal.custom_attributes?.selected_car ||
++    deal.custom_attributes?.requested_car ||
++    '';
++};
++
++const stageForDeal = deal => {
++  return stages.value.find(stage => String(stage.id) === String(deal.stage_id));
++};
++
++const normalizeHexColor = color => {
++  return /^#[0-9A-F]{6}$/i.test(color || '') ? color : '#6B7280';
++};
++
++const colorWithAlpha = (color, alpha) => {
++  const normalizedColor = normalizeHexColor(color).slice(1);
++  const red = Number.parseInt(normalizedColor.slice(0, 2), 16);
++  const green = Number.parseInt(normalizedColor.slice(2, 4), 16);
++  const blue = Number.parseInt(normalizedColor.slice(4, 6), 16);
++
++  return `rgba(${red}, ${green}, ${blue}, ${alpha})`;
++};
++
++const stageBadgeStyle = stage => {
++  const color = stage?.color || '#6B7280';
++
++  return {
++    backgroundColor: colorWithAlpha(color, 0.14),
++    color: normalizeHexColor(color),
++  };
++};
++
++const stageDotStyle = stage => ({
++  backgroundColor: normalizeHexColor(stage?.color),
++});
++
++const assignedName = deal => {
++  const assignedUser = deal.assigned_user || deal.assignee || deal.assigned_to;
++
++  if (assignedUser && typeof assignedUser === 'object') {
++    return assignedUser.name || assignedUser.email || `#${assignedUser.id}`;
++  }
++
++  return assignedUser ? `#${assignedUser}` : '';
++};
 +const conversationDisplayId = deal => {
 +  return deal.conversation?.display_id || deal.conversation_id;
 +};
@@ -1459,6 +1810,22 @@ index 0000000..82c5d24
 +
 +const openDeal = deal => {
 +  selectedDeal.value = deal;
++};
++
++const dealWorkspacePath = deal => `/app/accounts/${accountId.value}/pipeline/deals/${deal.id}`;
++
++const openDealWorkspace = deal => {
++  if (!deal?.id) return;
++
++  if (typeof router.hasRoute === 'function' && router.hasRoute('crm_deal_workspace')) {
++    router.push({
++      name: 'crm_deal_workspace',
++      params: { accountId: accountId.value, dealId: deal.id },
++    });
++    return;
++  }
++
++  router.push(dealWorkspacePath(deal));
 +};
 +
 +const closeDealDrawer = () => {
@@ -1503,6 +1870,7 @@ index 0000000..82c5d24
 +  accountId,
 +  () => {
 +    if (!accountId.value) return;
++    loadVisibleListColumns();
 +    initializePipeline();
 +  },
 +  { immediate: true },
@@ -1912,10 +2280,189 @@ index 0000000..82c5d24
 +      <Spinner :size="28" />
 +    </div>
 +
-+    <div v-else-if="viewMode === 'list'" class="min-h-0 flex-1 px-6 py-5">
-+      <div class="grid h-full place-items-center rounded-lg border border-dashed border-n-weak text-sm text-n-slate-11">
-+        List view is coming next. Kanban remains active for deal work.
++    <div v-else-if="viewMode === 'list'" class="flex min-h-0 flex-1 flex-col">
++      <div class="flex items-center justify-between gap-3 border-b border-n-weak px-6 py-2.5">
++        <div class="min-w-0 text-xs text-n-slate-10">
++          {{ listResultSummary }}
++        </div>
++
++        <div ref="listSettingsRef" class="relative" @click.stop>
++          <Button
++            label="Columns"
++            icon="i-lucide-settings-2"
++            size="sm"
++            slate
++            faded
++            type="button"
++            :aria-expanded="isListSettingsOpen"
++            aria-haspopup="menu"
++            @click="toggleListSettings"
++          />
++
++          <div
++            v-if="isListSettingsOpen"
++            class="absolute right-0 top-[calc(100%+0.5rem)] z-40 w-64 overflow-hidden rounded-xl border border-n-weak bg-n-surface-1 shadow-xl"
++            role="menu"
++          >
++            <div class="border-b border-n-weak px-3 py-2">
++              <div class="text-[10px] font-semibold uppercase text-n-slate-10">
++                Table columns
++              </div>
++            </div>
++
++            <div class="divide-y divide-n-weak">
++              <label
++                v-for="column in listColumnDefinitions"
++                :key="column.key"
++                class="flex h-9 cursor-pointer items-center gap-2 px-3 text-sm text-n-slate-12 hover:bg-n-alpha-2"
++              >
++                <span @click.stop>
++                  <Checkbox
++                    :model-value="isListColumnVisible(column.key)"
++                    @change="setListColumnVisibility(column.key, $event.target.checked)"
++                  />
++                </span>
++                <span class="min-w-0 truncate">{{ column.label }}</span>
++              </label>
++            </div>
++
++            <footer class="border-t border-n-weak px-3 py-2">
++              <Button
++                label="Reset columns"
++                icon="i-lucide-rotate-ccw"
++                size="sm"
++                slate
++                ghost
++                type="button"
++                class="w-full"
++                @click="resetListColumns"
++              />
++            </footer>
++          </div>
++        </div>
 +      </div>
++
++      <div class="min-h-0 flex-1 overflow-auto">
++        <table class="min-w-full table-fixed border-collapse text-sm">
++          <thead class="sticky top-0 z-20 border-b border-n-weak bg-n-surface-1">
++            <tr class="h-10 text-left text-xs font-medium text-n-slate-10">
++              <th class="w-11 px-3">
++                <div class="flex items-center" @click.stop>
++                  <Checkbox
++                    v-model="allVisibleDealsModel"
++                    :indeterminate="someVisibleDealsSelected"
++                    :disabled="!deals.length"
++                  />
++                </div>
++              </th>
++              <th
++                v-for="column in visibleListColumns"
++                :key="column.key"
++                class="px-3 font-medium"
++                :class="column.headerClass"
++              >
++                <span class="block truncate">{{ column.label }}</span>
++              </th>
++            </tr>
++          </thead>
++
++          <tbody class="divide-y divide-n-weak text-n-slate-11">
++            <tr
++              v-for="deal in deals"
++              :key="deal.id"
++              role="button"
++              tabindex="0"
++              class="h-12 cursor-pointer outline-none transition hover:bg-n-alpha-1 focus-visible:bg-n-alpha-1 focus-visible:outline focus-visible:outline-1 focus-visible:outline-n-brand"
++              :class="{ 'bg-n-slate-2 hover:bg-n-slate-2': isDealSelected(deal.id) }"
++              @click="openDealWorkspace(deal)"
++              @keyup.enter="openDealWorkspace(deal)"
++            >
++              <td class="w-11 px-3">
++                <div class="flex items-center" @click.stop>
++                  <Checkbox
++                    :model-value="isDealSelected(deal.id)"
++                    @change="toggleDealSelection(deal.id, $event.target.checked)"
++                  />
++                </div>
++              </td>
++
++              <td
++                v-for="column in visibleListColumns"
++                :key="column.key"
++                class="px-3 py-2 align-middle"
++                :class="column.cellClass"
++              >
++                <button
++                  v-if="column.key === 'title'"
++                  type="button"
++                  class="block min-w-0 truncate text-left font-medium text-n-slate-12 hover:text-n-brand hover:underline"
++                  @click.stop="openDealWorkspace(deal)"
++                >
++                  {{ dealTitle(deal) }}
++                </button>
++
++                <span
++                  v-else-if="column.key === 'stage'"
++                  class="inline-flex max-w-full items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium"
++                  :style="stageBadgeStyle(stageForDeal(deal))"
++                >
++                  <span
++                    class="h-2 w-2 shrink-0 rounded-full"
++                    :style="stageDotStyle(stageForDeal(deal))"
++                  />
++                  <span class="truncate">{{ stageForDeal(deal)?.name || EMPTY_TABLE_VALUE }}</span>
++                </span>
++
++                <span v-else-if="column.key === 'created_at'" class="block truncate">
++                  {{ formatDate(deal.created_at) || EMPTY_TABLE_VALUE }}
++                </span>
++
++                <span v-else-if="column.key === 'source_request'" class="block truncate">
++                  {{ tableValue(sourceRequestValue(deal)) }}
++                </span>
++
++                <span v-else-if="column.key === 'selected_car'" class="block truncate">
++                  {{ tableValue(selectedCarValue(deal)) }}
++                </span>
++
++                <span v-else-if="column.key === 'budget'" class="block truncate font-medium">
++                  {{ formatBudget(deal.amount) }}
++                </span>
++
++                <span v-else-if="column.key === 'operator'" class="flex min-w-0 items-center gap-1.5">
++                  <i class="i-lucide-user h-3.5 w-3.5 shrink-0 text-n-slate-9" />
++                  <span class="truncate">{{ tableValue(assignedName(deal)) }}</span>
++                </span>
++              </td>
++            </tr>
++
++            <tr v-if="!deals.length && !isLoading">
++              <td
++                :colspan="visibleListColumns.length + 1"
++                class="px-6 py-16 text-center text-sm text-n-slate-10"
++              >
++                No deals found.
++              </td>
++            </tr>
++          </tbody>
++        </table>
++      </div>
++
++      <footer
++        v-if="hasMoreDeals"
++        class="flex items-center justify-center border-t border-n-weak px-6 py-3"
++      >
++        <Button
++          label="Load more"
++          icon="i-lucide-plus"
++          size="sm"
++          slate
++          faded
++          type="button"
++          :is-loading="isLoadingMore"
++          @click="loadMoreDeals"
++        />
++      </footer>
 +    </div>
 +
 +    <div v-else class="min-h-0 flex-1 overflow-x-auto px-6 py-5">
@@ -1960,8 +2507,8 @@ index 0000000..82c5d24
 +              tabindex="0"
 +              class="cursor-grab rounded-lg border border-n-weak bg-n-surface-1 p-3 shadow-sm outline-none transition hover:border-n-slate-7 hover:shadow-md focus-visible:border-n-brand active:cursor-grabbing"
 +              :class="{ 'opacity-50': draggingDealId === deal.id }"
-+              @click="openDeal(deal)"
-+              @keyup.enter="openDeal(deal)"
++              @click="openDealWorkspace(deal)"
++              @keyup.enter="openDealWorkspace(deal)"
 +              @dragstart="onDragStart(deal)"
 +              @dragend="onDragEnd"
 +            >

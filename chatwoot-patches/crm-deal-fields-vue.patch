@@ -88,7 +88,7 @@ index ad84ff0..c35a517 100644
 +});
 +
 +const customFields = computed(() => {
-+  return visibleFields.value.filter(field => isCustomField(field));
++  return visibleFields.value.filter(field => isCustomField(field) && !field.is_system);
 +});
 +
 +const activeRequiredKeys = computed(() => {
@@ -160,11 +160,11 @@ index ad84ff0..c35a517 100644
 +};
 +
 +const isSystemField = field => {
-+  return field.storage_type === 'system_column' || field.source === 'system';
++  return field.storage_type === 'system_column';
 +};
 +
 +const isCustomField = field => {
-+  return field.storage_type === 'custom_attribute' || field.source === 'custom';
++  return field.storage_type === 'custom_attribute';
 +};
 +
 +const inputTypeFor = field => {
@@ -306,7 +306,7 @@ index ad84ff0..c35a517 100644
 +};
 +
 +const deleteField = async field => {
-+  if (!field.id || isSystemField(field)) return;
++  if (!field.id || field.is_system || isSystemField(field)) return;
 +
 +  isSavingField.value = true;
 +  fieldConfigError.value = '';
@@ -385,7 +385,7 @@ index ad84ff0..c35a517 100644
              <label class="grid gap-1 text-xs font-medium text-n-slate-11">
                Stage
                <select v-model="dealForm.stage_id" :class="fieldClass">
-@@ -564,36 +787,67 @@ watch(() => route.params.dealId, loadWorkspace, { immediate: true });
+@@ -564,36 +787,73 @@ watch(() => route.params.dealId, loadWorkspace, { immediate: true });
                </select>
              </label>
  
@@ -424,7 +424,13 @@ index ad84ff0..c35a517 100644
 +                    <span v-if="isFieldRequired(field)" class="text-n-ruby-10">*</span>
 +                  </span>
 +                  <span
-+                    v-if="isCustomField(field)"
++                    v-if="field.is_system"
++                    class="rounded-md bg-n-alpha-2 px-1.5 py-0.5 text-[11px] font-medium text-n-slate-10"
++                  >
++                    Default
++                  </span>
++                  <span
++                    v-else-if="isCustomField(field)"
 +                    class="rounded-md bg-n-alpha-2 px-1.5 py-0.5 text-[11px] font-medium text-n-slate-10"
 +                  >
 +                    Custom
