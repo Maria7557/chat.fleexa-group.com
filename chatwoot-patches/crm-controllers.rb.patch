@@ -128,7 +128,7 @@ new file mode 100644
 index 0000000..ad35c89
 --- /dev/null
 +++ b/app/controllers/api/v1/accounts/crm/deals_controller.rb
-@@ -0,0 +1,200 @@
+@@ -0,0 +1,201 @@
 +class Api::V1::Accounts::Crm::DealsController < Api::V1::Accounts::BaseController
 +  before_action :check_authorization
 +  before_action :set_deal, only: [:show, :update, :destroy]
@@ -282,6 +282,7 @@ index 0000000..ad35c89
 +      id: conversation.id,
 +      display_id: conversation.display_id,
 +      inbox_id: conversation.inbox_id,
++      created_at: conversation.created_at&.iso8601,
 +      status: conversation.status
 +    }
 +  end

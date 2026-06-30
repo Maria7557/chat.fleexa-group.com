@@ -299,7 +299,7 @@ new file mode 100644
 index 0000000..82c5d24
 --- /dev/null
 +++ b/app/javascript/dashboard/routes/dashboard/crm/Pipeline.vue
-@@ -0,0 +1,2864 @@
+@@ -0,0 +1,2876 @@
 +<script setup>
 +import { computed, onBeforeUnmount, ref, watch } from 'vue';
 +import { useRoute, useRouter } from 'vue-router';
@@ -354,6 +354,7 @@ index 0000000..82c5d24
 +const DEALS_PER_PAGE = 200;
 +const EMPTY_TABLE_VALUE = '—';
 +const DEFAULT_LIST_COLUMN_KEYS = [
++  'conversation_created_at',
 +  'created_at',
 +  'title',
 +  'stage',
@@ -543,8 +544,15 @@ index 0000000..82c5d24
 +
 +const listColumnDefinitions = computed(() => [
 +  {
++    key: 'conversation_created_at',
++    label: 'Dialog created',
++    width: '10.5rem',
++    headerClass: 'w-[10.5rem]',
++    cellClass: 'w-[10.5rem] text-n-slate-11',
++  },
++  {
 +    key: 'created_at',
-+    label: 'Date created',
++    label: 'Deal created',
 +    width: '10.5rem',
 +    headerClass: 'w-[10.5rem]',
 +    cellClass: 'w-[10.5rem] text-n-slate-11',
@@ -594,7 +602,7 @@ index 0000000..82c5d24
 +]);
 +
 +const listColumnStorageKey = computed(() => {
-+  return `fleexa.crm.pipeline.list_columns.${accountId.value}`;
++  return `fleexa.crm.pipeline.list_columns.v2.${accountId.value}`;
 +});
 +
 +const visibleListColumns = computed(() => {
@@ -2466,6 +2474,10 @@ index 0000000..82c5d24
 +                    :style="stageDotStyle(stageForDeal(deal))"
 +                  />
 +                  <span class="truncate">{{ stageForDeal(deal)?.name || EMPTY_TABLE_VALUE }}</span>
++                </span>
++
++                <span v-else-if="column.key === 'conversation_created_at'" class="block truncate">
++                  {{ formatDateTime(deal.conversation?.created_at) || EMPTY_TABLE_VALUE }}
 +                </span>
 +
 +                <span v-else-if="column.key === 'created_at'" class="block truncate">
