@@ -299,15 +299,17 @@ new file mode 100644
 index 0000000..82c5d24
 --- /dev/null
 +++ b/app/javascript/dashboard/routes/dashboard/crm/Pipeline.vue
-@@ -0,0 +1,2885 @@
+@@ -0,0 +1,2864 @@
 +<script setup>
 +import { computed, onBeforeUnmount, ref, watch } from 'vue';
 +import { useRoute, useRouter } from 'vue-router';
 +
 +import ContactAPI from 'dashboard/api/contacts';
 +import CrmPipelineAPI from 'dashboard/api/crmPipeline';
++import Avatar from 'dashboard/components-next/avatar/Avatar.vue';
 +import Button from 'dashboard/components-next/button/Button.vue';
 +import Checkbox from 'dashboard/components-next/checkbox/Checkbox.vue';
++import InboxName from 'dashboard/components-next/Conversation/InboxName.vue';
 +import Spinner from 'dashboard/components-next/spinner/Spinner.vue';
 +import { useMapGetter, useStore } from 'dashboard/composables/store';
 +import { useAccount } from 'dashboard/composables/useAccount';
@@ -1772,16 +1774,6 @@ index 0000000..82c5d24
 +const dealTitle = deal => deal.title || contactName(deal) || `Deal #${deal.id}`;
 +const phoneNumber = deal => deal.contact?.phone_number || deal.client_phone;
 +const contactAvatar = deal => deal.contact?.thumbnail || deal.contact?.avatar_url || '';
-+const dealContactInitials = deal => {
-+  const name = contactName(deal) || dealTitle(deal);
-+  const parts = String(name || '')
-+    .trim()
-+    .split(/\s+/)
-+    .filter(Boolean);
-+
-+  if (!parts.length) return '?';
-+  return parts.slice(0, 2).map(part => part[0]).join('').toUpperCase();
-+};
 +const sourceRequestValue = deal => {
 +  return deal.custom_attributes?.source_request ||
 +    deal.custom_attributes?.source_requect ||
@@ -1859,21 +1851,6 @@ index 0000000..82c5d24
 +
 +const inboxFallbackLabel = deal => {
 +  return inboxName(deal) || (deal.conversation?.inbox_id ? `Inbox #${deal.conversation.inbox_id}` : '');
-+};
-+
-+const inboxIconClass = deal => {
-+  const inbox = inboxForDeal(deal);
-+  const channel = String(
-+    inbox?.channel_type ||
-+      inbox?.channelType ||
-+      deal.conversation?.channel_type ||
-+      deal.conversation?.channelType ||
-+      ''
-+  ).toLowerCase();
-+
-+  if (channel.includes('telegram')) return 'i-lucide-send';
-+  if (channel.includes('whatsapp')) return 'i-lucide-braces';
-+  return 'i-lucide-inbox';
 +};
 +
 +const openDeal = deal => {
@@ -2592,15 +2569,13 @@ index 0000000..82c5d24
 +            >
 +              <div class="flex items-start justify-between gap-3">
 +                <div class="flex min-w-0 items-start gap-2.5">
-+                  <div class="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-n-brand/10 text-xs font-medium text-n-brand">
-+                    <img
-+                      v-if="contactAvatar(deal)"
-+                      :src="contactAvatar(deal)"
-+                      :alt="contactName(deal) || dealTitle(deal)"
-+                      class="h-full w-full object-cover"
-+                    />
-+                    <span v-else>{{ dealContactInitials(deal) }}</span>
-+                  </div>
++                  <Avatar
++                    :name="contactName(deal) || dealTitle(deal)"
++                    :src="contactAvatar(deal)"
++                    :size="32"
++                    :inbox="inboxForDeal(deal)"
++                    rounded-full
++                  />
 +                  <div class="min-w-0">
 +                    <h3 class="m-0 truncate text-sm font-medium text-n-slate-12">
 +                      {{ tableValue(contactName(deal) || dealTitle(deal)) }}
@@ -2623,11 +2598,15 @@ index 0000000..82c5d24
 +              </div>
 +
 +              <div class="mt-3 grid gap-2 text-xs text-n-slate-11">
++                <InboxName
++                  v-if="inboxForDeal(deal)"
++                  :inbox="inboxForDeal(deal)"
++                />
 +                <div
-+                  v-if="inboxFallbackLabel(deal)"
++                  v-else-if="inboxFallbackLabel(deal)"
 +                  class="flex min-w-0 items-center gap-1.5"
 +                >
-+                  <i :class="[inboxIconClass(deal), 'h-3.5 w-3.5 shrink-0']" />
++                  <i class="i-lucide-inbox h-3.5 w-3.5 shrink-0" />
 +                  <span class="truncate">{{ inboxFallbackLabel(deal) }}</span>
 +                </div>
 +                <div
