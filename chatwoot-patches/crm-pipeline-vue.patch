@@ -299,7 +299,7 @@ new file mode 100644
 index 0000000..82c5d24
 --- /dev/null
 +++ b/app/javascript/dashboard/routes/dashboard/crm/Pipeline.vue
-@@ -0,0 +1,2789 @@
+@@ -0,0 +1,2885 @@
 +<script setup>
 +import { computed, onBeforeUnmount, ref, watch } from 'vue';
 +import { useRoute, useRouter } from 'vue-router';
@@ -309,13 +309,15 @@ index 0000000..82c5d24
 +import Button from 'dashboard/components-next/button/Button.vue';
 +import Checkbox from 'dashboard/components-next/checkbox/Checkbox.vue';
 +import Spinner from 'dashboard/components-next/spinner/Spinner.vue';
-+import { useMapGetter } from 'dashboard/composables/store';
++import { useMapGetter, useStore } from 'dashboard/composables/store';
 +import { useAccount } from 'dashboard/composables/useAccount';
 +
 +const route = useRoute();
 +const router = useRouter();
++const store = useStore();
 +const { accountId } = useAccount();
 +const currentUser = useMapGetter('getCurrentUser');
++const inboxes = useMapGetter('inboxes/getInboxes');
 +
 +const buildContactForm = () => ({
 +  phone_number: '',
@@ -429,6 +431,15 @@ index 0000000..82c5d24
 +  year: 'numeric',
 +});
 +
++const dateTimeFormatter = new Intl.DateTimeFormat('en-GB', {
++  day: '2-digit',
++  month: 'short',
++  year: 'numeric',
++  hour: '2-digit',
++  minute: '2-digit',
++  hour12: false,
++});
++
 +const cloneFilters = filters => ({
 +  ...buildEmptyFilters(),
 +  ...(filters || {}),
@@ -532,44 +543,51 @@ index 0000000..82c5d24
 +  {
 +    key: 'created_at',
 +    label: 'Date created',
-+    headerClass: 'w-[9rem]',
-+    cellClass: 'w-[9rem] text-n-slate-11',
++    width: '10.5rem',
++    headerClass: 'w-[10.5rem]',
++    cellClass: 'w-[10.5rem] text-n-slate-11',
 +  },
 +  {
 +    key: 'title',
-+    label: 'Deal name',
-+    headerClass: 'min-w-[14rem]',
-+    cellClass: 'min-w-[14rem]',
++    label: 'Client',
++    width: '17rem',
++    headerClass: 'w-[17rem]',
++    cellClass: 'w-[17rem]',
 +  },
 +  {
 +    key: 'stage',
 +    label: 'Stage',
-+    headerClass: 'w-[11rem]',
-+    cellClass: 'w-[11rem]',
++    width: '12rem',
++    headerClass: 'w-[12rem]',
++    cellClass: 'w-[12rem]',
 +  },
 +  {
 +    key: 'source_request',
 +    label: sourceRequestColumnLabel.value,
-+    headerClass: 'w-[11rem]',
-+    cellClass: 'w-[11rem] text-n-slate-11',
-+  },
-+  {
-+    key: 'selected_car',
-+    label: 'Selected Car',
++    width: '13rem',
 +    headerClass: 'w-[13rem]',
 +    cellClass: 'w-[13rem] text-n-slate-11',
 +  },
 +  {
++    key: 'selected_car',
++    label: 'Selected Car',
++    width: '14rem',
++    headerClass: 'w-[14rem]',
++    cellClass: 'w-[14rem] text-n-slate-11',
++  },
++  {
 +    key: 'budget',
 +    label: 'Budget',
-+    headerClass: 'w-[9rem]',
-+    cellClass: 'w-[9rem] text-n-slate-12',
++    width: '10rem',
++    headerClass: 'w-[10rem]',
++    cellClass: 'w-[10rem] text-n-slate-12',
 +  },
 +  {
 +    key: 'operator',
 +    label: 'Operator',
-+    headerClass: 'w-[12rem]',
-+    cellClass: 'w-[12rem] text-n-slate-11',
++    width: '10rem',
++    headerClass: 'w-[10rem]',
++    cellClass: 'w-[10rem] text-n-slate-11',
 +  },
 +]);
 +
@@ -1720,6 +1738,12 @@ index 0000000..82c5d24
 +  return Number.isNaN(date.getTime()) ? value : dateFormatter.format(date);
 +};
 +
++const formatDateTime = value => {
++  if (!value) return '';
++  const date = new Date(value);
++  return Number.isNaN(date.getTime()) ? value : dateTimeFormatter.format(date);
++};
++
 +const tableValue = value => {
 +  return hasDisplayValue(value) ? value : EMPTY_TABLE_VALUE;
 +};
@@ -1744,9 +1768,20 @@ index 0000000..82c5d24
 +    : 'bg-n-amber-3 text-n-amber-11';
 +};
 +
++const contactName = deal => deal.contact?.name || deal.client_name || '';
 +const dealTitle = deal => deal.title || contactName(deal) || `Deal #${deal.id}`;
-+const contactName = deal => deal.contact?.name || deal.title;
 +const phoneNumber = deal => deal.contact?.phone_number || deal.client_phone;
++const contactAvatar = deal => deal.contact?.thumbnail || deal.contact?.avatar_url || '';
++const dealContactInitials = deal => {
++  const name = contactName(deal) || dealTitle(deal);
++  const parts = String(name || '')
++    .trim()
++    .split(/\s+/)
++    .filter(Boolean);
++
++  if (!parts.length) return '?';
++  return parts.slice(0, 2).map(part => part[0]).join('').toUpperCase();
++};
 +const sourceRequestValue = deal => {
 +  return deal.custom_attributes?.source_request ||
 +    deal.custom_attributes?.source_requect ||
@@ -1806,6 +1841,39 @@ index 0000000..82c5d24
 +const conversationLabel = deal => {
 +  const displayId = conversationDisplayId(deal);
 +  return displayId ? `#${displayId}` : 'Linked';
++};
++
++const inboxForDeal = deal => {
++  const inboxId = deal.conversation?.inbox_id;
++  if (!inboxId) return null;
++
++  return inboxes.value.find(inbox => String(inbox.id) === String(inboxId)) ||
++    deal.conversation?.inbox ||
++    null;
++};
++
++const inboxName = deal => {
++  const inbox = inboxForDeal(deal);
++  return inbox?.name || deal.conversation?.inbox_name || '';
++};
++
++const inboxFallbackLabel = deal => {
++  return inboxName(deal) || (deal.conversation?.inbox_id ? `Inbox #${deal.conversation.inbox_id}` : '');
++};
++
++const inboxIconClass = deal => {
++  const inbox = inboxForDeal(deal);
++  const channel = String(
++    inbox?.channel_type ||
++      inbox?.channelType ||
++      deal.conversation?.channel_type ||
++      deal.conversation?.channelType ||
++      ''
++  ).toLowerCase();
++
++  if (channel.includes('telegram')) return 'i-lucide-send';
++  if (channel.includes('whatsapp')) return 'i-lucide-braces';
++  return 'i-lucide-inbox';
 +};
 +
 +const openDeal = deal => {
@@ -1870,6 +1938,7 @@ index 0000000..82c5d24
 +  accountId,
 +  () => {
 +    if (!accountId.value) return;
++    store.dispatch('inboxes/get').catch(() => {});
 +    loadVisibleListColumns();
 +    initializePipeline();
 +  },
@@ -2344,6 +2413,14 @@ index 0000000..82c5d24
 +
 +      <div class="min-h-0 flex-1 overflow-auto">
 +        <table class="min-w-full table-fixed border-collapse text-sm">
++          <colgroup>
++            <col class="w-11" />
++            <col
++              v-for="column in visibleListColumns"
++              :key="column.key"
++              :style="{ width: column.width }"
++            />
++          </colgroup>
 +          <thead class="sticky top-0 z-20 border-b border-n-weak bg-n-surface-1">
 +            <tr class="h-10 text-left text-xs font-medium text-n-slate-10">
 +              <th class="w-11 px-3">
@@ -2389,16 +2466,17 @@ index 0000000..82c5d24
 +              <td
 +                v-for="column in visibleListColumns"
 +                :key="column.key"
-+                class="px-3 py-2 align-middle"
++                class="overflow-hidden px-3 py-2 align-middle"
 +                :class="column.cellClass"
 +              >
 +                <button
 +                  v-if="column.key === 'title'"
 +                  type="button"
-+                  class="block min-w-0 truncate text-left font-medium text-n-slate-12 hover:text-n-brand hover:underline"
++                  class="block w-full min-w-0 truncate text-left font-medium text-n-slate-12 hover:text-n-brand hover:underline"
++                  :title="contactName(deal) || dealTitle(deal)"
 +                  @click.stop="openDealWorkspace(deal)"
 +                >
-+                  {{ dealTitle(deal) }}
++                  {{ tableValue(contactName(deal) || dealTitle(deal)) }}
 +                </button>
 +
 +                <span
@@ -2414,7 +2492,7 @@ index 0000000..82c5d24
 +                </span>
 +
 +                <span v-else-if="column.key === 'created_at'" class="block truncate">
-+                  {{ formatDate(deal.created_at) || EMPTY_TABLE_VALUE }}
++                  {{ formatDateTime(deal.created_at) || EMPTY_TABLE_VALUE }}
 +                </span>
 +
 +                <span v-else-if="column.key === 'source_request'" class="block truncate">
@@ -2513,16 +2591,27 @@ index 0000000..82c5d24
 +              @dragend="onDragEnd"
 +            >
 +              <div class="flex items-start justify-between gap-3">
-+                <div class="min-w-0">
-+                  <h3 class="m-0 truncate text-sm font-medium text-n-slate-12">
-+                    {{ contactName(deal) }}
-+                  </h3>
-+                  <div
-+                    v-if="phoneNumber(deal)"
-+                    class="mt-1 flex min-w-0 items-center gap-1.5 text-xs text-n-slate-11"
-+                  >
-+                    <i class="i-lucide-phone h-3.5 w-3.5 shrink-0" />
-+                    <span class="truncate">{{ phoneNumber(deal) }}</span>
++                <div class="flex min-w-0 items-start gap-2.5">
++                  <div class="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-n-brand/10 text-xs font-medium text-n-brand">
++                    <img
++                      v-if="contactAvatar(deal)"
++                      :src="contactAvatar(deal)"
++                      :alt="contactName(deal) || dealTitle(deal)"
++                      class="h-full w-full object-cover"
++                    />
++                    <span v-else>{{ dealContactInitials(deal) }}</span>
++                  </div>
++                  <div class="min-w-0">
++                    <h3 class="m-0 truncate text-sm font-medium text-n-slate-12">
++                      {{ tableValue(contactName(deal) || dealTitle(deal)) }}
++                    </h3>
++                    <div
++                      v-if="phoneNumber(deal)"
++                      class="mt-1 flex min-w-0 items-center gap-1.5 text-xs text-n-slate-11"
++                    >
++                      <i class="i-lucide-phone h-3.5 w-3.5 shrink-0" />
++                      <span class="truncate">{{ phoneNumber(deal) }}</span>
++                    </div>
 +                  </div>
 +                </div>
 +                <div
@@ -2534,6 +2623,13 @@ index 0000000..82c5d24
 +              </div>
 +
 +              <div class="mt-3 grid gap-2 text-xs text-n-slate-11">
++                <div
++                  v-if="inboxFallbackLabel(deal)"
++                  class="flex min-w-0 items-center gap-1.5"
++                >
++                  <i :class="[inboxIconClass(deal), 'h-3.5 w-3.5 shrink-0']" />
++                  <span class="truncate">{{ inboxFallbackLabel(deal) }}</span>
++                </div>
 +                <div
 +                  v-if="deal.car_model"
 +                  class="flex min-w-0 items-center gap-1.5"
