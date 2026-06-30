@@ -1,0 +1,203 @@
+diff --git a/app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue b/app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue
+index 24133f2..f95ec21 100644
+--- a/app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue
++++ b/app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue
+@@ -9,6 +9,7 @@ import SidepanelSwitch from 'dashboard/components-next/Conversation/SidepanelSwi
+ import ConversationBox from 'dashboard/components/widgets/conversation/ConversationBox.vue';
+ import { useAccount } from 'dashboard/composables/useAccount';
+ import { useAdmin } from 'dashboard/composables/useAdmin';
++import { useAgentsList } from 'dashboard/composables/useAgentsList';
+ import { useMapGetter, useStore } from 'dashboard/composables/store';
+ import { BUS_EVENTS } from 'shared/constants/busEvents';
+ import { emitter } from 'shared/helpers/mitt';
+@@ -20,6 +21,9 @@ const { isAdmin } = useAdmin();
+ const store = useStore();
+ const currentChat = useMapGetter('getSelectedChat');
+ const conversationById = useMapGetter('getConversationById');
++const currentUser = useMapGetter('getCurrentUser');
++const allAgents = useMapGetter('agents/getAgents');
++const { agentsList } = useAgentsList();
+ 
+ const deal = ref(null);
+ const stages = ref([]);
+@@ -156,6 +160,52 @@ const contactCompany = computed(() => {
+   return contact.value?.additional_attributes?.company_name || contact.value?.company_name || 'Not Available';
+ });
+ 
++const assignedUser = computed(() => deal.value?.assigned_user || null);
++const assignedUserId = computed(() => String(dealForm.value.assigned_to || deal.value?.assigned_to || ''));
++
++const agentLabel = agent => {
++  return agent?.name || agent?.available_name || agent?.email || (agent?.id ? `#${agent.id}` : 'Unassigned');
++};
++
++const addAgentOption = (options, agent) => {
++  if (!agent?.id) return;
++  options.set(String(agent.id), agent);
++};
++
++const operatorOptions = computed(() => {
++  const options = new Map();
++
++  addAgentOption(options, assignedUser.value);
++  addAgentOption(options, currentUser.value);
++  agentsList.value.forEach(agent => addAgentOption(options, agent));
++  allAgents.value.forEach(agent => addAgentOption(options, agent));
++
++  return [
++    { value: '', label: 'Unassigned', agent: null },
++    ...[...options.entries()].map(([value, agent]) => ({
++      value,
++      label: agentLabel(agent),
++      agent,
++    })),
++  ];
++});
++
++const selectedOperator = computed(() => {
++  return operatorOptions.value.find(option => option.value === assignedUserId.value)?.agent || assignedUser.value;
++});
++
++const operatorLabel = computed(() => {
++  return assignedUserId.value ? agentLabel(selectedOperator.value) : 'Unassigned';
++});
++
++const operatorInitials = computed(() => {
++  if (!selectedOperator.value) return '--';
++
++  const label = operatorLabel.value.trim();
++  const parts = label.split(/\s+/).filter(Boolean);
++  return (parts.length > 1 ? `${parts[0][0]}${parts[1][0]}` : label.slice(0, 2)).toUpperCase();
++});
++
+ const hasDisplayValue = value => {
+   if (Array.isArray(value)) return value.length > 0;
+   return value !== null && value !== undefined && value !== '';
+@@ -364,6 +414,7 @@ const fieldTypes = [
+ const buildDealForm = source => ({
+   title: source?.title || '',
+   stage_id: source?.stage_id || '',
++  assigned_to: source?.assigned_to ? String(source.assigned_to) : '',
+   client_phone: source?.client_phone || '',
+   car_model: source?.car_model || '',
+   booking_id: source?.booking_id || '',
+@@ -498,6 +549,7 @@ const loadConversation = async () => {
+     }
+     if (selectedConversation) {
+       await store.dispatch('setActiveChat', { data: selectedConversation });
++      await fetchAssignableAgents(selectedConversation.inbox_id);
+       emitter.emit(BUS_EVENTS.SCROLL_TO_MESSAGE);
+     } else {
+       conversationPaneError.value = 'Conversation could not be loaded';
+@@ -558,9 +610,48 @@ const openInboxConversation = () => {
+   });
+ };
+ 
++const fetchAssignableAgents = async inboxId => {
++  if (!inboxId) return;
++
++  try {
++    await store.dispatch('inboxAssignableAgents/fetch', [inboxId]);
++  } catch (error) {
++    // The full agents list remains available as a fallback.
++  }
++};
++
++const agentForChatStore = agent => {
++  if (!agent) return null;
++
++  const { avatar_url: avatarUrl, ...rest } = agent;
++  return {
++    ...rest,
++    thumbnail: agent.thumbnail || avatarUrl,
++  };
++};
++
++const syncLinkedConversationAssignee = async assignedTo => {
++  if (!conversationDisplayId.value) return;
++
++  const conversationId = Number(conversationDisplayId.value);
++  const agentId = assignedTo ? Number(assignedTo) : null;
++  const agent = operatorOptions.value.find(option => option.value === String(assignedTo || ''))?.agent || null;
++
++  store.dispatch('setCurrentChatAssignee', {
++    conversationId,
++    assignee: agentForChatStore(agent),
++  });
++
++  await store.dispatch('assignAgent', {
++    conversationId,
++    agentId,
++  });
++};
++
+ const dealPayload = () => ({
+   title: dealForm.value.title,
+   stage_id: dealForm.value.stage_id,
++  assigned_to: dealForm.value.assigned_to || null,
+   client_phone: dealForm.value.client_phone,
+   car_model: dealForm.value.car_model,
+   booking_id: dealForm.value.booking_id,
+@@ -574,6 +665,7 @@ const dealPayload = () => ({
+ const saveDeal = async () => {
+   if (!deal.value?.id || !dealForm.value.title.trim()) return;
+ 
++  const previousAssignedTo = String(deal.value?.assigned_to || '');
+   isSaving.value = true;
+   errorMessage.value = '';
+   saveMessage.value = '';
+@@ -586,6 +678,9 @@ const saveDeal = async () => {
+ 
+     deal.value = response.data;
+     dealForm.value = buildDealForm(deal.value);
++    if (String(deal.value.assigned_to || '') !== previousAssignedTo) {
++      await syncLinkedConversationAssignee(deal.value.assigned_to);
++    }
+     saveMessage.value = 'Saved';
+     isDealEditing.value = false;
+   } catch (error) {
+@@ -934,6 +1029,44 @@ onUnmounted(() => {
+                   <span v-else class="text-n-slate-10">...</span>
+                 </div>
+ 
++                <div
++                  v-if="group.showStage"
++                  class="flex min-h-[2.75rem] items-center justify-between gap-3 py-2 text-sm"
++                >
++                  <span class="text-n-slate-11">Operator</span>
++                  <select
++                    v-if="isDealEditing"
++                    v-model="dealForm.assigned_to"
++                    :class="compactFieldClass"
++                  >
++                    <option
++                      v-for="option in operatorOptions"
++                      :key="option.value || 'unassigned'"
++                      :value="option.value"
++                    >
++                      {{ option.label }}
++                    </option>
++                  </select>
++                  <div v-else class="flex min-w-0 items-center gap-2">
++                    <span
++                      v-if="selectedOperator"
++                      class="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-n-brand/10 text-[11px] font-semibold text-n-brand"
++                    >
++                      {{ operatorInitials }}
++                    </span>
++                    <i
++                      v-else
++                      class="i-lucide-user-round-x h-4 w-4 shrink-0 text-n-slate-10"
++                    />
++                    <span
++                      class="truncate text-right text-sm"
++                      :class="selectedOperator ? 'text-n-slate-12' : 'text-n-slate-10'"
++                    >
++                      {{ operatorLabel }}
++                    </span>
++                  </div>
++                </div>
++
+                 <div
+                   v-for="field in group.fields"
+                   :key="field.key"
