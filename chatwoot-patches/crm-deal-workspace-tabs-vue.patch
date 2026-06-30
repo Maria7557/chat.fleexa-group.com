@@ -1,5 +1,5 @@
 diff --git a/app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue b/app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue
-index 867de6a..5e2b060 100644
+index d92c986..a8ebaf2 100644
 --- a/app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue
 +++ b/app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue
 @@ -8,6 +8,7 @@ import Spinner from 'dashboard/components-next/spinner/Spinner.vue';
@@ -514,7 +514,7 @@ index 867de6a..5e2b060 100644
                  >
                    <div class="flex items-start justify-between gap-3">
                      <div class="min-w-0 pt-1">
-@@ -809,67 +1008,149 @@ onUnmounted(() => {
+@@ -815,69 +1014,151 @@ onUnmounted(() => {
                      </div>
                    </div>
                  </div>
@@ -685,7 +685,7 @@ index 867de6a..5e2b060 100644
 -            </div>
 -          </section>
  
--          <section class="rounded-xl border border-n-weak bg-n-background p-4">
+-          <section class="border-t border-n-weak pt-5">
 +              <div
 +                v-if="showTrackingFields"
 +                class="mt-2 divide-y divide-n-weak border-y border-n-weak text-sm"
@@ -708,9 +708,12 @@ index 867de6a..5e2b060 100644
 +        <div v-else-if="activeSidebarTab === 'settings' && isAdmin" class="grid gap-4 pt-4">
 +          <section class="border-b border-n-weak pb-4">
              <div class="flex items-center justify-between gap-3">
-               <h2 class="m-0 text-base font-semibold text-n-slate-12">
+-              <h2 class="m-0 text-sm font-semibold text-n-slate-12">
++              <h2 class="m-0 text-base font-semibold text-n-slate-12">
                  Field setup
-@@ -885,7 +1166,7 @@ onUnmounted(() => {
+               </h2>
+               <Button
+@@ -891,7 +1172,7 @@ onUnmounted(() => {
                />
              </div>
  

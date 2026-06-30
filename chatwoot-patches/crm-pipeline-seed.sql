@@ -119,7 +119,7 @@ VALUES
     'custom_attribute',
     100,
     '["WEBSITE", "INST/FB", "DUBIZZLE", "FRIEND''S ADVICE", "REGULAR", "MAPS", "MAILING LIST", "CALL CENTER", "UNKNOWN"]'::jsonb,
-    false,
+    true,
     true,
     NOW(),
     NOW()

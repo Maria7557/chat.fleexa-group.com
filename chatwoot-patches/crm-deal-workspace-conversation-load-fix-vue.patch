@@ -1,0 +1,20 @@
+diff --git a/app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue b/app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue
+index 0000000..0000000 100644
+--- a/app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue
++++ b/app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue
+@@ -492,12 +492,10 @@ const loadConversation = async () => {
+   try {
+     const displayId = Number(conversationDisplayId.value);
+-    const existingConversation = conversationById.value(displayId);
+-
+-    if (!existingConversation) {
++    let selectedConversation = conversationById.value(displayId);
++    if (!selectedConversation) {
+       await store.dispatch('getConversation', displayId);
++      selectedConversation = conversationById.value(displayId);
+     }
+-
+-    const selectedConversation = conversationById.value(displayId);
+     if (selectedConversation) {
+       await store.dispatch('setActiveChat', { data: selectedConversation });
+       emitter.emit(BUS_EVENTS.SCROLL_TO_MESSAGE);

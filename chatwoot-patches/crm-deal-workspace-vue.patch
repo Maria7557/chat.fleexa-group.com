@@ -736,22 +736,6 @@ index 0000000..ad84ff0
 +    </div>
 +  </section>
 +</template>
-diff --git a/app/javascript/dashboard/routes/dashboard/crm/Pipeline.vue b/app/javascript/dashboard/routes/dashboard/crm/Pipeline.vue
-index 1b9952a..857f34d 100644
---- a/app/javascript/dashboard/routes/dashboard/crm/Pipeline.vue
-+++ b/app/javascript/dashboard/routes/dashboard/crm/Pipeline.vue
-@@ -241,7 +241,10 @@ const conversationLabel = deal => {
- };
- 
- const openDeal = deal => {
--  selectedDeal.value = deal;
-+  router.push({
-+    name: 'crm_deal_workspace',
-+    params: { accountId: accountId.value, dealId: deal.id },
-+  });
- };
- 
- const closeDealDrawer = () => {
 diff --git a/app/javascript/dashboard/routes/dashboard/crm/routes.js b/app/javascript/dashboard/routes/dashboard/crm/routes.js
 index 0a27b7d..abba8f0 100644
 --- a/app/javascript/dashboard/routes/dashboard/crm/routes.js
