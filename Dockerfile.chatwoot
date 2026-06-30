@@ -26,6 +26,7 @@ RUN cd /app && \
     (node node_modules/esbuild/install.js 2>/dev/null || true)
 
 RUN cd /app && \
+    NODE_OPTIONS=--max-old-space-size=2560 \
     SECRET_KEY_BASE=build_dummy_key_not_used_in_production \
     bundle exec rake vite:build_all
 
