@@ -1,6 +1,28 @@
 -- CRM Pipeline default stage seed data.
 -- Replace ACCOUNT_ID before running. Safe to run multiple times.
 
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM public.crm_pipeline_stages
+    WHERE account_id = ACCOUNT_ID
+      AND slug = 'in_progress'
+  ) THEN
+    UPDATE public.crm_pipeline_stages
+      SET position = position + 100
+      WHERE account_id = ACCOUNT_ID
+        AND position >= 2
+        AND position < 999;
+
+    UPDATE public.crm_pipeline_stages
+      SET position = position - 99
+      WHERE account_id = ACCOUNT_ID
+        AND position >= 102
+        AND position < 1099;
+  END IF;
+END $$;
+
 INSERT INTO public.crm_pipeline_stages (
   account_id,
   slug,
@@ -30,10 +52,23 @@ VALUES
   ),
   (
     ACCOUNT_ID,
+    'in_progress',
+    'В работе',
+    '#8B5CF6',
+    2,
+    false,
+    false,
+    NULL,
+    NULL,
+    NOW(),
+    NOW()
+  ),
+  (
+    ACCOUNT_ID,
     'reserved',
     'Бронь',
     '#3B82F6',
-    2,
+    3,
     false,
     false,
     NULL,
@@ -46,7 +81,7 @@ VALUES
     'rental',
     'В аренде',
     '#14B8A6',
-    3,
+    4,
     false,
     false,
     NULL,
