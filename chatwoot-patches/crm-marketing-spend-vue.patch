@@ -1,8 +1,8 @@
 diff --git a/app/javascript/dashboard/api/crmPipeline.js b/app/javascript/dashboard/api/crmPipeline.js
-index 10576d2..0e1c94e 100644
+index 10576d2..07fad7d 100644
 --- a/app/javascript/dashboard/api/crmPipeline.js
 +++ b/app/javascript/dashboard/api/crmPipeline.js
-@@ -36,6 +36,10 @@ class CrmPipelineAPI {
+@@ -36,6 +36,26 @@ class CrmPipelineAPI {
      return this.marketingDashboard.get();
    }
  
@@ -10,22 +10,114 @@ index 10576d2..0e1c94e 100644
 +    return axios.get(`${this.marketingDashboard.url}/spend`, { params });
 +  }
 +
++  getMarketingMonthlySpend(params = {}) {
++    return axios.get(`${this.marketingDashboard.url}/monthly_spend`, { params });
++  }
++
++  getManualSpendEntries() {
++    return axios.get(`${this.marketingDashboard.url}/manual_spend_entries`);
++  }
++
++  createManualSpendEntry(data) {
++    return axios.post(`${this.marketingDashboard.url}/manual_spend_entries`, data);
++  }
++
++  updateManualSpendEntry(id, data) {
++    return axios.patch(`${this.marketingDashboard.url}/manual_spend_entries/${id}`, data);
++  }
++
    updateMarketingDashboardConfig(data) {
      return axios.patch(this.marketingDashboard.url, data);
    }
 diff --git a/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue b/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue
-index 91e5c64..bc9fb04 100644
+index 91e5c64..9c3a064 100644
 --- a/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue
 +++ b/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue
-@@ -66,6 +66,7 @@ const PAID_SOURCE_KEYS = ['google', 'meta', 'tiktok'];
+@@ -66,6 +66,9 @@ const PAID_SOURCE_KEYS = ['google', 'meta', 'tiktok'];
  const stages = ref([]);
  const deals = ref([]);
  const meta = ref({});
 +const spendAmount = ref(0);
++const monthlySpendRows = ref([]);
++const manualSpendEntries = ref([]);
  const selectedRange = ref('');
  const customDateFrom = ref('');
  const customDateTo = ref('');
-@@ -483,7 +484,7 @@ const metricRegistry = computed(() => ({
+@@ -76,6 +79,10 @@ const draftWidgetKeys = ref([...DEFAULT_VISIBLE_WIDGET_KEYS]);
+ const isDashboardCustomizerOpen = ref(false);
+ const isSavingDashboardConfig = ref(false);
+ const { isAdmin } = useAdmin();
++const isManualSpendDrawerOpen = ref(false);
++const isSavingManualSpend = ref(false);
++const manualSpendError = ref('');
++const editingManualSpendEntry = ref(null);
+ const visibleTrendSeries = ref({
+   all: true,
+   google: true,
+@@ -84,6 +91,19 @@ const visibleTrendSeries = ref({
+ });
+ const activeTrendIndex = ref(null);
+ 
++const defaultManualSpendForm = () => ({
++  source_label: '',
++  vendor_name: '',
++  campaign_name: '',
++  start_date: '',
++  end_date: '',
++  total_budget: '',
++  currency: 'AED',
++  notes: '',
++});
++
++const manualSpendForm = ref(defaultManualSpendForm());
++
+ const normalizeText = value => String(value || '').trim().toLowerCase();
+ 
+ const amountValue = value => {
+@@ -95,6 +115,42 @@ const formatAmount = value => AED_FORMATTER.format(amountValue(value));
+ 
+ const formatNumber = value => new Intl.NumberFormat('en-US').format(value || 0);
+ 
++const formatDate = value => {
++  if (!value) return '--';
++
++  const [year, month, day] = String(value).split('-');
++  return year && month && day ? `${day}/${month}/${year}` : String(value);
++};
++
++const formatDateRange = (from, to) => `${formatDate(from)} - ${formatDate(to)}`;
++
++const formatMonth = value => {
++  if (!value) return '--';
++
++  const [year, month] = String(value).split('-');
++  if (!year || !month) return String(value);
++
++  return new Intl.DateTimeFormat('en-US', {
++    month: 'short',
++    year: 'numeric',
++  }).format(new Date(Number(year), Number(month) - 1, 1));
++};
++
++const formatUpdatedAt = value => {
++  if (!value) return '--';
++
++  const date = new Date(value);
++  if (Number.isNaN(date.getTime())) return '--';
++
++  return new Intl.DateTimeFormat('en-GB', {
++    day: '2-digit',
++    month: 'short',
++    year: 'numeric',
++    hour: '2-digit',
++    minute: '2-digit',
++  }).format(date);
++};
++
+ const formatPercent = value => {
+   const parsed = Number(value || 0);
+   return `${parsed.toFixed(parsed >= 10 ? 0 : 1)}%`;
+@@ -483,7 +539,7 @@ const metricRegistry = computed(() => ({
    spend: {
      key: 'spend',
      label: 'Spend',
@@ -34,7 +126,152 @@ index 91e5c64..bc9fb04 100644
      detail: 'Ad spend in selected period',
    },
    new_leads: {
-@@ -811,6 +812,24 @@ const requestParams = page => {
+@@ -549,6 +605,23 @@ const kpiCards = computed(() => visibleWidgetKeys.value.map(key => metricRegistr
+ 
+ const allMetrics = computed(() => KPI_WIDGET_KEYS.map(key => metricRegistry.value[key]).filter(Boolean));
+ 
++const maxMonthlySpend = computed(() => {
++  return monthlySpendRows.value.reduce((max, row) => Math.max(max, amountValue(row.spend_aed)), 0);
++});
++
++const monthlySpendSummary = computed(() => {
++  return monthlySpendRows.value.map(row => {
++    const spend = amountValue(row.spend_aed);
++    const share = maxMonthlySpend.value ? (spend / maxMonthlySpend.value) * 100 : 0;
++
++    return {
++      ...row,
++      spend,
++      barWidth: Math.max(share, spend > 0 ? 4 : 0),
++    };
++  });
++});
++
+ const draftHiddenMetrics = computed(() => {
+   return allMetrics.value.filter(metric => !draftWidgetKeys.value.includes(metric.key));
+ });
+@@ -631,6 +704,120 @@ const saveDashboardConfig = async () => {
+   }
+ };
+ 
++const responseManualSpendEntry = response => {
++  return response?.data?.manual_spend_entry || response?.data || null;
++};
++
++const fetchManualSpendEntries = async () => {
++  if (!isAdmin.value) return;
++
++  try {
++    const response = await CrmPipelineAPI.getManualSpendEntries();
++    manualSpendEntries.value = Array.isArray(response?.data?.data) ? response.data.data : [];
++  } catch (error) {
++    errorMessage.value = error?.response?.data?.error || error?.message || 'Failed to load manual spend entries';
++  }
++};
++
++const openAddManualSpend = () => {
++  if (!isAdmin.value) return;
++
++  editingManualSpendEntry.value = null;
++  manualSpendForm.value = defaultManualSpendForm();
++  manualSpendError.value = '';
++  isManualSpendDrawerOpen.value = true;
++};
++
++const openEditManualSpend = entry => {
++  if (!isAdmin.value) return;
++
++  editingManualSpendEntry.value = entry;
++  manualSpendForm.value = {
++    source_label: entry.source_label || '',
++    vendor_name: entry.vendor_name || '',
++    campaign_name: entry.campaign_name || '',
++    start_date: entry.start_date || '',
++    end_date: entry.end_date || '',
++    total_budget: entry.total_budget || '',
++    currency: entry.currency || 'AED',
++    notes: entry.notes || '',
++  };
++  manualSpendError.value = '';
++  isManualSpendDrawerOpen.value = true;
++};
++
++const closeManualSpendDrawer = () => {
++  if (isSavingManualSpend.value) return;
++
++  isManualSpendDrawerOpen.value = false;
++  manualSpendError.value = '';
++};
++
++const manualSpendValidationMessage = computed(() => {
++  const form = manualSpendForm.value;
++  if (!String(form.source_label || '').trim()) return 'Source is required';
++  if (!form.start_date) return 'Start date is required';
++  if (!form.end_date) return 'End date is required';
++  if (form.start_date && form.end_date && form.end_date < form.start_date) {
++    return 'End date must be on or after start date';
++  }
++  if (amountValue(form.total_budget) <= 0) return 'Budget must be greater than 0';
++  return '';
++});
++
++const manualSpendPayload = () => ({
++  manual_spend_entry: {
++    source_label: String(manualSpendForm.value.source_label || '').trim(),
++    vendor_name: String(manualSpendForm.value.vendor_name || '').trim(),
++    campaign_name: String(manualSpendForm.value.campaign_name || '').trim(),
++    start_date: manualSpendForm.value.start_date,
++    end_date: manualSpendForm.value.end_date,
++    total_budget: amountValue(manualSpendForm.value.total_budget),
++    currency: 'AED',
++    notes: String(manualSpendForm.value.notes || '').trim(),
++  },
++});
++
++const saveManualSpend = async () => {
++  manualSpendError.value = manualSpendValidationMessage.value;
++  if (manualSpendError.value) return;
++
++  isSavingManualSpend.value = true;
++  errorMessage.value = '';
++
++  try {
++    const response = editingManualSpendEntry.value
++      ? await CrmPipelineAPI.updateManualSpendEntry(
++        editingManualSpendEntry.value.id,
++        manualSpendPayload()
++      )
++      : await CrmPipelineAPI.createManualSpendEntry(manualSpendPayload());
++
++    responseManualSpendEntry(response);
++    isManualSpendDrawerOpen.value = false;
++    await Promise.all([fetchAnalytics(), fetchManualSpendEntries()]);
++  } catch (error) {
++    manualSpendError.value = error?.response?.data?.error || error?.message || 'Failed to save manual spend';
++  } finally {
++    isSavingManualSpend.value = false;
++  }
++};
++
++const setManualSpendActive = async (entry, isActive) => {
++  if (!isAdmin.value) return;
++
++  errorMessage.value = '';
++
++  try {
++    await CrmPipelineAPI.updateManualSpendEntry(entry.id, {
++      manual_spend_entry: { is_active: isActive },
++    });
++    await Promise.all([fetchAnalytics(), fetchManualSpendEntries()]);
++  } catch (error) {
++    errorMessage.value = error?.response?.data?.error || error?.message || 'Failed to update manual spend status';
++  }
++};
++
+ const dealDateKeys = computed(() => {
+   return deals.value.map(deal => trendDateKeyFromValue(deal.created_at)).filter(Boolean).sort();
+ });
+@@ -811,6 +998,24 @@ const requestParams = page => {
    return params;
  };
  
@@ -59,23 +296,383 @@ index 91e5c64..bc9fb04 100644
  const normalizeDealsResponse = response => {
    const payload = response.data || {};
    if (Array.isArray(payload)) {
-@@ -834,9 +853,10 @@ const fetchAnalytics = async () => {
+@@ -834,9 +1039,11 @@ const fetchAnalytics = async () => {
    errorMessage.value = '';
  
    try {
 -    const [stageResponse, firstDealResponse] = await Promise.all([
-+    const [stageResponse, firstDealResponse, spendResponse] = await Promise.all([
++    const [stageResponse, firstDealResponse, spendResponse, monthlySpendResponse] = await Promise.all([
        CrmPipelineAPI.getStages(),
        CrmPipelineAPI.getDeals(requestParams(1)),
 +      CrmPipelineAPI.getMarketingSpend(spendRequestParams()),
++      CrmPipelineAPI.getMarketingMonthlySpend(spendRequestParams()),
      ]);
      const firstPage = normalizeDealsResponse(firstDealResponse);
      const nextDeals = [...firstPage.data];
-@@ -851,6 +871,7 @@ const fetchAnalytics = async () => {
+@@ -851,6 +1058,10 @@ const fetchAnalytics = async () => {
  
      stages.value = stageResponse.data || [];
      deals.value = nextDeals;
 +    spendAmount.value = amountValue(spendResponse?.data?.spend_aed);
++    monthlySpendRows.value = Array.isArray(monthlySpendResponse?.data?.data)
++      ? monthlySpendResponse.data.data
++      : [];
      meta.value = {
        ...nextMeta,
        total_count: nextMeta.total_count ?? nextDeals.length,
+@@ -876,6 +1087,10 @@ const updateCustomDates = ({ from = customDateFrom.value, to = customDateTo.valu
+   fetchAnalytics();
+ };
+ 
++const refreshMarketingAnalytics = async () => {
++  await Promise.all([fetchAnalytics(), fetchManualSpendEntries()]);
++};
++
+ const setActiveTrendPoint = event => {
+   if (!leadTrendRows.value.length) return;
+ 
+@@ -897,7 +1112,7 @@ const clearActiveTrendPoint = () => {
+ 
+ onMounted(() => {
+   fetchDashboardConfig();
+-  fetchAnalytics();
++  refreshMarketingAnalytics();
+ });
+ </script>
+ 
+@@ -920,7 +1135,15 @@ onMounted(() => {
+         </div>
+ 
+         <div class="flex flex-col items-end gap-2">
+-          <div class="inline-flex h-9 rounded-md border border-n-weak bg-n-surface-2 p-0.5">
++          <div class="flex flex-wrap items-center justify-end gap-2">
++            <Button
++              v-if="isAdmin"
++              icon="i-lucide-plus"
++              label="Add spend"
++              size="sm"
++              @click="openAddManualSpend"
++            />
++            <div class="inline-flex h-9 rounded-md border border-n-weak bg-n-surface-2 p-0.5">
+             <button
+               v-for="option in rangeOptions"
+               :key="option.value || 'all'"
+@@ -935,6 +1158,7 @@ onMounted(() => {
+             >
+               {{ option.label }}
+             </button>
++            </div>
+           </div>
+           <div class="flex items-center justify-end gap-2">
+             <label class="grid shrink-0 text-[11px] font-medium text-n-slate-10">
+@@ -988,7 +1212,7 @@ onMounted(() => {
+               faded
+               :is-loading="isLoading"
+               aria-label="Refresh marketing analytics"
+-              @click="fetchAnalytics"
++              @click="refreshMarketingAnalytics"
+             />
+           </div>
+         </div>
+@@ -1032,6 +1256,161 @@ onMounted(() => {
+           </button>
+         </div>
+ 
++        <section class="grid gap-4 rounded-lg border border-n-weak bg-n-solid-1 p-5">
++          <div class="flex items-center justify-between gap-3">
++            <div>
++              <h2 class="text-sm font-semibold text-n-slate-12">
++                Spend by Month
++              </h2>
++              <div class="mt-1 text-xs text-n-slate-10">
++                Normalized daily spend grouped by month
++              </div>
++            </div>
++            <span class="text-xs text-n-slate-10">
++              {{ monthlySpendSummary.length }} months
++            </span>
++          </div>
++
++          <div v-if="monthlySpendSummary.length" class="grid gap-3">
++            <div
++              v-for="row in monthlySpendSummary"
++              :key="row.month"
++              class="grid gap-3 rounded-lg border border-n-weak bg-n-background p-3 md:grid-cols-[160px_1fr_140px]"
++            >
++              <div class="text-sm font-medium text-n-slate-12">
++                {{ formatMonth(row.month) }}
++              </div>
++              <div class="flex min-w-0 items-center">
++                <div class="h-2 min-w-0 flex-1 overflow-hidden rounded-full bg-n-alpha-2">
++                  <div
++                    class="h-full rounded-full bg-n-brand"
++                    :style="{ width: `${row.barWidth}%` }"
++                  />
++                </div>
++              </div>
++              <div class="text-left text-sm font-semibold text-n-slate-12 md:text-right">
++                {{ formatAmount(row.spend) }}
++              </div>
++            </div>
++          </div>
++
++          <div
++            v-else
++            class="grid min-h-[96px] place-items-center rounded-lg border border-dashed border-n-weak bg-n-background px-4 text-center text-sm text-n-slate-10"
++          >
++            No spend in selected period
++          </div>
++        </section>
++
++        <section
++          v-if="isAdmin"
++          class="grid gap-4 rounded-lg border border-n-weak bg-n-solid-1 p-5"
++        >
++          <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
++            <div>
++              <h2 class="text-sm font-semibold text-n-slate-12">
++                Manual Spend Entries
++              </h2>
++              <div class="mt-1 text-xs text-n-slate-10">
++                Editable source records expanded into daily spend rows
++              </div>
++            </div>
++            <Button
++              icon="i-lucide-plus"
++              label="Add spend"
++              size="sm"
++              @click="openAddManualSpend"
++            />
++          </div>
++
++          <div v-if="manualSpendEntries.length" class="overflow-x-auto">
++            <table class="min-w-full border-separate border-spacing-0 text-left text-sm">
++              <thead class="text-xs uppercase text-n-slate-10">
++                <tr>
++                  <th class="border-b border-n-weak py-2 pr-4 font-medium">Source</th>
++                  <th class="border-b border-n-weak py-2 pr-4 font-medium">Vendor</th>
++                  <th class="border-b border-n-weak py-2 pr-4 font-medium">Campaign</th>
++                  <th class="border-b border-n-weak py-2 pr-4 font-medium">Period</th>
++                  <th class="border-b border-n-weak py-2 pr-4 font-medium">Budget</th>
++                  <th class="border-b border-n-weak py-2 pr-4 font-medium">Status</th>
++                  <th class="border-b border-n-weak py-2 pr-4 font-medium">Updated at</th>
++                  <th class="border-b border-n-weak py-2 text-right font-medium">Actions</th>
++                </tr>
++              </thead>
++              <tbody>
++                <tr
++                  v-for="entry in manualSpendEntries"
++                  :key="entry.id"
++                  class="text-n-slate-12"
++                >
++                  <td class="border-b border-n-weak py-3 pr-4 font-medium">
++                    {{ entry.source_label }}
++                  </td>
++                  <td class="border-b border-n-weak py-3 pr-4 text-n-slate-11">
++                    {{ entry.vendor_name || '--' }}
++                  </td>
++                  <td class="border-b border-n-weak py-3 pr-4 text-n-slate-11">
++                    {{ entry.campaign_name || '--' }}
++                  </td>
++                  <td class="border-b border-n-weak py-3 pr-4 text-n-slate-11">
++                    {{ formatDateRange(entry.start_date, entry.end_date) }}
++                  </td>
++                  <td class="border-b border-n-weak py-3 pr-4 text-n-slate-11">
++                    {{ formatAmount(entry.total_budget_aed) }}
++                  </td>
++                  <td class="border-b border-n-weak py-3 pr-4">
++                    <span
++                      class="inline-flex rounded-md border px-2 py-1 text-xs font-medium"
++                      :class="entry.is_active
++                        ? 'border-n-teal-5 bg-n-teal-3 text-n-teal-11'
++                        : 'border-n-slate-5 bg-n-alpha-2 text-n-slate-10'"
++                    >
++                      {{ entry.is_active ? 'Active' : 'Inactive' }}
++                    </span>
++                  </td>
++                  <td class="border-b border-n-weak py-3 pr-4 text-n-slate-11">
++                    {{ formatUpdatedAt(entry.updated_at) }}
++                  </td>
++                  <td class="border-b border-n-weak py-3 text-right">
++                    <div class="flex justify-end gap-2">
++                      <button
++                        type="button"
++                        class="rounded-md px-2 py-1 text-xs font-medium text-n-slate-11 transition hover:bg-n-alpha-2 hover:text-n-slate-12"
++                        @click="openEditManualSpend(entry)"
++                      >
++                        Edit
++                      </button>
++                      <button
++                        v-if="entry.is_active"
++                        type="button"
++                        class="rounded-md px-2 py-1 text-xs font-medium text-n-slate-11 transition hover:bg-n-alpha-2 hover:text-n-slate-12"
++                        @click="setManualSpendActive(entry, false)"
++                      >
++                        Deactivate
++                      </button>
++                      <button
++                        v-else
++                        type="button"
++                        class="rounded-md px-2 py-1 text-xs font-medium text-n-brand transition hover:bg-n-alpha-2"
++                        @click="setManualSpendActive(entry, true)"
++                      >
++                        Reactivate
++                      </button>
++                    </div>
++                  </td>
++                </tr>
++              </tbody>
++            </table>
++          </div>
++
++          <div
++            v-else
++            class="grid min-h-[112px] place-items-center rounded-lg border border-dashed border-n-weak bg-n-background px-4 text-center text-sm text-n-slate-10"
++          >
++            No manual spend entries yet
++          </div>
++        </section>
++
+         <section class="grid gap-4 rounded-lg border border-n-weak bg-n-solid-1 p-5">
+           <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+             <div>
+@@ -1282,6 +1661,139 @@ onMounted(() => {
+       </div>
+     </main>
+ 
++    <div
++      v-if="isManualSpendDrawerOpen"
++      class="fixed inset-0 z-50 bg-n-slate-12/40"
++      @click.self="closeManualSpendDrawer"
++    >
++      <aside class="ml-auto flex h-full w-full max-w-[520px] flex-col border-l border-n-weak bg-n-background shadow-xl">
++        <header class="flex items-center justify-between border-b border-n-weak px-5 py-4">
++          <h2 class="text-base font-semibold text-n-slate-12">
++            {{ editingManualSpendEntry ? 'Edit Manual Spend' : 'Add Manual Spend' }}
++          </h2>
++          <button
++            type="button"
++            class="grid h-8 w-8 place-items-center rounded-md text-n-slate-10 transition hover:bg-n-alpha-2 hover:text-n-slate-12"
++            aria-label="Close manual spend form"
++            @click="closeManualSpendDrawer"
++          >
++            <i class="i-lucide-x h-4 w-4" />
++          </button>
++        </header>
++
++        <div class="min-h-0 flex-1 overflow-y-auto px-5 py-4">
++          <div
++            v-if="manualSpendError"
++            class="mb-4 rounded-lg border border-n-ruby-5 bg-n-ruby-3 px-3 py-2 text-sm text-n-ruby-11"
++          >
++            {{ manualSpendError }}
++          </div>
++
++          <div class="grid gap-4">
++            <label class="grid gap-1 text-sm font-medium text-n-slate-11">
++              Source
++              <input
++                v-model="manualSpendForm.source_label"
++                class="h-10 rounded-md border border-n-weak bg-n-background px-3 text-sm font-normal text-n-slate-12 outline-none transition focus:border-n-brand"
++                placeholder="Dubizzle Ads"
++                type="text"
++              />
++            </label>
++
++            <label class="grid gap-1 text-sm font-medium text-n-slate-11">
++              Vendor
++              <input
++                v-model="manualSpendForm.vendor_name"
++                class="h-10 rounded-md border border-n-weak bg-n-background px-3 text-sm font-normal text-n-slate-12 outline-none transition focus:border-n-brand"
++                placeholder="Dubizzle"
++                type="text"
++              />
++            </label>
++
++            <label class="grid gap-1 text-sm font-medium text-n-slate-11">
++              Campaign name
++              <input
++                v-model="manualSpendForm.campaign_name"
++                class="h-10 rounded-md border border-n-weak bg-n-background px-3 text-sm font-normal text-n-slate-12 outline-none transition focus:border-n-brand"
++                placeholder="Homepage banner July"
++                type="text"
++              />
++            </label>
++
++            <div class="grid gap-4 sm:grid-cols-2">
++              <label class="grid gap-1 text-sm font-medium text-n-slate-11">
++                Start date
++                <input
++                  v-model="manualSpendForm.start_date"
++                  class="h-10 rounded-md border border-n-weak bg-n-background px-3 text-sm font-normal text-n-slate-12 outline-none transition focus:border-n-brand"
++                  type="date"
++                />
++              </label>
++
++              <label class="grid gap-1 text-sm font-medium text-n-slate-11">
++                End date
++                <input
++                  v-model="manualSpendForm.end_date"
++                  class="h-10 rounded-md border border-n-weak bg-n-background px-3 text-sm font-normal text-n-slate-12 outline-none transition focus:border-n-brand"
++                  type="date"
++                />
++              </label>
++            </div>
++
++            <div class="grid gap-4 sm:grid-cols-[1fr_120px]">
++              <label class="grid gap-1 text-sm font-medium text-n-slate-11">
++                Budget
++                <input
++                  v-model="manualSpendForm.total_budget"
++                  class="h-10 rounded-md border border-n-weak bg-n-background px-3 text-sm font-normal text-n-slate-12 outline-none transition focus:border-n-brand"
++                  min="0"
++                  step="0.01"
++                  type="number"
++                />
++              </label>
++
++              <label class="grid gap-1 text-sm font-medium text-n-slate-11">
++                Currency
++                <input
++                  v-model="manualSpendForm.currency"
++                  class="h-10 rounded-md border border-n-weak bg-n-alpha-2 px-3 text-sm font-normal text-n-slate-10 outline-none"
++                  disabled
++                  type="text"
++                />
++              </label>
++            </div>
++
++            <label class="grid gap-1 text-sm font-medium text-n-slate-11">
++              Notes
++              <textarea
++                v-model="manualSpendForm.notes"
++                class="min-h-[96px] rounded-md border border-n-weak bg-n-background px-3 py-2 text-sm font-normal text-n-slate-12 outline-none transition focus:border-n-brand"
++                placeholder="Optional"
++              />
++            </label>
++          </div>
++        </div>
++
++        <footer class="flex flex-wrap items-center justify-end gap-2 border-t border-n-weak px-5 py-4">
++          <button
++            type="button"
++            class="rounded-md px-3 py-2 text-sm font-medium text-n-slate-11 transition hover:bg-n-alpha-2 hover:text-n-slate-12"
++            @click="closeManualSpendDrawer"
++          >
++            Cancel
++          </button>
++          <button
++            type="button"
++            class="rounded-md bg-n-brand px-3 py-2 text-sm font-medium text-white transition hover:bg-n-brand/90 disabled:cursor-not-allowed disabled:opacity-60"
++            :disabled="isSavingManualSpend"
++            @click="saveManualSpend"
++          >
++            {{ isSavingManualSpend ? 'Saving...' : 'Save' }}
++          </button>
++        </footer>
++      </aside>
++    </div>
++
+     <div
+       v-if="isDashboardCustomizerOpen"
+       class="fixed inset-0 z-50 bg-n-slate-12/40"

@@ -1,14 +1,21 @@
 diff --git a/app/controllers/api/v1/accounts/crm/marketing_dashboard_controller.rb b/app/controllers/api/v1/accounts/crm/marketing_dashboard_controller.rb
-index 214fbba..41c1a14 100644
+index 214fbba..698a1d7 100644
 --- a/app/controllers/api/v1/accounts/crm/marketing_dashboard_controller.rb
 +++ b/app/controllers/api/v1/accounts/crm/marketing_dashboard_controller.rb
-@@ -13,13 +13,19 @@ class Api::V1::Accounts::Crm::MarketingDashboardController < Api::V1::Accounts::
+@@ -13,13 +13,70 @@ class Api::V1::Accounts::Crm::MarketingDashboardController < Api::V1::Accounts::
    ].freeze
    ALLOWED_WIDGET_KEYS = DEFAULT_WIDGETS.map { |widget| widget[:key] }.freeze
  
 -  before_action :check_read_authorization, only: [:show]
-+  before_action :check_read_authorization, only: [:show, :spend]
-   before_action :check_write_authorization, only: [:update]
+-  before_action :check_write_authorization, only: [:update]
++  before_action :check_read_authorization, only: [:show, :spend, :monthly_spend]
++  before_action :check_write_authorization, only: [
++    :update,
++    :manual_spend_entries,
++    :create_manual_spend_entry,
++    :update_manual_spend_entry
++  ]
++  before_action :set_manual_spend_entry, only: [:update_manual_spend_entry]
  
    def show
      render json: { crm_marketing_dashboard: normalized_config(stored_config) }
@@ -20,10 +27,55 @@ index 214fbba..41c1a14 100644
 +    }
 +  end
 +
++  def monthly_spend
++    return render json: { data: [] } unless MarketingSpendDaily.table_exists?
++
++    month_expression = "DATE_TRUNC('month', spend_date)::date"
++    rows = marketing_spend_scope
++           .select("#{month_expression} AS spend_month, SUM(spend_aed) AS spend_aed")
++           .group(month_expression)
++           .order('spend_month ASC')
++
++    render json: {
++      data: rows.map do |row|
++        month = row.read_attribute('spend_month')
++        {
++          month: month.respond_to?(:strftime) ? month.strftime('%Y-%m') : month.to_s,
++          spend_aed: row.read_attribute('spend_aed').to_d.to_s('F')
++        }
++      end
++    }
++  end
++
++  def manual_spend_entries
++    return render json: { data: [] } unless ManualSpendEntry.table_exists? && MarketingSpendDaily.table_exists?
++
++    render json: {
++      data: manual_spend_entry_scope.map { |entry| manual_spend_entry_json(entry) }
++    }
++  end
++
++  def create_manual_spend_entry
++    entry = ManualSpendEntry.new(manual_spend_entry_params.merge(account: Current.account, creator: Current.user))
++    entry.save!
++
++    render json: { manual_spend_entry: manual_spend_entry_json(entry) }, status: :created
++  rescue ActiveRecord::RecordInvalid => e
++    render json: { error: e.record.errors.full_messages.join(', ') }, status: :unprocessable_entity
++  end
++
++  def update_manual_spend_entry
++    @manual_spend_entry.update!(manual_spend_entry_params)
++
++    render json: { manual_spend_entry: manual_spend_entry_json(@manual_spend_entry) }
++  rescue ActiveRecord::RecordInvalid => e
++    render json: { error: e.record.errors.full_messages.join(', ') }, status: :unprocessable_entity
++  end
++
    def update
      config = normalized_config(dashboard_config_params.to_h)
      settings = (Current.account.settings || {}).to_h
-@@ -104,6 +110,51 @@ class Api::V1::Accounts::Crm::MarketingDashboardController < Api::V1::Accounts::
+@@ -104,6 +161,107 @@ class Api::V1::Accounts::Crm::MarketingDashboardController < Api::V1::Accounts::
      ActiveModel::Type::Boolean.new.cast(value)
    end
  
@@ -72,15 +124,71 @@ index 214fbba..41c1a14 100644
 +    nil
 +  end
 +
++  def manual_spend_entry_scope
++    ManualSpendEntry.for_account(Current.account.id).order(updated_at: :desc)
++  end
++
++  def set_manual_spend_entry
++    @manual_spend_entry = manual_spend_entry_scope.find(params[:id])
++  end
++
++  def manual_spend_entry_payload
++    params.require(:manual_spend_entry)
++  end
++
++  def manual_spend_entry_params
++    payload = manual_spend_entry_payload.permit(
++      :source,
++      :source_key,
++      :source_label,
++      :vendor_name,
++      :campaign_name,
++      :notes,
++      :start_date,
++      :end_date,
++      :total_budget,
++      :currency,
++      :is_active
++    ).to_h
++    source = payload.delete('source')
++    payload['source_label'] = source if payload['source_label'].blank? && source.present?
++    payload['currency'] = 'AED'
++    payload['platform'] = 'manual'
++    payload['allocation_mode'] = ManualSpendEntry::ALLOCATION_EVEN_BY_DAY
++    payload
++  end
++
++  def manual_spend_entry_json(entry)
++    daily_scope = MarketingSpendDaily.manual.where(manual_spend_entry_id: entry.id)
++
++    {
++      id: entry.id,
++      source_key: entry.source_key,
++      source_label: entry.source_label,
++      vendor_name: entry.vendor_name,
++      campaign_name: entry.campaign_name,
++      notes: entry.notes,
++      start_date: entry.start_date&.iso8601,
++      end_date: entry.end_date&.iso8601,
++      total_budget: entry.total_budget.to_d.to_s('F'),
++      total_budget_aed: entry.total_budget_aed.to_d.to_s('F'),
++      currency: entry.currency,
++      is_active: entry.is_active?,
++      updated_at: entry.updated_at&.iso8601,
++      daily_rows_count: daily_scope.count,
++      daily_spend_aed: daily_scope.sum(:spend_aed).to_d.to_s('F')
++    }
++  end
++
    def check_read_authorization
      raise Pundit::NotAuthorizedError if Current.account_user.blank?
    end
 diff --git a/app/models/manual_spend_entry.rb b/app/models/manual_spend_entry.rb
 new file mode 100644
-index 0000000..58859c8
+index 0000000..dca5ac6
 --- /dev/null
 +++ b/app/models/manual_spend_entry.rb
-@@ -0,0 +1,47 @@
+@@ -0,0 +1,59 @@
 +class ManualSpendEntry < ApplicationRecord
 +  ALLOCATION_EVEN_BY_DAY = 'even_by_day'.freeze
 +
@@ -94,18 +202,26 @@ index 0000000..58859c8
 +  scope :active, -> { where(is_active: true) }
 +  scope :for_account, ->(account_id) { where(account_id: account_id) }
 +
++  before_validation :normalize_source_fields
 +  before_validation :normalize_budget_fields
 +  after_commit :rebuild_daily_spend_rows, on: [:create, :update]
 +
 +  validates :source_key, :source_label, :platform, :start_date, :end_date, presence: true
 +  validates :allocation_mode, inclusion: { in: [ALLOCATION_EVEN_BY_DAY] }
 +  validates :currency, presence: true, length: { is: 3 }
-+  validates :total_budget, numericality: { greater_than_or_equal_to: 0 }
++  validates :total_budget, numericality: { greater_than: 0 }
 +  validates :fx_rate_to_aed, numericality: { greater_than: 0 }
-+  validates :total_budget_aed, numericality: { greater_than_or_equal_to: 0 }
++  validates :total_budget_aed, numericality: { greater_than: 0 }
 +  validate :end_date_is_not_before_start_date
 +
 +  private
++
++  def normalize_source_fields
++    self.source_label = source_label.to_s.strip
++    self.source_key = source_key.presence || source_key_from_label(source_label)
++    self.source_key = source_key.to_s.strip.parameterize(separator: '_') if source_key.present?
++    self.platform = platform.presence || 'manual'
++  end
 +
 +  def normalize_budget_fields
 +    self.currency = currency.presence&.upcase || 'AED'
@@ -122,6 +238,10 @@ index 0000000..58859c8
 +    return if end_date >= start_date
 +
 +    errors.add(:end_date, 'must be on or after start date')
++  end
++
++  def source_key_from_label(value)
++    value.to_s.strip.parameterize(separator: '_').presence || 'manual_spend'
 +  end
 +
 +  def rebuild_daily_spend_rows
@@ -244,16 +364,20 @@ index 0000000..f57ec23
 +  end
 +end
 diff --git a/config/routes.rb b/config/routes.rb
-index 4684a2b..f25f7ec 100644
+index 4684a2b..22341dc 100644
 --- a/config/routes.rb
 +++ b/config/routes.rb
-@@ -131,7 +131,9 @@ Rails.application.routes.draw do
+@@ -131,7 +131,13 @@ Rails.application.routes.draw do
                  patch :stage_requirements
                end
              end
 -            resource :marketing_dashboard, controller: :marketing_dashboard, only: [:show, :update]
 +            resource :marketing_dashboard, controller: :marketing_dashboard, only: [:show, :update] do
 +              get :spend
++              get :monthly_spend
++              get :manual_spend_entries
++              post :manual_spend_entries, action: :create_manual_spend_entry
++              patch 'manual_spend_entries/:id', action: :update_manual_spend_entry
 +            end
              resources :loss_reasons, only: [:index, :create, :update]
            end
