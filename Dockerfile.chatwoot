@@ -15,6 +15,7 @@ COPY chatwoot-patches/crm-marketing-analytics-vue.patch /tmp/crm-marketing-analy
 COPY chatwoot-patches/crm-date-input-format-vue.patch /tmp/crm-date-input-format-vue.patch
 COPY chatwoot-patches/crm-marketing-dashboard-config-vue.patch /tmp/crm-marketing-dashboard-config-vue.patch
 COPY chatwoot-patches/crm-marketing-spend-vue.patch /tmp/crm-marketing-spend-vue.patch
+COPY chatwoot-patches/fleexa-global-branding-visible-ui.patch /tmp/fleexa-global-branding-visible-ui.patch
 
 RUN cd /app && \
     git apply /tmp/crm-pipeline-vue.patch && \
@@ -30,6 +31,7 @@ RUN cd /app && \
     git apply /tmp/crm-date-input-format-vue.patch && \
     git apply /tmp/crm-marketing-dashboard-config-vue.patch && \
     git apply /tmp/crm-marketing-spend-vue.patch && \
+    git apply /tmp/fleexa-global-branding-visible-ui.patch && \
     HUSKY=0 pnpm install --frozen-lockfile && \
     (node node_modules/esbuild/install.js 2>/dev/null || true)
 
@@ -70,6 +72,7 @@ COPY chatwoot-patches/crm-marketing-analytics-vue.patch /tmp/crm-marketing-analy
 COPY chatwoot-patches/crm-date-input-format-vue.patch /tmp/crm-date-input-format-vue.patch
 COPY chatwoot-patches/crm-marketing-dashboard-config-vue.patch /tmp/crm-marketing-dashboard-config-vue.patch
 COPY chatwoot-patches/crm-marketing-spend-vue.patch /tmp/crm-marketing-spend-vue.patch
+COPY chatwoot-patches/fleexa-global-branding-visible-ui.patch /tmp/fleexa-global-branding-visible-ui.patch
 
 RUN cd /app && \
     git apply /tmp/patch.patch && \
@@ -99,4 +102,5 @@ RUN cd /app && \
     git apply /tmp/crm-marketing-analytics-vue.patch && \
     git apply /tmp/crm-date-input-format-vue.patch && \
     git apply /tmp/crm-marketing-dashboard-config-vue.patch && \
-    git apply /tmp/crm-marketing-spend-vue.patch
+    git apply /tmp/crm-marketing-spend-vue.patch && \
+    git apply /tmp/fleexa-global-branding-visible-ui.patch

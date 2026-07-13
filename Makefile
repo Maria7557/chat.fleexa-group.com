@@ -200,6 +200,7 @@ crm-vue-copy: ensure-env
 	$(COMPOSE) cp chatwoot-patches/crm-date-input-format-vue.patch rails:/tmp/crm-date-input-format-vue.patch
 	$(COMPOSE) cp chatwoot-patches/crm-marketing-dashboard-config-vue.patch rails:/tmp/crm-marketing-dashboard-config-vue.patch
 	$(COMPOSE) cp chatwoot-patches/crm-marketing-spend-vue.patch rails:/tmp/crm-marketing-spend-vue.patch
+	$(COMPOSE) cp chatwoot-patches/fleexa-global-branding-visible-ui.patch rails:/tmp/fleexa-global-branding-visible-ui.patch
 	@echo "CRM Vue patch copied to Rails container"
 
 crm-vue-check: crm-vue-copy
@@ -216,6 +217,7 @@ crm-vue-check: crm-vue-copy
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply --check /tmp/crm-date-input-format-vue.patch"
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply --check /tmp/crm-marketing-dashboard-config-vue.patch"
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply --check /tmp/crm-marketing-spend-vue.patch"
+	$(COMPOSE) exec rails sh -lc "cd /app && git apply --check /tmp/fleexa-global-branding-visible-ui.patch"
 	@echo "CRM Vue patch validated"
 
 crm-vue-patch: crm-vue-copy
@@ -232,6 +234,7 @@ crm-vue-patch: crm-vue-copy
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply /tmp/crm-date-input-format-vue.patch"
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply /tmp/crm-marketing-dashboard-config-vue.patch"
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply /tmp/crm-marketing-spend-vue.patch"
+	$(COMPOSE) exec rails sh -lc "cd /app && git apply /tmp/fleexa-global-branding-visible-ui.patch"
 	@echo "CRM Vue patch applied"
 
 crm-assets-build-host:
@@ -246,9 +249,6 @@ crm-assets-build-host:
 	docker rm -f "$$copy_container" >/dev/null; \
 	trap - EXIT; \
 	cd "$$build_dir"; \
-	perl -0pi -e "s/import \\{ colors \\} from '\\.\\/theme\\/colors';/const { colors } = require('.\\/theme\\/colors.js');/; s/import \\{ icons \\} from '\\.\\/theme\\/icons';/const { icons } = require('.\\/theme\\/icons.js');/" tailwind.config.js; \
-	perl -0pi -e "s/export const colors =/const colors =/; s/\\n\\};\\s*\\z/\\n};\\nmodule.exports = { colors };\\n/s" theme/colors.js; \
-	perl -0pi -e "s/export const icons =/const icons =/; s/\\n\\};\\s*\\z/\\n};\\nmodule.exports = { icons };\\n/s" theme/icons.js; \
 	git apply "$(CURDIR)/chatwoot-patches/instagram-human-agent-activity-window.patch"; \
 	git apply "$(CURDIR)/chatwoot-patches/crm-models.rb.patch"; \
 	git apply "$(CURDIR)/chatwoot-patches/crm-controllers.rb.patch"; \
@@ -277,6 +277,10 @@ crm-assets-build-host:
 	git apply "$(CURDIR)/chatwoot-patches/crm-date-input-format-vue.patch"; \
 	git apply "$(CURDIR)/chatwoot-patches/crm-marketing-dashboard-config-vue.patch"; \
 	git apply "$(CURDIR)/chatwoot-patches/crm-marketing-spend-vue.patch"; \
+	git apply "$(CURDIR)/chatwoot-patches/fleexa-global-branding-visible-ui.patch"; \
+	perl -0pi -e "s/import \\{ colors \\} from '\\.\\/theme\\/colors';/const { colors } = require('.\\/theme\\/colors.js');/; s/import \\{ icons \\} from '\\.\\/theme\\/icons';/const { icons } = require('.\\/theme\\/icons.js');/" tailwind.config.js; \
+	perl -0pi -e "s/export const colors =/const colors =/; s/\\n\\};\\s*\\z/\\n};\\nmodule.exports = { colors };\\n/s" theme/colors.js; \
+	perl -0pi -e "s/export const icons =/const icons =/; s/\\n\\};\\s*\\z/\\n};\\nmodule.exports = { icons };\\n/s" theme/icons.js; \
 	grep -n "ConversationBox" app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue; \
 	grep -n "CRM Deal" app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue; \
 	grep -n "Operator" app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue; \
@@ -300,6 +304,9 @@ crm-assets-build-host:
 	grep -n "Customize dashboard" app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue; \
 	grep -n "Manual Spend Entries" app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue; \
 	grep -n "Spend by Month" app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue; \
+	grep -n "fleexa_visible_config" app/views/layouts/vueapp.html.erb; \
+	grep -n "Chat Fleexa" public/manifest.json; \
+	grep -n "#0EA5A0" theme/colors.js; \
 	grep -n "getMarketingSpend" app/javascript/dashboard/api/crmPipeline.js; \
 	grep -n "getManualSpendEntries" app/javascript/dashboard/api/crmPipeline.js; \
 	if grep -n "Reply to client" app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue; then exit 1; fi; \
@@ -323,7 +330,7 @@ crm-assets-install-local: ensure-env
 	docker create --name "$$install_container" "$(CHATWOOT_LOCAL_IMAGE)" sh -lc "sleep 600" >/dev/null; \
 	trap 'docker rm -f "$$install_container" >/dev/null 2>&1 || true' EXIT; \
 	docker start "$$install_container" >/dev/null; \
-	docker exec "$$install_container" sh -lc "mkdir -p /app/app/controllers/api/v1/accounts /app/app/javascript/dashboard/routes/dashboard /app/app/javascript/dashboard/api /app/app/javascript/dashboard/components-next/sidebar /app/app/services/crm/marketing_spend /app/app/jobs/crm /app/lib/tasks /app/app/listeners"; \
+	docker exec "$$install_container" sh -lc "mkdir -p /app/app/controllers/api/v1/accounts /app/app/javascript/dashboard/routes/dashboard /app/app/javascript/dashboard/api /app/app/javascript/dashboard/components-next/sidebar /app/app/services/crm/marketing_spend /app/app/services/onboarding /app/app/jobs/crm /app/lib/tasks /app/app/listeners /app/app/views/layouts/mailer /app/app/views/devise/mailer /app/app/views/installation/onboarding /app/app/views/mailers/administrator_notifications/account_compliance_mailer /app/app/views/mailers/administrator_notifications/account_notification_mailer /app/app/views/super_admin/application /app/app/views/super_admin/devise/sessions /app/app/views/super_admin/settings /app/public/brand-assets /app/public/packs/brand-assets /app/public/packs/js /app/theme /app/app/assets/stylesheets/administrate/library /app/app/assets/stylesheets/administrate/utilities"; \
 	docker cp "$(CRM_ASSETS_BUILD_DIR)/app/controllers/api/v1/accounts/crm" "$$install_container:/app/app/controllers/api/v1/accounts/"; \
 	docker cp "$(CRM_ASSETS_BUILD_DIR)/app/models/crm_deal.rb" "$$install_container:/app/app/models/crm_deal.rb"; \
 	docker cp "$(CRM_ASSETS_BUILD_DIR)/app/models/crm_deal_activity.rb" "$$install_container:/app/app/models/crm_deal_activity.rb"; \
@@ -336,12 +343,16 @@ crm-assets-install-local: ensure-env
 	docker cp "$(CRM_ASSETS_BUILD_DIR)/app/models/airbyte_google_ads_daily_spend_mock.rb" "$$install_container:/app/app/models/airbyte_google_ads_daily_spend_mock.rb"; \
 	docker cp "$(CRM_ASSETS_BUILD_DIR)/app/models/airbyte_meta_ads_daily_spend_mock.rb" "$$install_container:/app/app/models/airbyte_meta_ads_daily_spend_mock.rb"; \
 	docker cp "$(CRM_ASSETS_BUILD_DIR)/app/models/marketing_source_mapping.rb" "$$install_container:/app/app/models/marketing_source_mapping.rb"; \
+	docker cp "$(CRM_ASSETS_BUILD_DIR)/app/models/portal.rb" "$$install_container:/app/app/models/portal.rb"; \
 	docker cp "$(CRM_ASSETS_BUILD_DIR)/config/routes.rb" "$$install_container:/app/config/routes.rb"; \
+	docker cp "$(CRM_ASSETS_BUILD_DIR)/config/locales/en.yml" "$$install_container:/app/config/locales/en.yml"; \
+	docker cp "$(CRM_ASSETS_BUILD_DIR)/config/locales/ru.yml" "$$install_container:/app/config/locales/ru.yml"; \
 	docker cp "$(CRM_ASSETS_BUILD_DIR)/app/services/crm/ensure_from_conversation_service.rb" "$$install_container:/app/app/services/crm/ensure_from_conversation_service.rb"; \
 	docker cp "$(CRM_ASSETS_BUILD_DIR)/app/services/crm/marketing_spend/manual_entry_normalizer.rb" "$$install_container:/app/app/services/crm/marketing_spend/manual_entry_normalizer.rb"; \
 	docker cp "$(CRM_ASSETS_BUILD_DIR)/app/services/crm/marketing_spend/google_ads_airbyte_normalizer.rb" "$$install_container:/app/app/services/crm/marketing_spend/google_ads_airbyte_normalizer.rb"; \
 	docker cp "$(CRM_ASSETS_BUILD_DIR)/app/services/crm/marketing_spend/meta_ads_airbyte_normalizer.rb" "$$install_container:/app/app/services/crm/marketing_spend/meta_ads_airbyte_normalizer.rb"; \
 	docker cp "$(CRM_ASSETS_BUILD_DIR)/app/services/crm/marketing_spend/source_mapping_resolver.rb" "$$install_container:/app/app/services/crm/marketing_spend/source_mapping_resolver.rb"; \
+	docker cp "$(CRM_ASSETS_BUILD_DIR)/app/services/onboarding/web_widget_creation_service.rb" "$$install_container:/app/app/services/onboarding/web_widget_creation_service.rb"; \
 	docker cp "$(CRM_ASSETS_BUILD_DIR)/app/jobs/crm/ensure_from_conversation_job.rb" "$$install_container:/app/app/jobs/crm/ensure_from_conversation_job.rb"; \
 	docker cp "$(CRM_ASSETS_BUILD_DIR)/app/listeners/webhook_listener.rb" "$$install_container:/app/app/listeners/webhook_listener.rb"; \
 	docker cp "$(CRM_ASSETS_BUILD_DIR)/lib/tasks/crm_deal_backfill.rake" "$$install_container:/app/lib/tasks/crm_deal_backfill.rake"; \
@@ -353,6 +364,29 @@ crm-assets-install-local: ensure-env
 	docker cp "$(CRM_ASSETS_BUILD_DIR)/app/javascript/dashboard/routes/dashboard/crm" "$$install_container:/app/app/javascript/dashboard/routes/dashboard/"; \
 	docker cp "$(CRM_ASSETS_BUILD_DIR)/app/javascript/dashboard/routes/dashboard/dashboard.routes.js" "$$install_container:/app/app/javascript/dashboard/routes/dashboard/dashboard.routes.js"; \
 	docker cp "$(CRM_ASSETS_BUILD_DIR)/app/javascript/dashboard/components-next/sidebar/Sidebar.vue" "$$install_container:/app/app/javascript/dashboard/components-next/sidebar/Sidebar.vue"; \
+	docker cp "$(CRM_ASSETS_BUILD_DIR)/app/views/layouts/vueapp.html.erb" "$$install_container:/app/app/views/layouts/vueapp.html.erb"; \
+	docker cp "$(CRM_ASSETS_BUILD_DIR)/app/views/layouts/mailer/base.liquid" "$$install_container:/app/app/views/layouts/mailer/base.liquid"; \
+	docker cp "$(CRM_ASSETS_BUILD_DIR)/app/views/devise/mailer/_confirmation_body.html.erb" "$$install_container:/app/app/views/devise/mailer/_confirmation_body.html.erb"; \
+	docker cp "$(CRM_ASSETS_BUILD_DIR)/app/views/devise/mailer/confirmation_instructions.html.erb" "$$install_container:/app/app/views/devise/mailer/confirmation_instructions.html.erb"; \
+	docker cp "$(CRM_ASSETS_BUILD_DIR)/app/views/installation/onboarding/index.html.erb" "$$install_container:/app/app/views/installation/onboarding/index.html.erb"; \
+	docker cp "$(CRM_ASSETS_BUILD_DIR)/app/views/mailers/administrator_notifications/account_compliance_mailer/account_deleted.liquid" "$$install_container:/app/app/views/mailers/administrator_notifications/account_compliance_mailer/account_deleted.liquid"; \
+	docker cp "$(CRM_ASSETS_BUILD_DIR)/app/views/mailers/administrator_notifications/account_notification_mailer/account_deletion_for_inactivity.liquid" "$$install_container:/app/app/views/mailers/administrator_notifications/account_notification_mailer/account_deletion_for_inactivity.liquid"; \
+	docker cp "$(CRM_ASSETS_BUILD_DIR)/app/views/mailers/administrator_notifications/account_notification_mailer/account_deletion_user_initiated.liquid" "$$install_container:/app/app/views/mailers/administrator_notifications/account_notification_mailer/account_deletion_user_initiated.liquid"; \
+	docker cp "$(CRM_ASSETS_BUILD_DIR)/app/views/super_admin/application/_navigation.html.erb" "$$install_container:/app/app/views/super_admin/application/_navigation.html.erb"; \
+	docker cp "$(CRM_ASSETS_BUILD_DIR)/app/views/super_admin/devise/sessions/new.html.erb" "$$install_container:/app/app/views/super_admin/devise/sessions/new.html.erb"; \
+	docker cp "$(CRM_ASSETS_BUILD_DIR)/app/views/super_admin/settings/show.html.erb" "$$install_container:/app/app/views/super_admin/settings/show.html.erb"; \
+	docker cp "$(CRM_ASSETS_BUILD_DIR)/app/assets/stylesheets/administrate/library/_variables.scss" "$$install_container:/app/app/assets/stylesheets/administrate/library/_variables.scss"; \
+	docker cp "$(CRM_ASSETS_BUILD_DIR)/app/assets/stylesheets/administrate/utilities/_variables.scss" "$$install_container:/app/app/assets/stylesheets/administrate/utilities/_variables.scss"; \
+	docker cp "$(CRM_ASSETS_BUILD_DIR)/public/manifest.json" "$$install_container:/app/public/manifest.json"; \
+	docker cp "$(CRM_ASSETS_BUILD_DIR)/public/packs/manifest.json" "$$install_container:/app/public/packs/manifest.json"; \
+	docker cp "$(CRM_ASSETS_BUILD_DIR)/public/brand-assets/logo.svg" "$$install_container:/app/public/brand-assets/logo.svg"; \
+	docker cp "$(CRM_ASSETS_BUILD_DIR)/public/brand-assets/logo_dark.svg" "$$install_container:/app/public/brand-assets/logo_dark.svg"; \
+	docker cp "$(CRM_ASSETS_BUILD_DIR)/public/brand-assets/logo_thumbnail.svg" "$$install_container:/app/public/brand-assets/logo_thumbnail.svg"; \
+	docker cp "$(CRM_ASSETS_BUILD_DIR)/public/packs/brand-assets/logo.svg" "$$install_container:/app/public/packs/brand-assets/logo.svg"; \
+	docker cp "$(CRM_ASSETS_BUILD_DIR)/public/packs/brand-assets/logo_dark.svg" "$$install_container:/app/public/packs/brand-assets/logo_dark.svg"; \
+	docker cp "$(CRM_ASSETS_BUILD_DIR)/public/packs/brand-assets/logo_thumbnail.svg" "$$install_container:/app/public/packs/brand-assets/logo_thumbnail.svg"; \
+	docker cp "$(CRM_ASSETS_BUILD_DIR)/public/packs/js/sdk.js" "$$install_container:/app/public/packs/js/sdk.js"; \
+	docker cp "$(CRM_ASSETS_BUILD_DIR)/theme/colors.js" "$$install_container:/app/theme/colors.js"; \
 	docker exec "$$install_container" sh -lc "rm -rf /app/public/vite && mkdir -p /app/public"; \
 	docker cp "$(CRM_ASSETS_BUILD_DIR)/public/vite" "$$install_container:/app/public/vite"; \
 	docker exec "$$install_container" sh -lc "test -d /app/public/vite/assets && test -f /app/public/vite/.vite/manifest.json"; \
@@ -382,6 +416,9 @@ crm-assets-install-local: ensure-env
 	docker exec "$$install_container" sh -lc "grep -n 'Customize dashboard' /app/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue"; \
 	docker exec "$$install_container" sh -lc "grep -n 'Manual Spend Entries' /app/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue"; \
 	docker exec "$$install_container" sh -lc "grep -n 'Spend by Month' /app/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue"; \
+	docker exec "$$install_container" sh -lc "grep -n 'fleexa_visible_config' /app/app/views/layouts/vueapp.html.erb"; \
+	docker exec "$$install_container" sh -lc "grep -n 'Chat Fleexa' /app/public/manifest.json"; \
+	docker exec "$$install_container" sh -lc "grep -n '#0EA5A0' /app/theme/colors.js"; \
 	docker exec "$$install_container" sh -lc "grep -n 'getMarketingDashboardConfig' /app/app/javascript/dashboard/api/crmPipeline.js"; \
 	docker exec "$$install_container" sh -lc "grep -n 'getMarketingSpend' /app/app/javascript/dashboard/api/crmPipeline.js"; \
 	docker exec "$$install_container" sh -lc "grep -n 'getManualSpendEntries' /app/app/javascript/dashboard/api/crmPipeline.js"; \
@@ -428,6 +465,9 @@ crm-assets-refresh-local: crm-assets-build-host crm-assets-install-local
 	$(COMPOSE) exec -T rails sh -lc "grep -n 'Customize dashboard' /app/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue"; \
 	$(COMPOSE) exec -T rails sh -lc "grep -n 'Manual Spend Entries' /app/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue"; \
 	$(COMPOSE) exec -T rails sh -lc "grep -n 'Spend by Month' /app/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue"; \
+	$(COMPOSE) exec -T rails sh -lc "grep -n 'fleexa_visible_config' /app/app/views/layouts/vueapp.html.erb"; \
+	$(COMPOSE) exec -T rails sh -lc "grep -n 'Chat Fleexa' /app/public/manifest.json"; \
+	$(COMPOSE) exec -T rails sh -lc "grep -n '#0EA5A0' /app/theme/colors.js"; \
 	$(COMPOSE) exec -T rails sh -lc "grep -n 'getMarketingDashboardConfig' /app/app/javascript/dashboard/api/crmPipeline.js"; \
 	$(COMPOSE) exec -T rails sh -lc "grep -n 'getMarketingSpend' /app/app/javascript/dashboard/api/crmPipeline.js"; \
 	$(COMPOSE) exec -T rails sh -lc "grep -n 'getManualSpendEntries' /app/app/javascript/dashboard/api/crmPipeline.js"; \
