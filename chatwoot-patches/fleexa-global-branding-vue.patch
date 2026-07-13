@@ -1,0 +1,851 @@
+diff --git a/app/javascript/dashboard/assets/scss/_next-colors.scss b/app/javascript/dashboard/assets/scss/_next-colors.scss
+index 784edce..3a174a8 100644
+--- a/app/javascript/dashboard/assets/scss/_next-colors.scss
++++ b/app/javascript/dashboard/assets/scss/_next-colors.scss
+@@ -14,7 +14,7 @@
+     --slate-9: 139 141 152;
+     --slate-10: 128 131 141;
+     --slate-11: 96 100 108;
+-    --slate-12: 28 32 36;
++    --slate-12: 15 25 35;
+ 
+     --iris-1: 253 253 255;
+     --iris-2: 248 248 255;
+@@ -29,18 +29,18 @@
+     --iris-11: 87 83 198;
+     --iris-12: 39 41 98;
+ 
+-    --blue-1: 251 253 255;
+-    --blue-2: 245 249 255;
+-    --blue-3: 233 243 255;
+-    --blue-4: 218 236 255;
+-    --blue-5: 201 226 255;
+-    --blue-6: 181 213 255;
+-    --blue-7: 155 195 252;
+-    --blue-8: 117 171 247;
+-    --blue-9: 39 129 246;
+-    --blue-10: 16 115 233;
+-    --blue-11: 8 109 224;
+-    --blue-12: 11 50 101;
++    --blue-1: 250 254 253;
++    --blue-2: 242 250 249;
++    --blue-3: 224 245 244;
++    --blue-4: 204 243 240;
++    --blue-5: 174 233 229;
++    --blue-6: 139 220 216;
++    --blue-7: 91 203 198;
++    --blue-8: 43 189 184;
++    --blue-9: 14 165 160;
++    --blue-10: 20 184 178;
++    --blue-11: 12 138 134;
++    --blue-12: 10 55 54;
+ 
+     --ruby-1: 255 252 253;
+     --ruby-2: 255 247 248;
+@@ -70,15 +70,15 @@
+ 
+     --teal-1: 250 254 253;
+     --teal-2: 243 251 249;
+-    --teal-3: 224 248 243;
+-    --teal-4: 204 243 234;
+-    --teal-5: 184 234 224;
+-    --teal-6: 161 222 210;
+-    --teal-7: 131 205 193;
+-    --teal-8: 83 185 171;
+-    --teal-9: 18 165 148;
+-    --teal-10: 13 155 138;
+-    --teal-11: 0 133 115;
++    --teal-3: 224 245 244;
++    --teal-4: 204 243 240;
++    --teal-5: 174 233 229;
++    --teal-6: 139 220 216;
++    --teal-7: 91 203 198;
++    --teal-8: 43 189 184;
++    --teal-9: 14 165 160;
++    --teal-10: 20 184 178;
++    --teal-11: 12 138 134;
+     --teal-12: 13 61 56;
+ 
+     --gray-1: 252 252 252;
+@@ -107,25 +107,25 @@
+     --violet-11: 101 85 183;
+     --violet-12: 47 38 95;
+ 
+-    --background-color: 247 247 247;
++    --background-color: 242 244 246;
+     --surface-1: 254 254 254;
+     --surface-2: 255 255 255;
+     --surface-active: 255 255 255;
+     --background-input-box: 0, 0, 0, 0.03;
+-    --text-blue: 1 22 44;
++    --text-blue: 15 25 35;
+     --text-purple: 2 4 49;
+     --text-amber: 37 24 1;
+     --border-container: 236 236 236;
+     --border-strong: 226 227 231;
+     --border-weak: 234 234 234;
+-    --border-blue-strong: 18 61 117;
++    --border-blue-strong: 12 138 134;
+     --solid-1: 255 255 255;
+     --solid-2: 255 255 255;
+     --solid-3: 255 255 255;
+     --solid-active: 255 255 255;
+     --solid-amber: 255 228 181;
+-    --solid-blue: 218 236 255;
+-    --solid-blue-2: 251 253 255;
++    --solid-blue: 224 245 244;
++    --solid-blue-2: 250 254 253;
+     --solid-iris: 230 231 255;
+     --solid-purple: 230 231 255;
+     --solid-red: 254 200 201;
+@@ -143,7 +143,7 @@
+     --alpha-3: 255, 255, 255, 0.96;
+     --black-alpha-1: 0, 0, 0, 0.12;
+     --black-alpha-2: 0, 0, 0, 0.04;
+-    --border-blue: 39, 129, 246, 0.5;
++    --border-blue: 14, 165, 160, 0.5;
+     --white-alpha: 255, 255, 255, 0.8;
+   }
+ 
+@@ -175,18 +175,18 @@
+     --iris-11: 158 177 255;
+     --iris-12: 224 223 254;
+ 
+-    --blue-1: 10 17 28;
+-    --blue-2: 15 24 38;
+-    --blue-3: 15 39 72;
+-    --blue-4: 10 49 99;
+-    --blue-5: 18 61 117;
+-    --blue-6: 29 84 134;
+-    --blue-7: 40 89 156;
+-    --blue-8: 48 106 186;
+-    --blue-9: 39 129 246;
+-    --blue-10: 21 116 231;
+-    --blue-11: 126 182 255;
+-    --blue-12: 205 227 255;
++    --blue-1: 10 15 30;
++    --blue-2: 11 28 34;
++    --blue-3: 9 50 52;
++    --blue-4: 6 72 72;
++    --blue-5: 7 90 88;
++    --blue-6: 10 112 108;
++    --blue-7: 12 138 134;
++    --blue-8: 14 165 160;
++    --blue-9: 14 165 160;
++    --blue-10: 20 184 178;
++    --blue-11: 91 226 219;
++    --blue-12: 207 250 247;
+ 
+     --ruby-1: 25 17 19;
+     --ruby-2: 30 21 23;
+@@ -222,9 +222,9 @@
+     --teal-6: 20 87 80;
+     --teal-7: 28 105 97;
+     --teal-8: 32 126 115;
+-    --teal-9: 18 165 148;
+-    --teal-10: 14 179 158;
+-    --teal-11: 11 216 182;
++    --teal-9: 14 165 160;
++    --teal-10: 20 184 178;
++    --teal-11: 91 226 219;
+     --teal-12: 173 240 221;
+ 
+     --gray-1: 17 17 17;
+@@ -253,24 +253,24 @@
+     --violet-11: 169 153 236;
+     --violet-12: 226 221 254;
+ 
+-    --background-color: 28 29 32;
++    --background-color: 10 15 30;
+     --surface-1: 20 21 23;
+     --surface-2: 22 23 26;
+     --surface-active: 53 57 66;
+     --background-input-box: 255, 255, 255, 0.02;
+-    --text-blue: 213 234 255;
++    --text-blue: 207 250 247;
+     --text-purple: 232 233 254;
+     --text-amber: 255 247 234;
+     --border-strong: 46 45 50;
+     --border-weak: 31 31 37;
+-    --border-blue-strong: 201 226 255;
++    --border-blue-strong: 91 226 219;
+     --solid-1: 23 23 26;
+     --solid-2: 29 30 36;
+     --solid-3: 44 45 54;
+     --solid-active: 53 57 66;
+     --solid-amber: 56 50 41;
+-    --solid-blue: 15 57 102;
+-    --solid-blue-2: 26 29 35;
++    --solid-blue: 7 72 72;
++    --solid-blue-2: 17 28 34;
+     --solid-iris: 38 42 101;
+     --solid-purple: 51 51 107;
+     --solid-red: 90 33 34;
+@@ -288,7 +288,7 @@
+     --alpha-3: 33, 34, 38, 0.95;
+     --black-alpha-1: 0, 0, 0, 0.3;
+     --black-alpha-2: 0, 0, 0, 0.2;
+-    --border-blue: 39, 129, 246, 0.5;
++    --border-blue: 14, 165, 160, 0.55;
+     --border-container: 255, 255, 255, 0;
+     --white-alpha: 255, 255, 255, 0.1;
+   }
+diff --git a/app/javascript/dashboard/assets/scss/super_admin/index.scss b/app/javascript/dashboard/assets/scss/super_admin/index.scss
+index ddac5f7..18797d3 100644
+--- a/app/javascript/dashboard/assets/scss/super_admin/index.scss
++++ b/app/javascript/dashboard/assets/scss/super_admin/index.scss
+@@ -90,7 +90,7 @@ body {
+     --gray-12: 32 32 32;
+ 
+     --background-color: 253 253 253;
+-    --text-blue: 8 109 224;
++    --text-blue: 12 138 134;
+     --border-container: 236 236 236;
+     --border-strong: 235 235 235;
+     --border-weak: 234 234 234;
+@@ -99,7 +99,7 @@ body {
+     --solid-3: 255 255 255;
+     --solid-active: 255 255 255;
+     --solid-amber: 252 232 193;
+-    --solid-blue: 218 236 255;
++    --solid-blue: 224 245 244;
+     --solid-iris: 230 231 255;
+ 
+     --alpha-1: 67, 67, 67, 0.06;
+@@ -107,7 +107,7 @@ body {
+     --alpha-3: 255, 255, 255, 0.96;
+     --black-alpha-1: 0, 0, 0, 0.12;
+     --black-alpha-2: 0, 0, 0, 0.04;
+-    --border-blue: 39, 129, 246, 0.5;
++    --border-blue: 14, 165, 160, 0.5;
+     --white-alpha: 255, 255, 255, 0.8;
+   }
+ 
+@@ -198,16 +198,16 @@ body {
+     --solid-3: 44 45 54;
+     --solid-active: 53 57 66;
+     --solid-amber: 42 37 30;
+-    --solid-blue: 16 49 91;
++    --solid-blue: 7 72 72;
+     --solid-iris: 38 42 101;
+-    --text-blue: 126 182 255;
++    --text-blue: 91 226 219;
+ 
+     --alpha-1: 36, 36, 36, 0.8;
+     --alpha-2: 139, 147, 182, 0.15;
+     --alpha-3: 36, 38, 45, 0.9;
+     --black-alpha-1: 0, 0, 0, 0.3;
+     --black-alpha-2: 0, 0, 0, 0.2;
+-    --border-blue: 39, 129, 246, 0.5;
++    --border-blue: 14, 165, 160, 0.55;
+     --border-container: 236, 236, 236, 0;
+     --white-alpha: 255, 255, 255, 0.1;
+   }
+diff --git a/app/javascript/dashboard/components-next/HelpCenter/PortalSwitcher/CreatePortalDialog.vue b/app/javascript/dashboard/components-next/HelpCenter/PortalSwitcher/CreatePortalDialog.vue
+index 70c30a2..a0bc0cf 100644
+--- a/app/javascript/dashboard/components-next/HelpCenter/PortalSwitcher/CreatePortalDialog.vue
++++ b/app/javascript/dashboard/components-next/HelpCenter/PortalSwitcher/CreatePortalDialog.vue
+@@ -109,7 +109,7 @@ const handleDialogConfirm = async () => {
+     slug: state.slug,
+     custom_domain: state.domain,
+     blob_id: state.avatarBlobId || null,
+-    color: '#2781F6', // The default color is set to Chatwoot brand color
++    color: '#0EA5A0', // The default color is set to Fleexa brand color
+   };
+   await createPortal(portal);
+ };
+diff --git a/app/javascript/dashboard/components-next/icon/Logo.vue b/app/javascript/dashboard/components-next/icon/Logo.vue
+index 6dd0bbd..66ce007 100644
+--- a/app/javascript/dashboard/components-next/icon/Logo.vue
++++ b/app/javascript/dashboard/components-next/icon/Logo.vue
+@@ -22,22 +22,14 @@ const globalConfig = useMapGetter('globalConfig/get');
+     fill="none"
+     xmlns="http://www.w3.org/2000/svg"
+   >
+-    <g clip-path="url(#woot-logo-clip-2342424e23u32098)">
+-      <path
+-        d="M8 16C12.4183 16 16 12.4183 16 8C16 3.58172 12.4183 0 8 0C3.58172 0 0 3.58172 0 8C0 12.4183 3.58172 16 8 16Z"
+-        fill="#2781F6"
+-      />
+-      <path
+-        d="M11.4172 11.4172H7.70831C5.66383 11.4172 4 9.75328 4 7.70828C4 5.66394 5.66383 4 7.70835 4C9.75339 4 11.4172 5.66394 11.4172 7.70828V11.4172Z"
+-        fill="white"
+-        stroke="white"
+-        stroke-width="0.1875"
+-      />
+-    </g>
+-    <defs>
+-      <clipPath id="woot-logo-clip-2342424e23u32098">
+-        <rect width="16" height="16" fill="white" />
+-      </clipPath>
+-    </defs>
++    <rect width="16" height="16" rx="5" fill="#0EA5A0" />
++    <path
++      d="M4.75 4.25H11.35V5.85H6.55V7.45H10.4V9.05H6.55V11.75H4.75V4.25Z"
++      fill="white"
++    />
++    <path
++      d="M10.55 10.28C11.2 10.28 11.75 10.83 11.75 11.48C11.75 12.13 11.2 12.68 10.55 12.68H8.2V10.28H10.55Z"
++      fill="#E0F5F4"
++    />
+   </svg>
+ </template>
+diff --git a/app/javascript/dashboard/components-next/message/bubbles/Dyte.vue b/app/javascript/dashboard/components-next/message/bubbles/Dyte.vue
+index 157298d..825ce00 100644
+--- a/app/javascript/dashboard/components-next/message/bubbles/Dyte.vue
++++ b/app/javascript/dashboard/components-next/message/bubbles/Dyte.vue
+@@ -45,7 +45,7 @@ const action = computed(() => ({
+ <template>
+   <BaseAttachmentBubble
+     icon="i-ph-video-camera-fill"
+-    icon-bg-color="bg-[#2781F6]"
++    icon-bg-color="bg-[#0EA5A0]"
+     sender-translation-key="CONVERSATION.SHARED_ATTACHMENT.MEETING"
+     :action="action"
+   >
+diff --git a/app/javascript/dashboard/components-next/sidebar/SidebarCollapsedPopover.vue b/app/javascript/dashboard/components-next/sidebar/SidebarCollapsedPopover.vue
+index 18e1aea..f243bf3 100644
+--- a/app/javascript/dashboard/components-next/sidebar/SidebarCollapsedPopover.vue
++++ b/app/javascript/dashboard/components-next/sidebar/SidebarCollapsedPopover.vue
+@@ -125,7 +125,7 @@ onMounted(async () => {
+             <!-- SubGroup with children -->
+             <li v-if="child.children" class="py-0.5">
+               <button
+-                class="flex items-center gap-2 px-2 py-1.5 w-full rounded-lg text-n-slate-11 hover:bg-n-alpha-2 transition-colors duration-150 ease-out text-left rtl:text-right"
++                class="flex items-center gap-2 px-2 py-1.5 w-full rounded-lg text-n-slate-11 hover:bg-n-blue-2 transition-colors duration-150 ease-out text-left rtl:text-right"
+                 @click="toggleSubGroup(child.name)"
+               >
+                 <Icon
+@@ -154,8 +154,8 @@ onMounted(async () => {
+                     <button
+                       class="flex items-center gap-2 px-2 py-1.5 w-full rounded-lg text-sm text-left rtl:text-right transition-colors duration-150 ease-out"
+                       :class="{
+-                        'text-n-slate-12 bg-n-alpha-2': isActive(subChild),
+-                        'text-n-slate-11 hover:bg-n-alpha-2':
++                        'text-n-brand bg-n-blue-3': isActive(subChild),
++                        'text-n-slate-11 hover:bg-n-blue-2':
+                           !isActive(subChild),
+                       }"
+                       @click="navigateAndClose(subChild.to)"
+@@ -178,8 +178,8 @@ onMounted(async () => {
+               <button
+                 class="flex items-center gap-2 px-2 py-1.5 w-full rounded-lg text-sm text-left rtl:text-right transition-colors duration-150 ease-out"
+                 :class="{
+-                  'text-n-slate-12 bg-n-alpha-2': isActive(child),
+-                  'text-n-slate-11 hover:bg-n-alpha-2': !isActive(child),
++                  'text-n-brand bg-n-blue-3': isActive(child),
++                  'text-n-slate-11 hover:bg-n-blue-2': !isActive(child),
+                 }"
+                 @click="navigateAndClose(child.to)"
+               >
+diff --git a/app/javascript/dashboard/components-next/sidebar/SidebarGroup.vue b/app/javascript/dashboard/components-next/sidebar/SidebarGroup.vue
+index 048a99c..3183bdc 100644
+--- a/app/javascript/dashboard/components-next/sidebar/SidebarGroup.vue
++++ b/app/javascript/dashboard/components-next/sidebar/SidebarGroup.vue
+@@ -237,8 +237,8 @@ watch(
+           type="button"
+           class="flex items-center justify-center size-10 rounded-lg"
+           :class="{
+-            'text-n-slate-12 bg-n-alpha-2': isActive || hasActiveChild,
+-            'text-n-slate-11 hover:bg-n-alpha-2': !isActive && !hasActiveChild,
++            'text-n-brand bg-n-blue-3': isActive || hasActiveChild,
++            'text-n-slate-11 hover:bg-n-blue-2': !isActive && !hasActiveChild,
+           }"
+           :title="label"
+           @click="hasChildren ? handleCollapsedClick() : undefined"
+diff --git a/app/javascript/dashboard/components-next/sidebar/SidebarGroupHeader.vue b/app/javascript/dashboard/components-next/sidebar/SidebarGroupHeader.vue
+index a40330f..8d69851 100644
+--- a/app/javascript/dashboard/components-next/sidebar/SidebarGroupHeader.vue
++++ b/app/javascript/dashboard/components-next/sidebar/SidebarGroupHeader.vue
+@@ -32,9 +32,9 @@ const count = computed(() =>
+     :to="to"
+     :title="label"
+     :class="{
+-      'text-n-slate-12 bg-n-alpha-2 font-medium': isActive && !hasActiveChild,
+-      'text-n-slate-12 font-medium': hasActiveChild,
+-      'text-n-slate-11 hover:bg-n-alpha-2': !isActive && !hasActiveChild,
++      'text-n-brand bg-n-blue-3 font-medium': isActive && !hasActiveChild,
++      'text-n-brand bg-n-blue-2 font-medium': hasActiveChild,
++      'text-n-slate-11 hover:bg-n-blue-2': !isActive && !hasActiveChild,
+     }"
+     @click.stop="emit('toggle')"
+   >
+@@ -49,7 +49,8 @@ const count = computed(() =>
+       <span
+         class="truncate"
+         :class="{
+-          'text-body-main': !isActive,
++          'text-body-main': !isActive && !hasActiveChild,
++          'text-n-brand': hasActiveChild,
+           'font-medium text-sm': isActive || hasActiveChild,
+         }"
+       >
+diff --git a/app/javascript/dashboard/components-next/sidebar/SidebarGroupLeaf.vue b/app/javascript/dashboard/components-next/sidebar/SidebarGroupLeaf.vue
+index 31e41a6..412eedf 100644
+--- a/app/javascript/dashboard/components-next/sidebar/SidebarGroupLeaf.vue
++++ b/app/javascript/dashboard/components-next/sidebar/SidebarGroupLeaf.vue
+@@ -33,9 +33,9 @@ const shouldRenderComponent = computed(() => {
+       :is="to ? 'router-link' : 'div'"
+       :to="to"
+       :title="label"
+-      class="flex h-8 items-center gap-2 px-2 py-1 rounded-lg hover:bg-gradient-to-r from-transparent via-n-slate-3/70 to-n-slate-3/70 group min-w-0"
++      class="flex h-8 items-center gap-2 px-2 py-1 rounded-lg hover:bg-gradient-to-r from-transparent via-n-blue-3/70 to-n-blue-3/70 group min-w-0"
+       :class="{
+-        'text-n-slate-12 bg-n-alpha-2 active': active,
++        'text-n-brand bg-n-blue-3 active': active,
+       }"
+     >
+       <component
+diff --git a/app/javascript/dashboard/components/widgets/conversation/conversation/LabelSuggestion.vue b/app/javascript/dashboard/components/widgets/conversation/conversation/LabelSuggestion.vue
+index 0c8a4fb..ef3e8bf 100644
+--- a/app/javascript/dashboard/components/widgets/conversation/conversation/LabelSuggestion.vue
++++ b/app/javascript/dashboard/components/widgets/conversation/conversation/LabelSuggestion.vue
+@@ -182,7 +182,7 @@ export default {
+             <woot-label
+               variant="dashed"
+               v-bind="label"
+-              :bg-color="selectedLabels.includes(label.title) ? '#2781F6' : ''"
++              :bg-color="selectedLabels.includes(label.title) ? '#0EA5A0' : ''"
+             />
+           </button>
+           <NextButton
+diff --git a/app/javascript/dashboard/i18n/locale/en/auditLogs.json b/app/javascript/dashboard/i18n/locale/en/auditLogs.json
+index f85ad2a..0c3a787 100644
+--- a/app/javascript/dashboard/i18n/locale/en/auditLogs.json
++++ b/app/javascript/dashboard/i18n/locale/en/auditLogs.json
+@@ -6,11 +6,11 @@
+     "DESCRIPTION": "Audit Logs maintain a record of activities in your account, allowing you to track and audit your account, team, or services.",
+     "LEARN_MORE": "Learn more about audit logs",
+     "SEARCH_404": "There are no items matching this query",
+-    "SIDEBAR_TXT": "<p><b>Audit Logs</b> </p><p> Audit Logs are trails for events and actions in a Chatwoot System. </p>",
++    "SIDEBAR_TXT": "<p><b>Audit Logs</b> </p><p> Audit Logs are trails for events and actions in a Chat Fleexa System. </p>",
+     "LIST": {
+       "404": "There are no Audit Logs available in this account.",
+       "TITLE": "Manage Audit Logs",
+-      "DESC": "Audit Logs are trails for events and actions in a Chatwoot System.",
++      "DESC": "Audit Logs are trails for events and actions in a Chat Fleexa System.",
+       "TABLE_HEADER": {
+         "ACTIVITY": "Activity",
+         "TIME": "Time",
+diff --git a/app/javascript/dashboard/i18n/locale/en/conversation.json b/app/javascript/dashboard/i18n/locale/en/conversation.json
+index 3eb83fd..2c766e6 100644
+--- a/app/javascript/dashboard/i18n/locale/en/conversation.json
++++ b/app/javascript/dashboard/i18n/locale/en/conversation.json
+@@ -283,7 +283,7 @@
+     "SENT_BY": "Sent by:",
+     "BOT": "Bot",
+     "NATIVE_APP": "Native app",
+-    "NATIVE_APP_ADVISORY": "This message was sent from the native app. Reply from Chatwoot to maintain the message window.",
++    "NATIVE_APP_ADVISORY": "This message was sent from the native app. Reply from Chat Fleexa to maintain the message window.",
+     "SEND_FAILED": "Couldn't send message! Try again",
+     "TRY_AGAIN": "retry",
+     "ASSIGNMENT": {
+diff --git a/app/javascript/dashboard/i18n/locale/en/generalSettings.json b/app/javascript/dashboard/i18n/locale/en/generalSettings.json
+index fab8020..36098cb 100644
+--- a/app/javascript/dashboard/i18n/locale/en/generalSettings.json
++++ b/app/javascript/dashboard/i18n/locale/en/generalSettings.json
+@@ -123,11 +123,11 @@
+         "CUSTOM_EMAIL_DOMAIN_ENABLED": "You can receive emails in your custom domain now."
+       }
+     },
+-    "UPDATE_CHATWOOT": "An update {latestChatwootVersion} for Chatwoot is available. Please update your instance.",
++    "UPDATE_CHATWOOT": "An update {latestChatwootVersion} for Chat Fleexa is available. Please update your instance.",
+     "LEARN_MORE": "Learn more",
+-    "PAYMENT_PENDING": "Your payment is pending. Please update your payment information to continue using Chatwoot",
+-    "UPGRADE": "Upgrade to continue using Chatwoot",
+-    "LIMITS_UPGRADE": "Your account has exceeded the usage limits, please upgrade your plan to continue using Chatwoot",
++    "PAYMENT_PENDING": "Your payment is pending. Please update your payment information to continue using Chat Fleexa",
++    "UPGRADE": "Upgrade to continue using Chat Fleexa",
++    "LIMITS_UPGRADE": "Your account has exceeded the usage limits, please upgrade your plan to continue using Chat Fleexa",
+     "OPEN_BILLING": "Open billing"
+   },
+   "FORMS": {
+diff --git a/app/javascript/dashboard/i18n/locale/en/helpCenter.json b/app/javascript/dashboard/i18n/locale/en/helpCenter.json
+index dfaec81..d519fdd 100644
+--- a/app/javascript/dashboard/i18n/locale/en/helpCenter.json
++++ b/app/javascript/dashboard/i18n/locale/en/helpCenter.json
+@@ -784,7 +784,7 @@
+       "CONFIRM_BUTTON_LABEL": "Create",
+       "NAME": {
+         "LABEL": "Name",
+-        "PLACEHOLDER": "User Guide | Chatwoot",
++        "PLACEHOLDER": "User Guide | Chat Fleexa",
+         "MESSAGE": "Choose an name for your portal.",
+         "ERROR": "Name is required"
+       },
+diff --git a/app/javascript/dashboard/i18n/locale/en/inboxMgmt.json b/app/javascript/dashboard/i18n/locale/en/inboxMgmt.json
+index cd7e463..7d6150c 100644
+--- a/app/javascript/dashboard/i18n/locale/en/inboxMgmt.json
++++ b/app/javascript/dashboard/i18n/locale/en/inboxMgmt.json
+@@ -16,7 +16,7 @@
+     "CREATE_FLOW": {
+       "CHANNEL": {
+         "TITLE": "Choose Channel",
+-        "BODY": "Choose the provider you want to integrate with Chatwoot."
++        "BODY": "Choose the provider you want to integrate with Chat Fleexa."
+       },
+       "INBOX": {
+         "TITLE": "Create Inbox",
+@@ -42,7 +42,7 @@
+         "PLACEHOLDER": "Enter your website name (eg: Acme Inc)"
+       },
+       "FB": {
+-        "HELP": "PS: By signing in, we only get access to your Page's messages. Your private messages can never be accessed by Chatwoot.",
++        "HELP": "PS: By signing in, we only get access to your Page's messages. Your private messages can never be accessed by Chat Fleexa.",
+         "CHOOSE_PAGE": "Choose Page",
+         "CHOOSE_PLACEHOLDER": "Select a page from the list",
+         "INBOX_NAME": "Inbox Name",
+@@ -451,7 +451,7 @@
+       },
+       "AUTH": {
+         "TITLE": "Choose a channel",
+-        "DESC": "Chatwoot supports live-chat widgets, Facebook Messenger, WhatsApp, Emails, etc., as channels. If you want to build a custom channel, you can create it using the API channel. To get started, choose one of the channels below.",
++        "DESC": "Chat Fleexa supports live-chat widgets, Facebook Messenger, WhatsApp, Emails, etc., as channels. If you want to build a custom channel, you can create it using the API channel. To get started, choose one of the channels below.",
+         "TITLE_NEXT": "Complete the setup",
+         "TITLE_FINISH": "Voilà!",
+         "CHANNEL": {
+@@ -513,11 +513,11 @@
+       },
+       "DETAILS": {
+         "TITLE": "Inbox Details",
+-        "DESC": "From the dropdown below, select the Facebook Page you want to connect to Chatwoot. You can also give a custom name to your inbox for better identification."
++        "DESC": "From the dropdown below, select the Facebook Page you want to connect to Chat Fleexa. You can also give a custom name to your inbox for better identification."
+       },
+       "FINISH": {
+         "TITLE": "Nailed It!",
+-        "DESC": "You have successfully finished integrating your Facebook Page with Chatwoot. Next time a customer messages your Page, the conversation will automatically appear on your inbox.<br>We are also providing you with a widget script that you can easily add to your website. Once this is live on your website, customers can message you right from your website without the help of any external tool and the conversation will appear right here, on Chatwoot.<br>Cool, huh? Well, we sure try to be :)"
++        "DESC": "You have successfully finished integrating your Facebook Page with Chat Fleexa. Next time a customer messages your Page, the conversation will automatically appear on your inbox.<br>We are also providing you with a widget script that you can easily add to your website. Once this is live on your website, customers can message you right from your website without the help of any external tool and the conversation will appear right here, on Chat Fleexa.<br>Cool, huh? Well, we sure try to be :)"
+       },
+       "EMAIL_PROVIDER": {
+         "TITLE": "Select your email provider",
+@@ -1166,7 +1166,7 @@
+         "USER_MESSAGE": "Hi",
+         "AGENT_MESSAGE": "Hello"
+       },
+-      "BRANDING_TEXT": "Powered by Chatwoot",
++      "BRANDING_TEXT": "Powered by Chat Fleexa",
+       "SCRIPT_SETTINGS": "\n      window.chatwootSettings = {options};"
+     },
+     "EMAIL_PROVIDERS": {
+diff --git a/app/javascript/dashboard/i18n/locale/en/integrations.json b/app/javascript/dashboard/i18n/locale/en/integrations.json
+index 79f881b..cea2fe3 100644
+--- a/app/javascript/dashboard/i18n/locale/en/integrations.json
++++ b/app/javascript/dashboard/i18n/locale/en/integrations.json
+@@ -17,7 +17,7 @@
+       "ERROR": "There was an error connecting to Shopify. Please try again or contact support if the issue persists."
+     },
+     "HEADER": "Integrations",
+-    "DESCRIPTION": "Chatwoot integrates with multiple tools and services to improve your team's efficiency. Explore the list below to configure your favorite apps.",
++    "DESCRIPTION": "Chat Fleexa integrates with multiple tools and services to improve your team's efficiency. Explore the list below to configure your favorite apps.",
+     "LEARN_MORE": "Learn more about integrations",
+     "LOADING": "Fetching integrations",
+     "SEARCH_PLACEHOLDER": "Search integrations...",
+@@ -44,7 +44,7 @@
+       "NO_RESULTS": "No webhooks found matching your search",
+       "FORM": {
+         "CANCEL": "Cancel",
+-        "DESC": "Webhook events provide you the realtime information about what's happening in your Chatwoot account. Please enter a valid URL to configure a callback.",
++        "DESC": "Webhook events provide you the realtime information about what's happening in your Chat Fleexa account. Please enter a valid URL to configure a callback.",
+         "SUBSCRIPTIONS": {
+           "LABEL": "Events",
+           "EVENTS": {
+@@ -79,7 +79,7 @@
+       "HEADER_BTN_TXT": "Add new webhook",
+       "LOADING": "Fetching attached webhooks",
+       "SEARCH_404": "There are no items matching this query",
+-      "SIDEBAR_TXT": "<p><b>Webhooks</b> </p> <p>Webhooks are HTTP callbacks which can be defined for every account. They are triggered by events like message creation in Chatwoot. You can create more than one webhook for this account. <br /><br /> For creating a <b>webhook</b>, click on the <b>Add new webhook</b> button. You can also remove any existing webhook by clicking on the Delete button.</p>",
++      "SIDEBAR_TXT": "<p><b>Webhooks</b> </p> <p>Webhooks are HTTP callbacks which can be defined for every account. They are triggered by events like message creation in Chat Fleexa. You can create more than one webhook for this account. <br /><br /> For creating a <b>webhook</b>, click on the <b>Add new webhook</b> button. You can also remove any existing webhook by clicking on the Delete button.</p>",
+       "LIST": {
+         "404": "There are no webhooks configured for this account.",
+         "TITLE": "Manage webhooks",
+@@ -127,14 +127,14 @@
+       },
+       "HELP_TEXT": {
+         "TITLE": "How to use the Slack Integration?",
+-        "BODY": "With this integration, all of your incoming conversations will be synced to the ***{selectedChannelName}*** channel in your Slack workspace. You can manage all your customer conversations right within the channel and never miss a message.\n\nHere are the main features of the integration:\n\n**Respond to conversations from within Slack:** To respond to a conversation in the ***{selectedChannelName}*** Slack channel, simply type out your message and send it as a thread. This will create a response back to the customer through Chatwoot. It's that simple!\n\n **Create private notes:** If you want to create private notes instead of replies, start your message with ***`note:`***. This ensures that your message is kept private and won't be visible to the customer.\n\n**Associate an agent profile:** If the person who replied on Slack has an agent profile in Chatwoot under the same email, the replies will be associated with that agent profile automatically. This means you can easily track who said what and when. On the other hand, when the replier doesn't have an associated agent profile, the replies will appear from the bot profile to the customer.",
++        "BODY": "With this integration, all of your incoming conversations will be synced to the ***{selectedChannelName}*** channel in your Slack workspace. You can manage all your customer conversations right within the channel and never miss a message.\n\nHere are the main features of the integration:\n\n**Respond to conversations from within Slack:** To respond to a conversation in the ***{selectedChannelName}*** Slack channel, simply type out your message and send it as a thread. This will create a response back to the customer through Chat Fleexa. It's that simple!\n\n **Create private notes:** If you want to create private notes instead of replies, start your message with ***`note:`***. This ensures that your message is kept private and won't be visible to the customer.\n\n**Associate an agent profile:** If the person who replied on Slack has an agent profile in Chat Fleexa under the same email, the replies will be associated with that agent profile automatically. This means you can easily track who said what and when. On the other hand, when the replier doesn't have an associated agent profile, the replies will appear from the bot profile to the customer.",
+         "SELECTED": "selected"
+       },
+       "SELECT_CHANNEL": {
+         "OPTION_LABEL": "Select a channel",
+         "UPDATE": "Update",
+         "BUTTON_TEXT": "Connect channel",
+-        "DESCRIPTION": "Your Slack workspace is now linked with Chatwoot. However, the integration is currently inactive. To activate the integration and connect a channel to Chatwoot, please click the button below.\n\n**Note:** If you are attempting to connect a private channel, add the Chatwoot app to the Slack channel before proceeding with this step.",
++        "DESCRIPTION": "Your Slack workspace is now linked with Chat Fleexa. However, the integration is currently inactive. To activate the integration and connect a channel to Chat Fleexa, please click the button below.\n\n**Note:** If you are attempting to connect a private channel, add the Chat Fleexa app to the Slack channel before proceeding with this step.",
+         "ATTENTION_REQUIRED": "Attention required",
+         "EXPIRED": "Your Slack integration has expired. To continue receiving messages on Slack, please delete the integration and connect your workspace again."
+       },
+@@ -236,7 +236,7 @@
+     "DASHBOARD_APPS": {
+       "TITLE": "Dashboard Apps",
+       "HEADER_BTN_TXT": "Add a new dashboard app",
+-      "SIDEBAR_TXT": "<p><b>Dashboard Apps</b></p><p>Dashboard Apps allow organizations to embed an application inside the Chatwoot dashboard to provide the context for customer support agents. This feature allows you to create an application independently and embed that inside the dashboard to provide user information, their orders, or their previous payment history.</p><p>When you embed your application using the dashboard in Chatwoot, your application will get the context of the conversation and contact as a window event. Implement a listener for the message event on your page to receive the context.</p><p>To add a new dashboard app, click on the button 'Add a new dashboard app'.</p>",
++      "SIDEBAR_TXT": "<p><b>Dashboard Apps</b></p><p>Dashboard Apps allow organizations to embed an application inside the Chat Fleexa dashboard to provide the context for customer support agents. This feature allows you to create an application independently and embed that inside the dashboard to provide user information, their orders, or their previous payment history.</p><p>When you embed your application using the dashboard in Chat Fleexa, your application will get the context of the conversation and contact as a window event. Implement a listener for the message event on your page to receive the context.</p><p>To add a new dashboard app, click on the button 'Add a new dashboard app'.</p>",
+       "DESCRIPTION": "Dashboard Apps allow organizations to embed an application inside the dashboard to provide the context for customer support agents. This feature allows you to create an application independently and embed that to provide user information, their orders, or their previous payment history.",
+       "LEARN_MORE": "Learn more about Dashboard Apps",
+       "COUNT": "{n} dashboard app | {n} dashboard apps",
+diff --git a/app/javascript/dashboard/i18n/locale/en/labelsMgmt.json b/app/javascript/dashboard/i18n/locale/en/labelsMgmt.json
+index 96e272e..63f6adc 100644
+--- a/app/javascript/dashboard/i18n/locale/en/labelsMgmt.json
++++ b/app/javascript/dashboard/i18n/locale/en/labelsMgmt.json
+@@ -50,7 +50,7 @@
+         "DESELECT": "Deselect label",
+         "DISMISS": "Dismiss suggestion"
+       },
+-      "POWERED_BY": "Chatwoot AI",
++      "POWERED_BY": "Chat Fleexa AI",
+       "DISMISS": "Dismiss",
+       "ADD_SELECTED_LABELS": "Add selected labels",
+       "ADD_SELECTED_LABEL": "Add selected label",
+diff --git a/app/javascript/dashboard/i18n/locale/en/login.json b/app/javascript/dashboard/i18n/locale/en/login.json
+index 0612842..24cbcce 100644
+--- a/app/javascript/dashboard/i18n/locale/en/login.json
++++ b/app/javascript/dashboard/i18n/locale/en/login.json
+@@ -1,6 +1,6 @@
+ {
+   "LOGIN": {
+-    "TITLE": "Login to Chatwoot",
++    "TITLE": "Login to Chat Fleexa",
+     "EMAIL": {
+       "LABEL": "Email",
+       "PLACEHOLDER": "example{'@'}companyname.com",
+diff --git a/app/javascript/dashboard/i18n/locale/en/mfa.json b/app/javascript/dashboard/i18n/locale/en/mfa.json
+index 8e356aa..ba943c0 100644
+--- a/app/javascript/dashboard/i18n/locale/en/mfa.json
++++ b/app/javascript/dashboard/i18n/locale/en/mfa.json
+@@ -102,7 +102,7 @@
+       "BACKUP_TITLE": "Using a Backup Code",
+       "BACKUP_DESC": "If you don't have access to your authenticator app, you can use one of the backup codes you saved when setting up 2FA. Each code can only be used once.",
+       "CONTACT_TITLE": "Need More Help?",
+-      "CONTACT_DESC_CLOUD": "If you've lost access to both your authenticator app and backup codes, please reach out to Chatwoot support for assistance.",
++      "CONTACT_DESC_CLOUD": "If you've lost access to both your authenticator app and backup codes, please reach out to Chat Fleexa support for assistance.",
+       "CONTACT_DESC_SELF_HOSTED": "If you've lost access to both your authenticator app and backup codes, please contact your administrator for assistance."
+     },
+     "VERIFICATION_FAILED": "Verification failed. Please try again."
+diff --git a/app/javascript/dashboard/i18n/locale/en/resetPassword.json b/app/javascript/dashboard/i18n/locale/en/resetPassword.json
+index 955696b..c79f339 100644
+--- a/app/javascript/dashboard/i18n/locale/en/resetPassword.json
++++ b/app/javascript/dashboard/i18n/locale/en/resetPassword.json
+@@ -1,7 +1,7 @@
+ {
+   "RESET_PASSWORD": {
+     "TITLE": "Reset password",
+-    "DESCRIPTION": "Enter the email address you use to log in to Chatwoot to get the password reset instructions.",
++    "DESCRIPTION": "Enter the email address you use to log in to Chat Fleexa to get the password reset instructions.",
+     "GO_BACK_TO_LOGIN": "If you want to go back to the login page,",
+     "EMAIL": {
+       "LABEL": "Email",
+diff --git a/app/javascript/dashboard/i18n/locale/en/settings.json b/app/javascript/dashboard/i18n/locale/en/settings.json
+index bfbd920..0358301 100644
+--- a/app/javascript/dashboard/i18n/locale/en/settings.json
++++ b/app/javascript/dashboard/i18n/locale/en/settings.json
+@@ -37,7 +37,7 @@
+       },
+       "INTERFACE_SECTION": {
+         "TITLE": "Interface",
+-        "NOTE": "Customize the look and feel of your Chatwoot dashboard.",
++        "NOTE": "Customize the look and feel of your Chat Fleexa dashboard.",
+         "FONT_SIZE": {
+           "TITLE": "Font size",
+           "NOTE": "Adjust the text size across the dashboard based on your preference.",
+@@ -516,7 +516,7 @@
+       "SP_ENTITY_ID": {
+         "LABEL": "SP Entity ID",
+         "HELP": "Unique identifier for this application as a service provider (auto-generated).",
+-        "TOOLTIP": "Unique identifier for Chatwoot as the Service Provider - Configure this in your IdP settings"
++        "TOOLTIP": "Unique identifier for Chat Fleexa as the Service Provider - Configure this in your IdP settings"
+       },
+       "IDP_ENTITY_ID": {
+         "LABEL": "Identity Provider Entity ID",
+@@ -611,7 +611,7 @@
+     }
+   },
+   "CREATE_ACCOUNT": {
+-    "NO_ACCOUNT_WARNING": "Uh oh! We could not find any Chatwoot accounts. Please create a new account to continue.",
++    "NO_ACCOUNT_WARNING": "Uh oh! We could not find any Chat Fleexa accounts. Please create a new account to continue.",
+     "NEW_ACCOUNT": "New Account",
+     "SELECTOR_SUBTITLE": "Create a new account",
+     "API": {
+diff --git a/app/javascript/dashboard/i18n/locale/en/signup.json b/app/javascript/dashboard/i18n/locale/en/signup.json
+index 238a1f0..1e439fd 100644
+--- a/app/javascript/dashboard/i18n/locale/en/signup.json
++++ b/app/javascript/dashboard/i18n/locale/en/signup.json
+@@ -1,7 +1,7 @@
+ {
+   "REGISTER": {
+     "TRY_WOOT": "Create an account",
+-    "GET_STARTED": "Get started with Chatwoot",
++    "GET_STARTED": "Get started with Chat Fleexa",
+     "TITLE": "Register",
+     "TESTIMONIAL_HEADER": "All it takes is one step to move forward",
+     "TESTIMONIAL_CONTENT": "You're one step away from engaging your customers, retaining them and finding new ones.",
+diff --git a/app/javascript/dashboard/i18n/locale/en/yearInReview.json b/app/javascript/dashboard/i18n/locale/en/yearInReview.json
+index d72e0c6..c593476 100644
+--- a/app/javascript/dashboard/i18n/locale/en/yearInReview.json
++++ b/app/javascript/dashboard/i18n/locale/en/yearInReview.json
+@@ -48,8 +48,8 @@
+       "PREPARING": "Preparing your image...",
+       "DOWNLOAD": "Download",
+       "SHARE_TITLE": "My {year} Year in Review",
+-      "SHARE_TEXT": "Check out my {year} Year in Review with Chatwoot!",
+-      "BRANDING": "Made with Chatwoot"
++      "SHARE_TEXT": "Check out my {year} Year in Review with Chat Fleexa!",
++      "BRANDING": "Made with Chat Fleexa"
+     },
+     "BANNER": {
+       "TITLE": "Your {year} Year in Review is here",
+diff --git a/app/javascript/dashboard/modules/widget-preview/components/Widget.vue b/app/javascript/dashboard/modules/widget-preview/components/Widget.vue
+index 90985a9..01374e7 100644
+--- a/app/javascript/dashboard/modules/widget-preview/components/Widget.vue
++++ b/app/javascript/dashboard/modules/widget-preview/components/Widget.vue
+@@ -278,7 +278,7 @@ const handleToggleWidget = () => {
+   --solid-3: 255 255 255;
+   --solid-active: 255 255 255;
+   --solid-amber: 252 232 193;
+-  --solid-blue: 218 236 255;
++  --solid-blue: 224 245 244;
+   --solid-iris: 230 231 255;
+ 
+   --alpha-1: 67, 67, 67, 0.06;
+@@ -286,7 +286,7 @@ const handleToggleWidget = () => {
+   --alpha-3: 255, 255, 255, 0.96;
+   --black-alpha-1: 0, 0, 0, 0.12;
+   --black-alpha-2: 0, 0, 0, 0.04;
+-  --border-blue: 39, 129, 246, 0.5;
++  --border-blue: 14, 165, 160, 0.5;
+   --white-alpha: 255, 255, 255, 0.8;
+ }
+ 
+@@ -313,16 +313,16 @@ const handleToggleWidget = () => {
+   --solid-3: 44 45 54;
+   --solid-active: 53 57 66;
+   --solid-amber: 42 37 30;
+-  --solid-blue: 16 49 91;
++  --solid-blue: 7 72 72;
+   --solid-iris: 38 42 101;
+-  --text-blue: 126 182 255;
++  --text-blue: 91 226 219;
+ 
+   --alpha-1: 36, 36, 36, 0.8;
+   --alpha-2: 139, 147, 182, 0.15;
+   --alpha-3: 36, 38, 45, 0.9;
+   --black-alpha-1: 0, 0, 0, 0.3;
+   --black-alpha-2: 0, 0, 0, 0.2;
+-  --border-blue: 39, 129, 246, 0.5;
++  --border-blue: 14, 165, 160, 0.55;
+   --border-container: 236, 236, 236, 0;
+   --white-alpha: 255, 255, 255, 0.1;
+ }
+diff --git a/app/javascript/dashboard/routes/dashboard/commands/commandbar.vue b/app/javascript/dashboard/routes/dashboard/commands/commandbar.vue
+index 11943f6..2587af1 100644
+--- a/app/javascript/dashboard/routes/dashboard/commands/commandbar.vue
++++ b/app/javascript/dashboard/routes/dashboard/commands/commandbar.vue
+@@ -232,7 +232,7 @@ onMounted(() => {
+ 
+ <style lang="scss">
+ ninja-keys {
+-  --ninja-accent-color: rgba(39, 129, 246, 1);
++  --ninja-accent-color: rgba(14, 165, 160, 1);
+   --ninja-font-family: 'Inter';
+   z-index: 9999;
+ }
+diff --git a/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue b/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue
+index 9c3a064..9be7247 100644
+--- a/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue
++++ b/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue
+@@ -56,9 +56,9 @@ const TREND_CHART_INNER_WIDTH =
+ const TREND_CHART_INNER_HEIGHT =
+   TREND_CHART_HEIGHT - TREND_CHART_PADDING.top - TREND_CHART_PADDING.bottom;
+ const TREND_SERIES = [
+-  { key: 'all', label: 'All Leads', color: '#6B7280', width: 3 },
+-  { key: 'google', label: 'Google', color: '#2563EB', width: 2 },
+-  { key: 'meta', label: 'Meta', color: '#0EA5E9', width: 2 },
++  { key: 'all', label: 'All Leads', color: '#0EA5A0', width: 3 },
++  { key: 'google', label: 'Google', color: '#0C8A86', width: 2 },
++  { key: 'meta', label: 'Meta', color: '#14B8B2', width: 2 },
+   { key: 'tiktok', label: 'TikTok', color: '#DB2777', width: 2 },
+ ];
+ const PAID_SOURCE_KEYS = ['google', 'meta', 'tiktok'];
+diff --git a/app/javascript/shared/composables/useBranding.js b/app/javascript/shared/composables/useBranding.js
+index fccdcd3..81f42a5 100644
+--- a/app/javascript/shared/composables/useBranding.js
++++ b/app/javascript/shared/composables/useBranding.js
+@@ -5,7 +5,11 @@
+ import { useMapGetter } from 'dashboard/composables/store.js';
+ 
+ export function useBranding() {
+-  const globalConfig = useMapGetter('globalConfig/get');
++const globalConfig = useMapGetter('globalConfig/get');
++
++const visibleInstallationName = name => {
++  return !name || name === 'Chatwoot' ? 'Chat Fleexa' : name;
++};
+   /**
+    * Replaces "Chatwoot" in text with the installation name from global config
+    * @param {string} text - The text to process
+@@ -14,10 +18,10 @@ export function useBranding() {
+   const replaceInstallationName = text => {
+     if (!text) return text;
+ 
+-    const installationName = globalConfig.value?.installationName;
+-    if (!installationName) return text;
+-
+-    return text.replace(/Chatwoot/g, installationName);
++    return text.replace(
++      /Chatwoot/g,
++      visibleInstallationName(globalConfig.value?.installationName)
++    );
+   };
+ 
+   return {
+diff --git a/theme/colors.js b/theme/colors.js
+index b24967e..917b306 100644
+--- a/theme/colors.js
++++ b/theme/colors.js
+@@ -1,6 +1,4 @@
+ const {
+-  blue,
+-  blueDark,
+   green,
+   greenDark,
+   yellow,
+@@ -15,18 +13,18 @@ const {
+ 
+ const colors = {
+   woot: {
+-    25: blue.blue2,
+-    50: blue.blue3,
+-    75: blue.blue4,
+-    100: blue.blue5,
+-    200: blue.blue7,
+-    300: blue.blue8,
+-    400: blueDark.blue11,
+-    500: blueDark.blue10,
+-    600: blueDark.blue9,
+-    700: blueDark.blue8,
+-    800: blueDark.blue6,
+-    900: blueDark.blue2,
++    25: '#F2FAF9',
++    50: '#E0F5F4',
++    75: '#C7EFED',
++    100: '#A8E4E1',
++    200: '#6BD2CE',
++    300: '#2CBDB8',
++    400: '#14B8B2',
++    500: '#0EA5A0',
++    600: '#0C8A86',
++    700: '#0A746F',
++    800: '#075A56',
++    900: '#0A0F1E',
+   },
+   green: {
+     50: greenDark.green12,
+@@ -226,7 +224,7 @@ const colors = {
+     },
+ 
+     black: '#000000',
+-    brand: '#2781F6',
++    brand: '#0EA5A0',
+     portal: 'var(--dynamic-portal-color)',
+     'portal-soft': 'var(--dynamic-portal-color-soft)',
+     'portal-faint': 'var(--dynamic-portal-color-faint)',

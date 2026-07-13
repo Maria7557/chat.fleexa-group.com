@@ -130,6 +130,7 @@ crm-vue-copy: ensure-env
 	$(COMPOSE) cp chatwoot-patches/crm-date-input-format-vue.patch rails:/tmp/crm-date-input-format-vue.patch
 	$(COMPOSE) cp chatwoot-patches/crm-marketing-dashboard-config-vue.patch rails:/tmp/crm-marketing-dashboard-config-vue.patch
 	$(COMPOSE) cp chatwoot-patches/crm-marketing-spend-vue.patch rails:/tmp/crm-marketing-spend-vue.patch
+	$(COMPOSE) cp chatwoot-patches/fleexa-global-branding-vue.patch rails:/tmp/fleexa-global-branding-vue.patch
 	@echo "CRM Vue patch copied to Rails container"
 
 crm-vue-check: crm-vue-copy
@@ -146,6 +147,7 @@ crm-vue-check: crm-vue-copy
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply --check /tmp/crm-date-input-format-vue.patch"
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply --check /tmp/crm-marketing-dashboard-config-vue.patch"
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply --check /tmp/crm-marketing-spend-vue.patch"
+	$(COMPOSE) exec rails sh -lc "cd /app && git apply --check /tmp/fleexa-global-branding-vue.patch"
 	@echo "CRM Vue patch validated"
 
 crm-vue-patch: crm-vue-copy
@@ -162,6 +164,7 @@ crm-vue-patch: crm-vue-copy
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply /tmp/crm-date-input-format-vue.patch"
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply /tmp/crm-marketing-dashboard-config-vue.patch"
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply /tmp/crm-marketing-spend-vue.patch"
+	$(COMPOSE) exec rails sh -lc "cd /app && git apply /tmp/fleexa-global-branding-vue.patch"
 	@echo "CRM Vue patch applied"
 
 crm-assets-build-host:
@@ -204,6 +207,7 @@ crm-assets-build-host:
 	git apply "$(CURDIR)/chatwoot-patches/crm-date-input-format-vue.patch"; \
 	git apply "$(CURDIR)/chatwoot-patches/crm-marketing-dashboard-config-vue.patch"; \
 	git apply "$(CURDIR)/chatwoot-patches/crm-marketing-spend-vue.patch"; \
+	git apply "$(CURDIR)/chatwoot-patches/fleexa-global-branding-vue.patch"; \
 	grep -n "ConversationBox" app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue; \
 	grep -n "CRM Deal" app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue; \
 	grep -n "Operator" app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue; \
@@ -220,6 +224,15 @@ crm-assets-build-host:
 	grep -n "Spend by Month" app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue; \
 	grep -n "getMarketingSpend" app/javascript/dashboard/api/crmPipeline.js; \
 	grep -n "getManualSpendEntries" app/javascript/dashboard/api/crmPipeline.js; \
+	grep -n "#0EA5A0" theme/colors.js; \
+	grep -n "14 165 160" app/javascript/dashboard/assets/scss/_next-colors.scss; \
+	grep -n "Chat Fleexa" app/javascript/dashboard/i18n/locale/en/login.json; \
+	grep -n "visibleInstallationName" app/javascript/shared/composables/useBranding.js; \
+	grep -n "text-n-brand bg-n-blue-3" app/javascript/dashboard/components-next/sidebar/SidebarGroupLeaf.vue; \
+	grep -n "rgba(14, 165, 160, 1)" app/javascript/dashboard/routes/dashboard/commands/commandbar.vue; \
+	grep -n "Fleexa brand color" app/javascript/dashboard/components-next/HelpCenter/PortalSwitcher/CreatePortalDialog.vue; \
+	grep -n "14, 165, 160" app/javascript/dashboard/modules/widget-preview/components/Widget.vue; \
+	grep -n "14, 165, 160" app/javascript/dashboard/assets/scss/super_admin/index.scss; \
 	if grep -n "Reply to client" app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue; then exit 1; fi; \
 	if grep -nE ">Title<|Title \\*" app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue; then exit 1; fi; \
 	HUSKY=0 npx --yes pnpm@10.2.0 install --frozen-lockfile; \
@@ -231,6 +244,7 @@ crm-assets-build-host:
 	grep -E "CRM Deal|Field setup|Operator" public/vite/assets/DealWorkspace-*.js >/dev/null; \
 	grep -E "Pipeline|crm_pipeline_index|crm_deal_workspace|crm_marketing_analytics|MarketingAnalytics" public/vite/.vite/manifest.json public/vite/assets/Pipeline-*.js public/vite/assets/MarketingAnalytics-*.js >/dev/null; \
 	grep -E "Customize dashboard|Add metric|Ad spend in selected period|Manual Spend Entries|Spend by Month|Add spend" public/vite/assets/MarketingAnalytics-*.js >/dev/null; \
+	grep -R -E "Chat Fleexa|#0EA5A0|14 165 160|rgba\\(14, ?165, ?160, ?1\\)" public/vite/assets >/dev/null; \
 	echo "CRM host assets built"
 
 crm-assets-install-local: ensure-env
@@ -241,7 +255,7 @@ crm-assets-install-local: ensure-env
 	docker create --name "$$install_container" "$(CHATWOOT_LOCAL_IMAGE)" sh -lc "sleep 600" >/dev/null; \
 	trap 'docker rm -f "$$install_container" >/dev/null 2>&1 || true' EXIT; \
 	docker start "$$install_container" >/dev/null; \
-	docker exec "$$install_container" sh -lc "mkdir -p /app/app/controllers/api/v1/accounts /app/app/javascript/dashboard/routes/dashboard /app/app/javascript/dashboard/api /app/app/javascript/dashboard/components-next/sidebar /app/app/services/crm/marketing_spend /app/app/jobs/crm /app/lib/tasks /app/app/listeners"; \
+	docker exec "$$install_container" sh -lc "mkdir -p /app/theme /app/app/controllers/api/v1/accounts /app/app/javascript/dashboard/routes/dashboard /app/app/javascript/dashboard/routes/dashboard/commands /app/app/javascript/dashboard/api /app/app/javascript/dashboard/assets/scss/super_admin /app/app/javascript/dashboard/components-next/HelpCenter/PortalSwitcher /app/app/javascript/dashboard/components-next/icon /app/app/javascript/dashboard/components-next/sidebar /app/app/javascript/dashboard/components-next/message/bubbles /app/app/javascript/dashboard/components/widgets/conversation/conversation /app/app/javascript/dashboard/modules/widget-preview/components /app/app/javascript/dashboard/i18n/locale /app/app/javascript/shared/composables /app/app/services/crm/marketing_spend /app/app/jobs/crm /app/lib/tasks /app/app/listeners"; \
 	docker cp "$(CRM_ASSETS_BUILD_DIR)/app/controllers/api/v1/accounts/crm" "$$install_container:/app/app/controllers/api/v1/accounts/"; \
 	docker cp "$(CRM_ASSETS_BUILD_DIR)/app/models/crm_deal.rb" "$$install_container:/app/app/models/crm_deal.rb"; \
 	docker cp "$(CRM_ASSETS_BUILD_DIR)/app/models/crm_deal_activity.rb" "$$install_container:/app/app/models/crm_deal_activity.rb"; \
@@ -264,7 +278,18 @@ crm-assets-install-local: ensure-env
 	docker cp "$(CRM_ASSETS_BUILD_DIR)/app/javascript/dashboard/routes/dashboard/conversation/ContactPanel.vue" "$$install_container:/app/app/javascript/dashboard/routes/dashboard/conversation/ContactPanel.vue"; \
 	docker cp "$(CRM_ASSETS_BUILD_DIR)/app/javascript/dashboard/routes/dashboard/crm" "$$install_container:/app/app/javascript/dashboard/routes/dashboard/"; \
 	docker cp "$(CRM_ASSETS_BUILD_DIR)/app/javascript/dashboard/routes/dashboard/dashboard.routes.js" "$$install_container:/app/app/javascript/dashboard/routes/dashboard/dashboard.routes.js"; \
-	docker cp "$(CRM_ASSETS_BUILD_DIR)/app/javascript/dashboard/components-next/sidebar/Sidebar.vue" "$$install_container:/app/app/javascript/dashboard/components-next/sidebar/Sidebar.vue"; \
+	docker cp "$(CRM_ASSETS_BUILD_DIR)/app/javascript/dashboard/routes/dashboard/commands/commandbar.vue" "$$install_container:/app/app/javascript/dashboard/routes/dashboard/commands/commandbar.vue"; \
+	docker cp "$(CRM_ASSETS_BUILD_DIR)/app/javascript/dashboard/components-next/sidebar" "$$install_container:/app/app/javascript/dashboard/components-next/"; \
+	docker cp "$(CRM_ASSETS_BUILD_DIR)/app/javascript/dashboard/components-next/icon/Logo.vue" "$$install_container:/app/app/javascript/dashboard/components-next/icon/Logo.vue"; \
+	docker cp "$(CRM_ASSETS_BUILD_DIR)/app/javascript/dashboard/components-next/message/bubbles/Dyte.vue" "$$install_container:/app/app/javascript/dashboard/components-next/message/bubbles/Dyte.vue"; \
+	docker cp "$(CRM_ASSETS_BUILD_DIR)/app/javascript/dashboard/components/widgets/conversation/conversation/LabelSuggestion.vue" "$$install_container:/app/app/javascript/dashboard/components/widgets/conversation/conversation/LabelSuggestion.vue"; \
+	docker cp "$(CRM_ASSETS_BUILD_DIR)/app/javascript/dashboard/i18n/locale/en" "$$install_container:/app/app/javascript/dashboard/i18n/locale/"; \
+	docker cp "$(CRM_ASSETS_BUILD_DIR)/app/javascript/shared/composables/useBranding.js" "$$install_container:/app/app/javascript/shared/composables/useBranding.js"; \
+	docker cp "$(CRM_ASSETS_BUILD_DIR)/app/javascript/dashboard/assets/scss/_next-colors.scss" "$$install_container:/app/app/javascript/dashboard/assets/scss/_next-colors.scss"; \
+	docker cp "$(CRM_ASSETS_BUILD_DIR)/app/javascript/dashboard/assets/scss/super_admin/index.scss" "$$install_container:/app/app/javascript/dashboard/assets/scss/super_admin/index.scss"; \
+	docker cp "$(CRM_ASSETS_BUILD_DIR)/app/javascript/dashboard/components-next/HelpCenter/PortalSwitcher/CreatePortalDialog.vue" "$$install_container:/app/app/javascript/dashboard/components-next/HelpCenter/PortalSwitcher/CreatePortalDialog.vue"; \
+	docker cp "$(CRM_ASSETS_BUILD_DIR)/app/javascript/dashboard/modules/widget-preview/components/Widget.vue" "$$install_container:/app/app/javascript/dashboard/modules/widget-preview/components/Widget.vue"; \
+	docker cp "$(CRM_ASSETS_BUILD_DIR)/theme/colors.js" "$$install_container:/app/theme/colors.js"; \
 	docker exec "$$install_container" sh -lc "rm -rf /app/public/vite && mkdir -p /app/public"; \
 	docker cp "$(CRM_ASSETS_BUILD_DIR)/public/vite" "$$install_container:/app/public/vite"; \
 	docker exec "$$install_container" sh -lc "test -d /app/public/vite/assets && test -f /app/public/vite/.vite/manifest.json"; \
@@ -288,6 +313,15 @@ crm-assets-install-local: ensure-env
 	docker exec "$$install_container" sh -lc "grep -n 'getMarketingDashboardConfig' /app/app/javascript/dashboard/api/crmPipeline.js"; \
 	docker exec "$$install_container" sh -lc "grep -n 'getMarketingSpend' /app/app/javascript/dashboard/api/crmPipeline.js"; \
 	docker exec "$$install_container" sh -lc "grep -n 'getManualSpendEntries' /app/app/javascript/dashboard/api/crmPipeline.js"; \
+	docker exec "$$install_container" sh -lc "grep -n '#0EA5A0' /app/theme/colors.js"; \
+	docker exec "$$install_container" sh -lc "grep -n '14 165 160' /app/app/javascript/dashboard/assets/scss/_next-colors.scss"; \
+	docker exec "$$install_container" sh -lc "grep -n 'Chat Fleexa' /app/app/javascript/dashboard/i18n/locale/en/login.json"; \
+	docker exec "$$install_container" sh -lc "grep -n 'visibleInstallationName' /app/app/javascript/shared/composables/useBranding.js"; \
+	docker exec "$$install_container" sh -lc "grep -n 'text-n-brand bg-n-blue-3' /app/app/javascript/dashboard/components-next/sidebar/SidebarGroupLeaf.vue"; \
+	docker exec "$$install_container" sh -lc "grep -n 'rgba(14, 165, 160, 1)' /app/app/javascript/dashboard/routes/dashboard/commands/commandbar.vue"; \
+	docker exec "$$install_container" sh -lc "grep -n 'Fleexa brand color' /app/app/javascript/dashboard/components-next/HelpCenter/PortalSwitcher/CreatePortalDialog.vue"; \
+	docker exec "$$install_container" sh -lc "grep -n '14, 165, 160' /app/app/javascript/dashboard/modules/widget-preview/components/Widget.vue"; \
+	docker exec "$$install_container" sh -lc "grep -n '14, 165, 160' /app/app/javascript/dashboard/assets/scss/super_admin/index.scss"; \
 	docker exec "$$install_container" sh -lc "if grep -n 'Reply to client' /app/app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue; then exit 1; fi"; \
 	docker exec "$$install_container" sh -lc "if grep -nE '>Title<|Title \\*' /app/app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue; then exit 1; fi"; \
 	docker commit "$$install_container" "$(CHATWOOT_LOCAL_IMAGE)" >/dev/null; \
@@ -325,7 +359,16 @@ crm-assets-refresh-local: crm-assets-build-host crm-assets-install-local
 	$(COMPOSE) exec -T rails sh -lc "grep -n 'getMarketingDashboardConfig' /app/app/javascript/dashboard/api/crmPipeline.js"; \
 	$(COMPOSE) exec -T rails sh -lc "grep -n 'getMarketingSpend' /app/app/javascript/dashboard/api/crmPipeline.js"; \
 	$(COMPOSE) exec -T rails sh -lc "grep -n 'getManualSpendEntries' /app/app/javascript/dashboard/api/crmPipeline.js"; \
+	$(COMPOSE) exec -T rails sh -lc "grep -n '#0EA5A0' /app/theme/colors.js"; \
+	$(COMPOSE) exec -T rails sh -lc "grep -n '14 165 160' /app/app/javascript/dashboard/assets/scss/_next-colors.scss"; \
+	$(COMPOSE) exec -T rails sh -lc "grep -n 'Chat Fleexa' /app/app/javascript/dashboard/i18n/locale/en/login.json"; \
+	$(COMPOSE) exec -T rails sh -lc "grep -n 'visibleInstallationName' /app/app/javascript/shared/composables/useBranding.js"; \
+	$(COMPOSE) exec -T rails sh -lc "grep -n 'text-n-brand bg-n-blue-3' /app/app/javascript/dashboard/components-next/sidebar/SidebarGroupLeaf.vue"; \
+	$(COMPOSE) exec -T rails sh -lc "grep -n 'rgba(14, 165, 160, 1)' /app/app/javascript/dashboard/routes/dashboard/commands/commandbar.vue"; \
+	$(COMPOSE) exec -T rails sh -lc "grep -n 'Fleexa brand color' /app/app/javascript/dashboard/components-next/HelpCenter/PortalSwitcher/CreatePortalDialog.vue"; \
+	$(COMPOSE) exec -T rails sh -lc "grep -n '14, 165, 160' /app/app/javascript/dashboard/modules/widget-preview/components/Widget.vue"; \
+	$(COMPOSE) exec -T rails sh -lc "grep -n '14, 165, 160' /app/app/javascript/dashboard/assets/scss/super_admin/index.scss"; \
 	$(COMPOSE) exec -T rails sh -lc "if grep -n 'Reply to client' /app/app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue; then exit 1; fi"; \
 	$(COMPOSE) exec -T rails sh -lc "if grep -nE '>Title<|Title \\*' /app/app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue; then exit 1; fi"; \
-	$(COMPOSE) exec -T rails sh -lc "test -d /app/public/vite/assets && test -f /app/public/vite/.vite/manifest.json && ls /app/public/vite/assets/DealWorkspace-*.js >/dev/null && ls /app/public/vite/assets/MarketingAnalytics-*.js >/dev/null && grep -E 'CRM Deal|Field setup|Operator' /app/public/vite/assets/DealWorkspace-*.js >/dev/null && grep -E 'Marketing Analytics|Pipeline funnel|Customize dashboard|Add metric|Ad spend in selected period|Manual Spend Entries|Spend by Month|Add spend' /app/public/vite/assets/MarketingAnalytics-*.js >/dev/null"; \
+	$(COMPOSE) exec -T rails sh -lc "test -d /app/public/vite/assets && test -f /app/public/vite/.vite/manifest.json && ls /app/public/vite/assets/DealWorkspace-*.js >/dev/null && ls /app/public/vite/assets/MarketingAnalytics-*.js >/dev/null && grep -E 'CRM Deal|Field setup|Operator' /app/public/vite/assets/DealWorkspace-*.js >/dev/null && grep -E 'Marketing Analytics|Pipeline funnel|Customize dashboard|Add metric|Ad spend in selected period|Manual Spend Entries|Spend by Month|Add spend' /app/public/vite/assets/MarketingAnalytics-*.js >/dev/null && grep -R -E 'Chat Fleexa|#0EA5A0|14 165 160|rgba\\(14, ?165, ?160, ?1\\)' /app/public/vite/assets >/dev/null"; \
 	echo "CRM local frontend assets refreshed"
