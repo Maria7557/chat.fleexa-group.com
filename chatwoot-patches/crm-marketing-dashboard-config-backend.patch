@@ -1,0 +1,184 @@
+diff --git a/app/controllers/api/v1/accounts/crm/deals_controller.rb b/app/controllers/api/v1/accounts/crm/deals_controller.rb
+index 902afbc..09e5109 100644
+--- a/app/controllers/api/v1/accounts/crm/deals_controller.rb
++++ b/app/controllers/api/v1/accounts/crm/deals_controller.rb
+@@ -93,7 +93,8 @@ class Api::V1::Accounts::Crm::DealsController < Api::V1::Accounts::BaseControlle
+     openstat_source from gclientid
+   ].freeze
+ 
+-  before_action :check_authorization
++  before_action :check_read_authorization, only: [:index, :show]
++  before_action :check_write_authorization, except: [:index, :show]
+   before_action :set_deal, only: [:show, :update, :destroy]
+ 
+   def index
+@@ -957,7 +958,11 @@ class Api::V1::Accounts::Crm::DealsController < Api::V1::Accounts::BaseControlle
+     )
+   end
+ 
+-  def check_authorization
++  def check_read_authorization
++    raise Pundit::NotAuthorizedError if Current.account_user.blank?
++  end
++
++  def check_write_authorization
+     raise Pundit::NotAuthorizedError unless Current.account_user.administrator?
+   end
+ end
+diff --git a/app/controllers/api/v1/accounts/crm/marketing_dashboard_controller.rb b/app/controllers/api/v1/accounts/crm/marketing_dashboard_controller.rb
+new file mode 100644
+index 0000000..214fbba
+--- /dev/null
++++ b/app/controllers/api/v1/accounts/crm/marketing_dashboard_controller.rb
+@@ -0,0 +1,114 @@
++class Api::V1::Accounts::Crm::MarketingDashboardController < Api::V1::Accounts::BaseController
++  CONFIG_KEY = 'crm_marketing_dashboard'.freeze
++  DEFAULT_WIDGETS = [
++    { key: 'spend', visible: true },
++    { key: 'new_leads', visible: true },
++    { key: 'successful_deals', visible: true },
++    { key: 'successful_deals_amount', visible: true },
++    { key: 'lost', visible: true },
++    { key: 'spam_percent', visible: true },
++    { key: 'reserved_amount', visible: false },
++    { key: 'rental_amount', visible: false },
++    { key: 'done_amount', visible: false }
++  ].freeze
++  ALLOWED_WIDGET_KEYS = DEFAULT_WIDGETS.map { |widget| widget[:key] }.freeze
++
++  before_action :check_read_authorization, only: [:show]
++  before_action :check_write_authorization, only: [:update]
++
++  def show
++    render json: { crm_marketing_dashboard: normalized_config(stored_config) }
++  end
++
++  def update
++    config = normalized_config(dashboard_config_params.to_h)
++    settings = (Current.account.settings || {}).to_h
++    Current.account.update!(settings: settings.merge(CONFIG_KEY => config))
++
++    render json: { crm_marketing_dashboard: config }
++  end
++
++  private
++
++  def stored_config
++    (Current.account.settings || {})[CONFIG_KEY]
++  end
++
++  def dashboard_config_params
++    params.require(:crm_marketing_dashboard).permit(widgets: [:key, :visible, :position])
++  end
++
++  def normalized_config(raw_config)
++    raw_widgets = raw_config.is_a?(Hash) ? Array(raw_config['widgets'] || raw_config[:widgets]) : []
++    return default_config if raw_widgets.blank?
++
++    widgets_by_key = raw_widgets.each_with_object({}) do |widget, memo|
++      key = value_for(widget, :key).to_s
++      next unless ALLOWED_WIDGET_KEYS.include?(key)
++
++      memo[key] = {
++        visible: value_for(widget, :visible),
++        position: value_for(widget, :position).to_i
++      }
++    end
++    return default_config if widgets_by_key.blank?
++
++    widgets = DEFAULT_WIDGETS.map.with_index do |widget, index|
++      key = widget[:key]
++      stored_widget = widgets_by_key[key] || {}
++      position = stored_widget[:position]
++
++      visible = if stored_widget.key?(:visible) && !stored_widget[:visible].nil?
++                  boolean_value(stored_widget[:visible])
++                else
++                  widget[:visible]
++                end
++
++      {
++        key: key,
++        visible: visible,
++        position: position.positive? ? position : index + 1
++      }
++    end
++
++    {
++      widgets: widgets.sort_by { |widget| [widget[:position], default_position(widget[:key])] }
++                      .map.with_index { |widget, index| widget.merge(position: index + 1) }
++    }
++  end
++
++  def default_config
++    {
++      widgets: DEFAULT_WIDGETS.map.with_index do |widget, index|
++        {
++          key: widget[:key],
++          visible: widget[:visible],
++          position: index + 1
++        }
++      end
++    }
++  end
++
++  def default_position(key)
++    ALLOWED_WIDGET_KEYS.index(key) || ALLOWED_WIDGET_KEYS.length
++  end
++
++  def value_for(payload, key)
++    return unless payload.respond_to?(:key?)
++    return payload[key] if payload.key?(key)
++
++    payload[key.to_s]
++  end
++
++  def boolean_value(value)
++    ActiveModel::Type::Boolean.new.cast(value)
++  end
++
++  def check_read_authorization
++    raise Pundit::NotAuthorizedError if Current.account_user.blank?
++  end
++
++  def check_write_authorization
++    raise Pundit::NotAuthorizedError unless Current.account_user.administrator?
++  end
++end
+diff --git a/app/controllers/api/v1/accounts/crm/pipeline_stages_controller.rb b/app/controllers/api/v1/accounts/crm/pipeline_stages_controller.rb
+index dccefa7..7868c23 100644
+--- a/app/controllers/api/v1/accounts/crm/pipeline_stages_controller.rb
++++ b/app/controllers/api/v1/accounts/crm/pipeline_stages_controller.rb
+@@ -1,5 +1,6 @@
+ class Api::V1::Accounts::Crm::PipelineStagesController < Api::V1::Accounts::BaseController
+-  before_action :check_authorization
++  before_action :check_read_authorization, only: [:index]
++  before_action :check_write_authorization, except: [:index]
+   before_action :set_pipeline_stage, only: [:update, :destroy, :reorder]
+ 
+   def index
+@@ -113,7 +114,11 @@ class Api::V1::Accounts::Crm::PipelineStagesController < Api::V1::Accounts::Base
+     render json: { error: message }, status: :unprocessable_entity
+   end
+ 
+-  def check_authorization
++  def check_read_authorization
++    raise Pundit::NotAuthorizedError if Current.account_user.blank?
++  end
++
++  def check_write_authorization
+     raise Pundit::NotAuthorizedError unless Current.account_user.administrator?
+   end
+ end
+diff --git a/config/routes.rb b/config/routes.rb
+index bb5e8b1..4684a2b 100644
+--- a/config/routes.rb
++++ b/config/routes.rb
+@@ -131,6 +131,7 @@ Rails.application.routes.draw do
+                 patch :stage_requirements
+               end
+             end
++            resource :marketing_dashboard, controller: :marketing_dashboard, only: [:show, :update]
+             resources :loss_reasons, only: [:index, :create, :update]
+           end
+           resources :canned_responses, only: [:index, :create, :update, :destroy]

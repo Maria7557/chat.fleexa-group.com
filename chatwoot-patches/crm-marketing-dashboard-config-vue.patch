@@ -1,0 +1,489 @@
+diff --git a/app/javascript/dashboard/api/crmPipeline.js b/app/javascript/dashboard/api/crmPipeline.js
+index 38a7689..10576d2 100644
+--- a/app/javascript/dashboard/api/crmPipeline.js
++++ b/app/javascript/dashboard/api/crmPipeline.js
+@@ -12,6 +12,9 @@ class CrmPipelineAPI {
+     this.dealFields = new ApiClient('crm/deal_fields', {
+       accountScoped: true,
+     });
++    this.marketingDashboard = new ApiClient('crm/marketing_dashboard', {
++      accountScoped: true,
++    });
+   }
+ 
+   getStages() {
+@@ -29,6 +32,14 @@ class CrmPipelineAPI {
+     return axios.get(this.deals.url, { params });
+   }
+ 
++  getMarketingDashboardConfig() {
++    return this.marketingDashboard.get();
++  }
++
++  updateMarketingDashboardConfig(data) {
++    return axios.patch(this.marketingDashboard.url, data);
++  }
++
+   getDeal(id) {
+     return this.deals.show(id);
+   }
+diff --git a/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue b/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue
+index 3c3eae8..91e5c64 100644
+--- a/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue
++++ b/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue
+@@ -1,9 +1,11 @@
+ <script setup>
+ import { computed, onMounted, ref } from 'vue';
++import Draggable from 'vuedraggable';
+ 
+ import CrmPipelineAPI from 'dashboard/api/crmPipeline';
+ import Button from 'dashboard/components-next/button/Button.vue';
+ import Spinner from 'dashboard/components-next/spinner/Spinner.vue';
++import { useAdmin } from 'dashboard/composables/useAdmin';
+ 
+ const PAGE_SIZE = 200;
+ const SUCCESSFUL_STAGE_TYPES = ['reserved', 'rental', 'closed_won'];
+@@ -23,6 +25,24 @@ const rangeOptions = [
+   { value: 'last_7_days', label: '7 days' },
+ ];
+ 
++const KPI_WIDGETS = [
++  { key: 'spend', label: 'Spend', visible: true },
++  { key: 'new_leads', label: 'New Leads', visible: true },
++  { key: 'successful_deals', label: 'Successful Deals', visible: true },
++  { key: 'successful_deals_amount', label: 'Successful Deals Amount', visible: true },
++  { key: 'lost', label: 'Lost', visible: true },
++  { key: 'spam_percent', label: 'Spam %', visible: true },
++  { key: 'reserved_amount', label: 'Reserved Amount', visible: false },
++  { key: 'rental_amount', label: 'Rental Amount', visible: false },
++  { key: 'done_amount', label: 'Done Amount', visible: false },
++];
++const KPI_WIDGET_KEYS = KPI_WIDGETS.map(widget => widget.key);
++const DEFAULT_VISIBLE_WIDGET_KEYS = KPI_WIDGETS.filter(widget => widget.visible).map(widget => widget.key);
++const KPI_WIDGET_POSITION = KPI_WIDGET_KEYS.reduce((memo, key, index) => {
++  memo[key] = index + 1;
++  return memo;
++}, {});
++
+ const TREND_CHART_WIDTH = 720;
+ const TREND_CHART_HEIGHT = 260;
+ const TREND_CHART_PADDING = {
+@@ -51,6 +71,11 @@ const customDateFrom = ref('');
+ const customDateTo = ref('');
+ const isLoading = ref(false);
+ const errorMessage = ref('');
++const dashboardConfig = ref(null);
++const draftWidgetKeys = ref([...DEFAULT_VISIBLE_WIDGET_KEYS]);
++const isDashboardCustomizerOpen = ref(false);
++const isSavingDashboardConfig = ref(false);
++const { isAdmin } = useAdmin();
+ const visibleTrendSeries = ref({
+   all: true,
+   google: true,
+@@ -405,44 +430,206 @@ const classifyTrafficSource = deal => {
+   return 'unknown';
+ };
+ 
+-const kpiCards = computed(() => [
+-  {
++const normalizeWidgetVisible = value => {
++  if (typeof value === 'boolean') return value;
++  if (value === 'true') return true;
++  if (value === 'false') return false;
++  return undefined;
++};
++
++const defaultDashboardConfig = () => ({
++  widgets: KPI_WIDGETS.map((widget, index) => ({
++    key: widget.key,
++    visible: widget.visible,
++    position: index + 1,
++  })),
++});
++
++const sanitizeDashboardConfig = config => {
++  const rawWidgets = Array.isArray(config?.widgets) ? config.widgets : [];
++  if (!rawWidgets.length) return defaultDashboardConfig();
++
++  const widgetsByKey = rawWidgets.reduce((memo, widget) => {
++    const key = String(widget?.key || '');
++    if (KPI_WIDGET_KEYS.includes(key)) memo[key] = widget;
++    return memo;
++  }, {});
++
++  if (!Object.keys(widgetsByKey).length) return defaultDashboardConfig();
++
++  const widgets = KPI_WIDGETS.map((widget, index) => {
++    const storedWidget = widgetsByKey[widget.key] || {};
++    const position = Number.parseInt(storedWidget.position, 10);
++    const visible = normalizeWidgetVisible(storedWidget.visible);
++
++    return {
++      key: widget.key,
++      visible: visible ?? widget.visible,
++      position: Number.isFinite(position) && position > 0 ? position : index + 1,
++    };
++  });
++
++  return {
++    widgets: widgets
++      .sort((a, b) => {
++        if (a.position === b.position) return KPI_WIDGET_POSITION[a.key] - KPI_WIDGET_POSITION[b.key];
++        return a.position - b.position;
++      })
++      .map((widget, index) => ({ ...widget, position: index + 1 })),
++  };
++};
++
++const metricRegistry = computed(() => ({
++  spend: {
++    key: 'spend',
+     label: 'Spend',
+     value: formatAmount(0),
+     detail: 'Ad spend in selected period',
+-    icon: 'i-lucide-wallet',
+   },
+-  {
++  new_leads: {
++    key: 'new_leads',
+     label: 'New Leads',
+     value: formatNumber(totalDeals.value),
+     detail: 'All new deals in selected period',
+-    icon: 'i-lucide-inbox',
+   },
+-  {
++  successful_deals: {
++    key: 'successful_deals',
+     label: 'Successful Deals',
+     value: formatNumber(countForStageTypes(SUCCESSFUL_STAGE_TYPES)),
+     detail: 'Reserved + Rental + Done',
+-    icon: 'i-lucide-check-check',
+   },
+-  {
++  successful_deals_amount: {
++    key: 'successful_deals_amount',
+     label: 'Successful Deals Amount',
+     value: formatAmount(revenueForStageTypes(SUCCESSFUL_STAGE_TYPES)),
+     detail: 'Reserved + Rental + Done value',
+-    icon: 'i-lucide-ticket',
+   },
+-  {
++  lost: {
++    key: 'lost',
+     label: 'Lost',
+     value: formatNumber(countForStageTypes(LOST_STAGE_TYPES)),
+     detail: 'Closed lost / cancelled',
+-    icon: 'i-lucide-circle-x',
+   },
+-  {
++  spam_percent: {
++    key: 'spam_percent',
+     label: 'Spam %',
+     value: formatPercent(spamRate.value),
+     detail: `${formatNumber(spamDealsCount.value)} spam conversations`,
+-    icon: 'i-lucide-percent',
+   },
+-]);
++  reserved_amount: {
++    key: 'reserved_amount',
++    label: 'Reserved Amount',
++    value: formatAmount(revenueForStageTypes(['reserved'])),
++    detail: 'Reserved stage value',
++  },
++  rental_amount: {
++    key: 'rental_amount',
++    label: 'Rental Amount',
++    value: formatAmount(revenueForStageTypes(['rental'])),
++    detail: 'Rental stage value',
++  },
++  done_amount: {
++    key: 'done_amount',
++    label: 'Done Amount',
++    value: formatAmount(revenueForStageTypes(['closed_won'])),
++    detail: 'Done stage value',
++  },
++}));
++
++const dashboardWidgetConfig = computed(() => sanitizeDashboardConfig(dashboardConfig.value));
++
++const visibleWidgetKeys = computed(() => {
++  return dashboardWidgetConfig.value.widgets
++    .filter(widget => widget.visible)
++    .map(widget => widget.key)
++    .filter(key => metricRegistry.value[key]);
++});
++
++const kpiCards = computed(() => visibleWidgetKeys.value.map(key => metricRegistry.value[key]));
++
++const allMetrics = computed(() => KPI_WIDGET_KEYS.map(key => metricRegistry.value[key]).filter(Boolean));
++
++const draftHiddenMetrics = computed(() => {
++  return allMetrics.value.filter(metric => !draftWidgetKeys.value.includes(metric.key));
++});
++
++const metricForKey = key => metricRegistry.value[key];
++
++const metricItemKey = key => key;
++
++const buildDashboardConfig = visibleKeys => {
++  const cleanVisibleKeys = visibleKeys.filter((key, index) => {
++    return KPI_WIDGET_KEYS.includes(key) && visibleKeys.indexOf(key) === index;
++  });
++  const orderedKeys = [
++    ...cleanVisibleKeys,
++    ...KPI_WIDGET_KEYS.filter(key => !cleanVisibleKeys.includes(key)),
++  ];
++
++  return {
++    widgets: orderedKeys.map((key, index) => ({
++      key,
++      visible: cleanVisibleKeys.includes(key),
++      position: index + 1,
++    })),
++  };
++};
++
++const openDashboardCustomizer = () => {
++  if (!isAdmin.value) return;
++
++  draftWidgetKeys.value = [...visibleWidgetKeys.value];
++  isDashboardCustomizerOpen.value = true;
++};
++
++const closeDashboardCustomizer = () => {
++  if (isSavingDashboardConfig.value) return;
++  isDashboardCustomizerOpen.value = false;
++};
++
++const addDraftWidget = key => {
++  if (!KPI_WIDGET_KEYS.includes(key) || draftWidgetKeys.value.includes(key)) return;
++  draftWidgetKeys.value = [...draftWidgetKeys.value, key];
++};
++
++const removeDraftWidget = key => {
++  draftWidgetKeys.value = draftWidgetKeys.value.filter(widgetKey => widgetKey !== key);
++};
++
++const resetDraftDashboard = () => {
++  draftWidgetKeys.value = [...DEFAULT_VISIBLE_WIDGET_KEYS];
++};
++
++const responseDashboardConfig = response => {
++  return response?.data?.crm_marketing_dashboard || response?.data || null;
++};
++
++const fetchDashboardConfig = async () => {
++  try {
++    const response = await CrmPipelineAPI.getMarketingDashboardConfig();
++    dashboardConfig.value = sanitizeDashboardConfig(responseDashboardConfig(response));
++  } catch (_error) {
++    dashboardConfig.value = defaultDashboardConfig();
++  }
++};
++
++const saveDashboardConfig = async () => {
++  isSavingDashboardConfig.value = true;
++  errorMessage.value = '';
++
++  try {
++    const nextConfig = buildDashboardConfig(draftWidgetKeys.value);
++    const response = await CrmPipelineAPI.updateMarketingDashboardConfig({
++      crm_marketing_dashboard: nextConfig,
++    });
++    dashboardConfig.value = sanitizeDashboardConfig(responseDashboardConfig(response));
++    isDashboardCustomizerOpen.value = false;
++  } catch (error) {
++    errorMessage.value = error?.response?.data?.error || error?.message || 'Failed to save dashboard settings';
++  } finally {
++    isSavingDashboardConfig.value = false;
++  }
++};
+ 
+ const dealDateKeys = computed(() => {
+   return deals.value.map(deal => trendDateKeyFromValue(deal.created_at)).filter(Boolean).sort();
+@@ -708,7 +895,10 @@ const clearActiveTrendPoint = () => {
+   activeTrendIndex.value = null;
+ };
+ 
+-onMounted(fetchAnalytics);
++onMounted(() => {
++  fetchDashboardConfig();
++  fetchAnalytics();
++});
+ </script>
+ 
+ <template>
+@@ -815,17 +1005,14 @@ onMounted(fetchAnalytics);
+       </div>
+ 
+       <div v-else class="grid gap-6">
+-        <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
++        <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-6 2xl:grid-cols-7">
+           <article
+             v-for="card in kpiCards"
+-            :key="card.label"
+-            class="rounded-lg border border-n-weak bg-n-solid-1 p-4"
++            :key="card.key"
++            class="min-h-[128px] rounded-lg border border-n-weak bg-n-solid-1 p-4"
+           >
+-            <div class="flex items-center justify-between gap-3">
+-              <span class="text-xs font-medium uppercase tracking-normal text-n-slate-10">
+-                {{ card.label }}
+-              </span>
+-              <i :class="card.icon" class="h-4 w-4 text-n-slate-9" />
++            <div class="text-xs font-medium uppercase tracking-normal text-n-slate-10">
++              {{ card.label }}
+             </div>
+             <div class="mt-4 text-xl font-semibold text-n-slate-12">
+               {{ card.value }}
+@@ -834,6 +1021,15 @@ onMounted(fetchAnalytics);
+               {{ card.detail }}
+             </div>
+           </article>
++          <button
++            v-if="isAdmin"
++            type="button"
++            class="flex min-h-[128px] items-center justify-center gap-2 rounded-lg border border-dashed border-n-weak bg-n-background p-4 text-sm font-medium text-n-slate-11 transition hover:border-n-brand hover:text-n-brand"
++            @click="openDashboardCustomizer"
++          >
++            <i class="i-lucide-plus h-4 w-4" />
++            <span>Add metric</span>
++          </button>
+         </div>
+ 
+         <section class="grid gap-4 rounded-lg border border-n-weak bg-n-solid-1 p-5">
+@@ -1085,5 +1281,121 @@ onMounted(fetchAnalytics);
+ 
+       </div>
+     </main>
++
++    <div
++      v-if="isDashboardCustomizerOpen"
++      class="fixed inset-0 z-50 bg-n-slate-12/40"
++      @click.self="closeDashboardCustomizer"
++    >
++      <aside class="ml-auto flex h-full w-full max-w-[520px] flex-col border-l border-n-weak bg-n-background shadow-xl">
++        <header class="flex items-center justify-between border-b border-n-weak px-5 py-4">
++          <h2 class="text-base font-semibold text-n-slate-12">
++            Customize dashboard
++          </h2>
++          <button
++            type="button"
++            class="grid h-8 w-8 place-items-center rounded-md text-n-slate-10 transition hover:bg-n-alpha-2 hover:text-n-slate-12"
++            aria-label="Close dashboard settings"
++            @click="closeDashboardCustomizer"
++          >
++            <i class="i-lucide-x h-4 w-4" />
++          </button>
++        </header>
++
++        <div class="min-h-0 flex-1 overflow-y-auto px-5 py-4">
++          <Draggable
++            v-model="draftWidgetKeys"
++            :item-key="metricItemKey"
++            handle=".js-kpi-drag-handle"
++            class="grid gap-2"
++          >
++            <template #item="{ element }">
++              <div
++                v-if="metricForKey(element)"
++                class="grid grid-cols-[32px_minmax(0,1fr)_auto] items-center gap-3 rounded-lg border border-n-weak bg-n-solid-1 p-3"
++              >
++                <button
++                  type="button"
++                  class="js-kpi-drag-handle grid h-8 w-8 cursor-grab place-items-center rounded-md text-n-slate-9 transition hover:bg-n-alpha-2 hover:text-n-slate-12"
++                  aria-label="Reorder metric"
++                  title="Reorder"
++                >
++                  <i class="i-lucide-grip-vertical h-4 w-4" />
++                </button>
++                <div class="min-w-0">
++                  <div class="truncate text-sm font-medium text-n-slate-12">
++                    {{ metricForKey(element).label }}
++                  </div>
++                  <div class="truncate text-xs text-n-slate-10">
++                    {{ metricForKey(element).value }}
++                  </div>
++                </div>
++                <label class="inline-flex items-center gap-2 text-xs font-medium text-n-slate-10">
++                  <input
++                    checked
++                    class="h-4 w-4 rounded border-n-weak text-n-brand"
++                    type="checkbox"
++                    @change="removeDraftWidget(element)"
++                  />
++                  Enabled
++                </label>
++              </div>
++            </template>
++          </Draggable>
++
++          <div v-if="draftHiddenMetrics.length" class="mt-4 grid gap-2">
++            <div
++              v-for="metric in draftHiddenMetrics"
++              :key="metric.key"
++              class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-lg border border-n-weak bg-n-background p-3"
++            >
++              <div class="min-w-0">
++                <div class="truncate text-sm font-medium text-n-slate-12">
++                  {{ metric.label }}
++                </div>
++                <div class="truncate text-xs text-n-slate-10">
++                  {{ metric.value }}
++                </div>
++              </div>
++              <label class="inline-flex items-center gap-2 text-xs font-medium text-n-slate-10">
++                <input
++                  class="h-4 w-4 rounded border-n-weak text-n-brand"
++                  type="checkbox"
++                  @change="addDraftWidget(metric.key)"
++                />
++                Enabled
++              </label>
++            </div>
++          </div>
++        </div>
++
++        <footer class="flex flex-wrap items-center justify-between gap-3 border-t border-n-weak px-5 py-4">
++          <button
++            type="button"
++            class="rounded-md px-3 py-2 text-sm font-medium text-n-slate-11 transition hover:bg-n-alpha-2 hover:text-n-slate-12"
++            @click="resetDraftDashboard"
++          >
++            Reset to default
++          </button>
++          <div class="flex items-center gap-2">
++            <button
++              type="button"
++              class="rounded-md px-3 py-2 text-sm font-medium text-n-slate-11 transition hover:bg-n-alpha-2 hover:text-n-slate-12"
++              @click="closeDashboardCustomizer"
++            >
++              Cancel
++            </button>
++            <button
++              type="button"
++              class="rounded-md bg-n-brand px-3 py-2 text-sm font-medium text-white transition hover:bg-n-brand/90 disabled:cursor-not-allowed disabled:opacity-60"
++              :disabled="isSavingDashboardConfig"
++              @click="saveDashboardConfig"
++            >
++              {{ isSavingDashboardConfig ? 'Saving...' : 'Save' }}
++            </button>
++          </div>
++        </footer>
++      </aside>
++    </div>
+   </section>
+ </template>
+diff --git a/app/javascript/dashboard/routes/dashboard/crm/routes.js b/app/javascript/dashboard/routes/dashboard/crm/routes.js
+index 8aab3bc..b3d23fd 100644
+--- a/app/javascript/dashboard/routes/dashboard/crm/routes.js
++++ b/app/javascript/dashboard/routes/dashboard/crm/routes.js
+@@ -14,7 +14,7 @@ export const routes = [
+     name: 'crm_marketing_analytics',
+     meta: {
+       requiresAuth: true,
+-      permissions: ['administrator'],
++      permissions: ['administrator', 'agent'],
+     },
+     component: () => import('./MarketingAnalytics.vue'),
+   },
