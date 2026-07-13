@@ -55,6 +55,7 @@ COPY chatwoot-patches/crm-deal-backfill.patch /tmp/crm-deal-backfill.patch
 COPY chatwoot-patches/crm-marketing-dashboard-config-backend.patch /tmp/crm-marketing-dashboard-config-backend.patch
 COPY chatwoot-patches/crm-marketing-spend-backend.patch /tmp/crm-marketing-spend-backend.patch
 COPY chatwoot-patches/crm-marketing-google-airbyte-backend.patch /tmp/crm-marketing-google-airbyte-backend.patch
+COPY chatwoot-patches/crm-marketing-meta-airbyte-backend.patch /tmp/crm-marketing-meta-airbyte-backend.patch
 COPY chatwoot-patches/crm-pipeline-vue.patch /tmp/crm-pipeline-vue.patch
 COPY chatwoot-patches/crm-deal-workspace-vue.patch /tmp/crm-deal-workspace-vue.patch
 COPY chatwoot-patches/crm-deal-fields-vue.patch /tmp/crm-deal-fields-vue.patch
@@ -83,6 +84,7 @@ RUN cd /app && \
     git apply /tmp/crm-marketing-dashboard-config-backend.patch && \
     git apply /tmp/crm-marketing-spend-backend.patch && \
     git apply /tmp/crm-marketing-google-airbyte-backend.patch && \
+    git apply /tmp/crm-marketing-meta-airbyte-backend.patch && \
     git apply /tmp/crm-pipeline-vue.patch && \
     git apply /tmp/crm-deal-workspace-vue.patch && \
     git apply /tmp/crm-deal-fields-vue.patch && \

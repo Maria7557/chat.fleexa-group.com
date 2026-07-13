@@ -6,7 +6,7 @@ CHATWOOT_BASE_IMAGE := chatwoot/chatwoot:v4.14.2
 CHATWOOT_LOCAL_IMAGE := fleexa-chatwoot:v4.14.2-patch1
 CRM_ASSETS_BUILD_DIR := /tmp/fleexa-chatwoot-app-build
 
-.PHONY: setup up down logs migrate seed shell verify-patch ensure-env crm-apply crm-migrate crm-seed crm-autocreate-backfill crm-marketing-spend-migrate crm-marketing-spend-demo crm-marketing-spend-rebuild crm-marketing-google-airbyte-migrate crm-marketing-google-airbyte-seed crm-marketing-google-airbyte-normalize crm-marketing-google-airbyte-clear crm-copy-patches crm-patch-check crm-patch crm-install crm-vue-copy crm-vue-check crm-vue-patch crm-assets-build-host crm-assets-install-local crm-assets-refresh-local
+.PHONY: setup up down logs migrate seed shell verify-patch ensure-env crm-apply crm-migrate crm-seed crm-autocreate-backfill crm-marketing-spend-migrate crm-marketing-spend-demo crm-marketing-spend-rebuild crm-marketing-google-airbyte-migrate crm-marketing-google-airbyte-seed crm-marketing-google-airbyte-normalize crm-marketing-google-airbyte-clear crm-marketing-meta-airbyte-migrate crm-marketing-meta-airbyte-seed crm-marketing-meta-airbyte-normalize crm-marketing-meta-airbyte-clear crm-copy-patches crm-patch-check crm-patch crm-install crm-vue-copy crm-vue-check crm-vue-patch crm-assets-build-host crm-assets-install-local crm-assets-refresh-local
 
 ensure-env:
 	@test -f $(ENV_FILE) || (echo "$(ENV_FILE) is missing. Run: make setup"; exit 1)
@@ -40,18 +40,22 @@ crm-apply: ensure-env
 	$(COMPOSE) cp chatwoot-patches/crm-pipeline-migration.sql postgres:/tmp/crm-pipeline-migration.sql
 	$(COMPOSE) cp chatwoot-patches/crm-marketing-spend-migration.sql postgres:/tmp/crm-marketing-spend-migration.sql
 	$(COMPOSE) cp chatwoot-patches/crm-marketing-google-airbyte-migration.sql postgres:/tmp/crm-marketing-google-airbyte-migration.sql
+	$(COMPOSE) cp chatwoot-patches/crm-marketing-meta-airbyte-migration.sql postgres:/tmp/crm-marketing-meta-airbyte-migration.sql
 	$(COMPOSE) exec postgres psql -U chatwoot -d chatwoot_production -f /tmp/crm-pipeline-migration.sql
 	$(COMPOSE) exec postgres psql -U chatwoot -d chatwoot_production -f /tmp/crm-marketing-spend-migration.sql
 	$(COMPOSE) exec postgres psql -U chatwoot -d chatwoot_production -f /tmp/crm-marketing-google-airbyte-migration.sql
+	$(COMPOSE) exec postgres psql -U chatwoot -d chatwoot_production -f /tmp/crm-marketing-meta-airbyte-migration.sql
 	@echo "CRM tables applied"
 
 crm-migrate: ensure-env
 	$(COMPOSE) cp chatwoot-patches/crm-pipeline-migration.sql postgres:/tmp/crm-pipeline-migration.sql
 	$(COMPOSE) cp chatwoot-patches/crm-marketing-spend-migration.sql postgres:/tmp/crm-marketing-spend-migration.sql
 	$(COMPOSE) cp chatwoot-patches/crm-marketing-google-airbyte-migration.sql postgres:/tmp/crm-marketing-google-airbyte-migration.sql
+	$(COMPOSE) cp chatwoot-patches/crm-marketing-meta-airbyte-migration.sql postgres:/tmp/crm-marketing-meta-airbyte-migration.sql
 	$(COMPOSE) exec postgres psql -U chatwoot -d chatwoot_production -f /tmp/crm-pipeline-migration.sql
 	$(COMPOSE) exec postgres psql -U chatwoot -d chatwoot_production -f /tmp/crm-marketing-spend-migration.sql
 	$(COMPOSE) exec postgres psql -U chatwoot -d chatwoot_production -f /tmp/crm-marketing-google-airbyte-migration.sql
+	$(COMPOSE) exec postgres psql -U chatwoot -d chatwoot_production -f /tmp/crm-marketing-meta-airbyte-migration.sql
 	@echo "CRM migration complete"
 
 crm-seed:
@@ -66,8 +70,10 @@ crm-autocreate-backfill: ensure-env
 crm-marketing-spend-migrate: ensure-env
 	$(COMPOSE) cp chatwoot-patches/crm-marketing-spend-migration.sql postgres:/tmp/crm-marketing-spend-migration.sql
 	$(COMPOSE) cp chatwoot-patches/crm-marketing-google-airbyte-migration.sql postgres:/tmp/crm-marketing-google-airbyte-migration.sql
+	$(COMPOSE) cp chatwoot-patches/crm-marketing-meta-airbyte-migration.sql postgres:/tmp/crm-marketing-meta-airbyte-migration.sql
 	$(COMPOSE) exec postgres psql -U chatwoot -d chatwoot_production -f /tmp/crm-marketing-spend-migration.sql
 	$(COMPOSE) exec postgres psql -U chatwoot -d chatwoot_production -f /tmp/crm-marketing-google-airbyte-migration.sql
+	$(COMPOSE) exec postgres psql -U chatwoot -d chatwoot_production -f /tmp/crm-marketing-meta-airbyte-migration.sql
 	@echo "CRM marketing spend migration complete"
 
 crm-marketing-spend-demo: ensure-env
@@ -94,6 +100,23 @@ crm-marketing-google-airbyte-clear: ensure-env
 	@test -n "$(ACCOUNT_ID)" || (echo "Usage: ACCOUNT_ID=1 make crm-marketing-google-airbyte-clear" && exit 1)
 	$(COMPOSE) exec rails bundle exec rake "crm:marketing_spend:clear_google_ads_mock[$(ACCOUNT_ID)]"
 
+crm-marketing-meta-airbyte-migrate: ensure-env
+	$(COMPOSE) cp chatwoot-patches/crm-marketing-meta-airbyte-migration.sql postgres:/tmp/crm-marketing-meta-airbyte-migration.sql
+	$(COMPOSE) exec postgres psql -U chatwoot -d chatwoot_production -f /tmp/crm-marketing-meta-airbyte-migration.sql
+	@echo "CRM marketing Meta Airbyte migration complete"
+
+crm-marketing-meta-airbyte-seed: ensure-env
+	@test -n "$(ACCOUNT_ID)" || (echo "Usage: ACCOUNT_ID=1 make crm-marketing-meta-airbyte-seed" && exit 1)
+	$(COMPOSE) exec rails bundle exec rake "crm:marketing_spend:seed_meta_ads_mock[$(ACCOUNT_ID)]"
+
+crm-marketing-meta-airbyte-normalize: ensure-env
+	@test -n "$(ACCOUNT_ID)" || (echo "Usage: ACCOUNT_ID=1 make crm-marketing-meta-airbyte-normalize" && exit 1)
+	$(COMPOSE) exec rails bundle exec rake "crm:marketing_spend:normalize_meta_ads[$(ACCOUNT_ID)]"
+
+crm-marketing-meta-airbyte-clear: ensure-env
+	@test -n "$(ACCOUNT_ID)" || (echo "Usage: ACCOUNT_ID=1 make crm-marketing-meta-airbyte-clear" && exit 1)
+	$(COMPOSE) exec rails bundle exec rake "crm:marketing_spend:clear_meta_ads_mock[$(ACCOUNT_ID)]"
+
 crm-copy-patches: ensure-env
 	$(COMPOSE) cp chatwoot-patches/crm-models.rb.patch rails:/tmp/crm-models.rb.patch
 	$(COMPOSE) cp chatwoot-patches/crm-controllers.rb.patch rails:/tmp/crm-controllers.rb.patch
@@ -107,6 +130,7 @@ crm-copy-patches: ensure-env
 	$(COMPOSE) cp chatwoot-patches/crm-marketing-dashboard-config-backend.patch rails:/tmp/crm-marketing-dashboard-config-backend.patch
 	$(COMPOSE) cp chatwoot-patches/crm-marketing-spend-backend.patch rails:/tmp/crm-marketing-spend-backend.patch
 	$(COMPOSE) cp chatwoot-patches/crm-marketing-google-airbyte-backend.patch rails:/tmp/crm-marketing-google-airbyte-backend.patch
+	$(COMPOSE) cp chatwoot-patches/crm-marketing-meta-airbyte-backend.patch rails:/tmp/crm-marketing-meta-airbyte-backend.patch
 	@echo "CRM patch files copied to Rails container"
 
 crm-patch-check: crm-copy-patches
@@ -122,6 +146,7 @@ crm-patch-check: crm-copy-patches
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply --check /tmp/crm-marketing-dashboard-config-backend.patch"
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply --check /tmp/crm-marketing-spend-backend.patch"
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply --check /tmp/crm-marketing-google-airbyte-backend.patch"
+	$(COMPOSE) exec rails sh -lc "cd /app && git apply --check /tmp/crm-marketing-meta-airbyte-backend.patch"
 	@echo "CRM patches validated"
 
 crm-patch:
@@ -137,6 +162,7 @@ crm-patch:
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply /tmp/crm-marketing-dashboard-config-backend.patch"
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply /tmp/crm-marketing-spend-backend.patch"
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply /tmp/crm-marketing-google-airbyte-backend.patch"
+	$(COMPOSE) exec rails sh -lc "cd /app && git apply /tmp/crm-marketing-meta-airbyte-backend.patch"
 	@echo "CRM patches applied to Rails container"
 
 crm-install: crm-copy-patches crm-patch
@@ -218,6 +244,7 @@ crm-assets-build-host:
 	git apply "$(CURDIR)/chatwoot-patches/crm-marketing-dashboard-config-backend.patch"; \
 	git apply "$(CURDIR)/chatwoot-patches/crm-marketing-spend-backend.patch"; \
 	git apply "$(CURDIR)/chatwoot-patches/crm-marketing-google-airbyte-backend.patch"; \
+	git apply "$(CURDIR)/chatwoot-patches/crm-marketing-meta-airbyte-backend.patch"; \
 	git apply "$(CURDIR)/chatwoot-patches/crm-pipeline-vue.patch"; \
 	git apply "$(CURDIR)/chatwoot-patches/crm-deal-workspace-vue.patch"; \
 	git apply "$(CURDIR)/chatwoot-patches/crm-deal-fields-vue.patch"; \
@@ -245,6 +272,9 @@ crm-assets-build-host:
 	grep -n "GoogleAdsAirbyteNormalizer" app/services/crm/marketing_spend/google_ads_airbyte_normalizer.rb; \
 	grep -n "AirbyteGoogleAdsDailySpendMock" app/models/airbyte_google_ads_daily_spend_mock.rb; \
 	grep -n "seed_google_ads_mock" lib/tasks/crm_marketing_spend.rake; \
+	grep -n "MetaAdsAirbyteNormalizer" app/services/crm/marketing_spend/meta_ads_airbyte_normalizer.rb; \
+	grep -n "AirbyteMetaAdsDailySpendMock" app/models/airbyte_meta_ads_daily_spend_mock.rb; \
+	grep -n "seed_meta_ads_mock" lib/tasks/crm_marketing_spend.rake; \
 	grep -n "Customize dashboard" app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue; \
 	grep -n "Manual Spend Entries" app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue; \
 	grep -n "Spend by Month" app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue; \
@@ -282,10 +312,12 @@ crm-assets-install-local: ensure-env
 	docker cp "$(CRM_ASSETS_BUILD_DIR)/app/models/manual_spend_entry.rb" "$$install_container:/app/app/models/manual_spend_entry.rb"; \
 	docker cp "$(CRM_ASSETS_BUILD_DIR)/app/models/marketing_spend_daily.rb" "$$install_container:/app/app/models/marketing_spend_daily.rb"; \
 	docker cp "$(CRM_ASSETS_BUILD_DIR)/app/models/airbyte_google_ads_daily_spend_mock.rb" "$$install_container:/app/app/models/airbyte_google_ads_daily_spend_mock.rb"; \
+	docker cp "$(CRM_ASSETS_BUILD_DIR)/app/models/airbyte_meta_ads_daily_spend_mock.rb" "$$install_container:/app/app/models/airbyte_meta_ads_daily_spend_mock.rb"; \
 	docker cp "$(CRM_ASSETS_BUILD_DIR)/config/routes.rb" "$$install_container:/app/config/routes.rb"; \
 	docker cp "$(CRM_ASSETS_BUILD_DIR)/app/services/crm/ensure_from_conversation_service.rb" "$$install_container:/app/app/services/crm/ensure_from_conversation_service.rb"; \
 	docker cp "$(CRM_ASSETS_BUILD_DIR)/app/services/crm/marketing_spend/manual_entry_normalizer.rb" "$$install_container:/app/app/services/crm/marketing_spend/manual_entry_normalizer.rb"; \
 	docker cp "$(CRM_ASSETS_BUILD_DIR)/app/services/crm/marketing_spend/google_ads_airbyte_normalizer.rb" "$$install_container:/app/app/services/crm/marketing_spend/google_ads_airbyte_normalizer.rb"; \
+	docker cp "$(CRM_ASSETS_BUILD_DIR)/app/services/crm/marketing_spend/meta_ads_airbyte_normalizer.rb" "$$install_container:/app/app/services/crm/marketing_spend/meta_ads_airbyte_normalizer.rb"; \
 	docker cp "$(CRM_ASSETS_BUILD_DIR)/app/jobs/crm/ensure_from_conversation_job.rb" "$$install_container:/app/app/jobs/crm/ensure_from_conversation_job.rb"; \
 	docker cp "$(CRM_ASSETS_BUILD_DIR)/app/listeners/webhook_listener.rb" "$$install_container:/app/app/listeners/webhook_listener.rb"; \
 	docker cp "$(CRM_ASSETS_BUILD_DIR)/lib/tasks/crm_deal_backfill.rake" "$$install_container:/app/lib/tasks/crm_deal_backfill.rake"; \
@@ -307,6 +339,9 @@ crm-assets-install-local: ensure-env
 	docker exec "$$install_container" sh -lc "grep -n 'GoogleAdsAirbyteNormalizer' /app/app/services/crm/marketing_spend/google_ads_airbyte_normalizer.rb"; \
 	docker exec "$$install_container" sh -lc "grep -n 'AirbyteGoogleAdsDailySpendMock' /app/app/models/airbyte_google_ads_daily_spend_mock.rb"; \
 	docker exec "$$install_container" sh -lc "grep -n 'seed_google_ads_mock' /app/lib/tasks/crm_marketing_spend.rake"; \
+	docker exec "$$install_container" sh -lc "grep -n 'MetaAdsAirbyteNormalizer' /app/app/services/crm/marketing_spend/meta_ads_airbyte_normalizer.rb"; \
+	docker exec "$$install_container" sh -lc "grep -n 'AirbyteMetaAdsDailySpendMock' /app/app/models/airbyte_meta_ads_daily_spend_mock.rb"; \
+	docker exec "$$install_container" sh -lc "grep -n 'seed_meta_ads_mock' /app/lib/tasks/crm_marketing_spend.rake"; \
 	docker exec "$$install_container" sh -lc "grep -n 'ConversationBox' /app/app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue"; \
 	docker exec "$$install_container" sh -lc "grep -n 'CRM Deal' /app/app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue"; \
 	docker exec "$$install_container" sh -lc "grep -n 'Operator' /app/app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue"; \
@@ -348,6 +383,9 @@ crm-assets-refresh-local: crm-assets-build-host crm-assets-install-local
 	$(COMPOSE) exec -T rails sh -lc "grep -n 'GoogleAdsAirbyteNormalizer' /app/app/services/crm/marketing_spend/google_ads_airbyte_normalizer.rb"; \
 	$(COMPOSE) exec -T rails sh -lc "grep -n 'AirbyteGoogleAdsDailySpendMock' /app/app/models/airbyte_google_ads_daily_spend_mock.rb"; \
 	$(COMPOSE) exec -T rails sh -lc "grep -n 'seed_google_ads_mock' /app/lib/tasks/crm_marketing_spend.rake"; \
+	$(COMPOSE) exec -T rails sh -lc "grep -n 'MetaAdsAirbyteNormalizer' /app/app/services/crm/marketing_spend/meta_ads_airbyte_normalizer.rb"; \
+	$(COMPOSE) exec -T rails sh -lc "grep -n 'AirbyteMetaAdsDailySpendMock' /app/app/models/airbyte_meta_ads_daily_spend_mock.rb"; \
+	$(COMPOSE) exec -T rails sh -lc "grep -n 'seed_meta_ads_mock' /app/lib/tasks/crm_marketing_spend.rake"; \
 	$(COMPOSE) exec -T rails sh -lc "grep -n 'ConversationBox' /app/app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue"; \
 	$(COMPOSE) exec -T rails sh -lc "grep -n 'CRM Deal' /app/app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue"; \
 	$(COMPOSE) exec -T rails sh -lc "grep -n 'Operator' /app/app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue"; \
