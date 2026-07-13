@@ -14,6 +14,7 @@ COPY chatwoot-patches/crm-deal-workspace-assignee-vue.patch /tmp/crm-deal-worksp
 COPY chatwoot-patches/crm-marketing-analytics-vue.patch /tmp/crm-marketing-analytics-vue.patch
 COPY chatwoot-patches/crm-date-input-format-vue.patch /tmp/crm-date-input-format-vue.patch
 COPY chatwoot-patches/crm-marketing-dashboard-config-vue.patch /tmp/crm-marketing-dashboard-config-vue.patch
+COPY chatwoot-patches/crm-marketing-spend-vue.patch /tmp/crm-marketing-spend-vue.patch
 
 RUN cd /app && \
     git apply /tmp/crm-pipeline-vue.patch && \
@@ -28,6 +29,7 @@ RUN cd /app && \
     git apply /tmp/crm-marketing-analytics-vue.patch && \
     git apply /tmp/crm-date-input-format-vue.patch && \
     git apply /tmp/crm-marketing-dashboard-config-vue.patch && \
+    git apply /tmp/crm-marketing-spend-vue.patch && \
     HUSKY=0 pnpm install --frozen-lockfile && \
     (node node_modules/esbuild/install.js 2>/dev/null || true)
 
@@ -51,6 +53,7 @@ COPY chatwoot-patches/crm-deal-query-backend.patch /tmp/crm-deal-query-backend.p
 COPY chatwoot-patches/crm-deals-export-backend.patch /tmp/crm-deals-export-backend.patch
 COPY chatwoot-patches/crm-deal-backfill.patch /tmp/crm-deal-backfill.patch
 COPY chatwoot-patches/crm-marketing-dashboard-config-backend.patch /tmp/crm-marketing-dashboard-config-backend.patch
+COPY chatwoot-patches/crm-marketing-spend-backend.patch /tmp/crm-marketing-spend-backend.patch
 COPY chatwoot-patches/crm-pipeline-vue.patch /tmp/crm-pipeline-vue.patch
 COPY chatwoot-patches/crm-deal-workspace-vue.patch /tmp/crm-deal-workspace-vue.patch
 COPY chatwoot-patches/crm-deal-fields-vue.patch /tmp/crm-deal-fields-vue.patch
@@ -63,6 +66,7 @@ COPY chatwoot-patches/crm-deal-workspace-assignee-vue.patch /tmp/crm-deal-worksp
 COPY chatwoot-patches/crm-marketing-analytics-vue.patch /tmp/crm-marketing-analytics-vue.patch
 COPY chatwoot-patches/crm-date-input-format-vue.patch /tmp/crm-date-input-format-vue.patch
 COPY chatwoot-patches/crm-marketing-dashboard-config-vue.patch /tmp/crm-marketing-dashboard-config-vue.patch
+COPY chatwoot-patches/crm-marketing-spend-vue.patch /tmp/crm-marketing-spend-vue.patch
 
 RUN cd /app && \
     git apply /tmp/patch.patch && \
@@ -76,6 +80,7 @@ RUN cd /app && \
     git apply /tmp/crm-deals-export-backend.patch && \
     git apply /tmp/crm-deal-backfill.patch && \
     git apply /tmp/crm-marketing-dashboard-config-backend.patch && \
+    git apply /tmp/crm-marketing-spend-backend.patch && \
     git apply /tmp/crm-pipeline-vue.patch && \
     git apply /tmp/crm-deal-workspace-vue.patch && \
     git apply /tmp/crm-deal-fields-vue.patch && \
@@ -87,4 +92,5 @@ RUN cd /app && \
     git apply /tmp/crm-deal-workspace-assignee-vue.patch && \
     git apply /tmp/crm-marketing-analytics-vue.patch && \
     git apply /tmp/crm-date-input-format-vue.patch && \
-    git apply /tmp/crm-marketing-dashboard-config-vue.patch
+    git apply /tmp/crm-marketing-dashboard-config-vue.patch && \
+    git apply /tmp/crm-marketing-spend-vue.patch

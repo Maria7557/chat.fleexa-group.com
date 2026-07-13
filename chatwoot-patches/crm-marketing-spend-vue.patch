@@ -1,0 +1,81 @@
+diff --git a/app/javascript/dashboard/api/crmPipeline.js b/app/javascript/dashboard/api/crmPipeline.js
+index 10576d2..0e1c94e 100644
+--- a/app/javascript/dashboard/api/crmPipeline.js
++++ b/app/javascript/dashboard/api/crmPipeline.js
+@@ -36,6 +36,10 @@ class CrmPipelineAPI {
+     return this.marketingDashboard.get();
+   }
+ 
++  getMarketingSpend(params = {}) {
++    return axios.get(`${this.marketingDashboard.url}/spend`, { params });
++  }
++
+   updateMarketingDashboardConfig(data) {
+     return axios.patch(this.marketingDashboard.url, data);
+   }
+diff --git a/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue b/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue
+index 91e5c64..bc9fb04 100644
+--- a/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue
++++ b/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue
+@@ -66,6 +66,7 @@ const PAID_SOURCE_KEYS = ['google', 'meta', 'tiktok'];
+ const stages = ref([]);
+ const deals = ref([]);
+ const meta = ref({});
++const spendAmount = ref(0);
+ const selectedRange = ref('');
+ const customDateFrom = ref('');
+ const customDateTo = ref('');
+@@ -483,7 +484,7 @@ const metricRegistry = computed(() => ({
+   spend: {
+     key: 'spend',
+     label: 'Spend',
+-    value: formatAmount(0),
++    value: formatAmount(spendAmount.value),
+     detail: 'Ad spend in selected period',
+   },
+   new_leads: {
+@@ -811,6 +812,24 @@ const requestParams = page => {
+   return params;
+ };
+ 
++const spendRequestParams = () => {
++  const params = {};
++
++  if (selectedRange.value) {
++    params.spend_date_preset = selectedRange.value;
++  }
++
++  if (customDateFrom.value) {
++    params.spend_date_from = customDateFrom.value;
++  }
++
++  if (customDateTo.value) {
++    params.spend_date_to = customDateTo.value;
++  }
++
++  return params;
++};
++
+ const normalizeDealsResponse = response => {
+   const payload = response.data || {};
+   if (Array.isArray(payload)) {
+@@ -834,9 +853,10 @@ const fetchAnalytics = async () => {
+   errorMessage.value = '';
+ 
+   try {
+-    const [stageResponse, firstDealResponse] = await Promise.all([
++    const [stageResponse, firstDealResponse, spendResponse] = await Promise.all([
+       CrmPipelineAPI.getStages(),
+       CrmPipelineAPI.getDeals(requestParams(1)),
++      CrmPipelineAPI.getMarketingSpend(spendRequestParams()),
+     ]);
+     const firstPage = normalizeDealsResponse(firstDealResponse);
+     const nextDeals = [...firstPage.data];
+@@ -851,6 +871,7 @@ const fetchAnalytics = async () => {
+ 
+     stages.value = stageResponse.data || [];
+     deals.value = nextDeals;
++    spendAmount.value = amountValue(spendResponse?.data?.spend_aed);
+     meta.value = {
+       ...nextMeta,
+       total_count: nextMeta.total_count ?? nextDeals.length,

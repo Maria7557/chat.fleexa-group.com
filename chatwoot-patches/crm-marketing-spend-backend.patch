@@ -1,0 +1,318 @@
+diff --git a/app/controllers/api/v1/accounts/crm/marketing_dashboard_controller.rb b/app/controllers/api/v1/accounts/crm/marketing_dashboard_controller.rb
+index 214fbba..41c1a14 100644
+--- a/app/controllers/api/v1/accounts/crm/marketing_dashboard_controller.rb
++++ b/app/controllers/api/v1/accounts/crm/marketing_dashboard_controller.rb
+@@ -13,13 +13,19 @@ class Api::V1::Accounts::Crm::MarketingDashboardController < Api::V1::Accounts::
+   ].freeze
+   ALLOWED_WIDGET_KEYS = DEFAULT_WIDGETS.map { |widget| widget[:key] }.freeze
+ 
+-  before_action :check_read_authorization, only: [:show]
++  before_action :check_read_authorization, only: [:show, :spend]
+   before_action :check_write_authorization, only: [:update]
+ 
+   def show
+     render json: { crm_marketing_dashboard: normalized_config(stored_config) }
+   end
+ 
++  def spend
++    render json: {
++      spend_aed: marketing_spend_scope.sum(:spend_aed).to_d.to_s('F')
++    }
++  end
++
+   def update
+     config = normalized_config(dashboard_config_params.to_h)
+     settings = (Current.account.settings || {}).to_h
+@@ -104,6 +110,51 @@ class Api::V1::Accounts::Crm::MarketingDashboardController < Api::V1::Accounts::
+     ActiveModel::Type::Boolean.new.cast(value)
+   end
+ 
++  def marketing_spend_scope
++    return MarketingSpendDaily.none unless MarketingSpendDaily.table_exists?
++
++    scope = MarketingSpendDaily.for_account(Current.account.id)
++    from_date, to_date = spend_date_range
++    scope = scope.where('spend_date >= ?', from_date) if from_date.present?
++    scope = scope.where('spend_date <= ?', to_date) if to_date.present?
++    scope
++  end
++
++  def spend_date_range
++    from_date = parsed_date(params[:spend_date_from] || params[:created_at_from])
++    to_date = parsed_date(params[:spend_date_to] || params[:created_at_to])
++    return [from_date, to_date] if from_date.present? || to_date.present?
++
++    preset_date_range(params[:spend_date_preset] || params[:created_at_preset])
++  end
++
++  def preset_date_range(preset)
++    today = Time.zone.today
++
++    case preset
++    when 'today'
++      [today, today]
++    when 'yesterday'
++      [today - 1.day, today - 1.day]
++    when 'last_7_days'
++      [today - 6.days, today]
++    when 'last_30_days'
++      [today - 29.days, today]
++    when 'this_month'
++      [today.beginning_of_month, today]
++    else
++      [nil, nil]
++    end
++  end
++
++  def parsed_date(value)
++    return if value.blank?
++
++    Date.iso8601(value.to_s)
++  rescue ArgumentError
++    nil
++  end
++
+   def check_read_authorization
+     raise Pundit::NotAuthorizedError if Current.account_user.blank?
+   end
+diff --git a/app/models/manual_spend_entry.rb b/app/models/manual_spend_entry.rb
+new file mode 100644
+index 0000000..58859c8
+--- /dev/null
++++ b/app/models/manual_spend_entry.rb
+@@ -0,0 +1,47 @@
++class ManualSpendEntry < ApplicationRecord
++  ALLOCATION_EVEN_BY_DAY = 'even_by_day'.freeze
++
++  belongs_to :account
++  belongs_to :creator, class_name: 'User', foreign_key: :created_by, optional: true
++
++  has_many :marketing_spend_daily,
++           foreign_key: :manual_spend_entry_id,
++           dependent: :delete_all
++
++  scope :active, -> { where(is_active: true) }
++  scope :for_account, ->(account_id) { where(account_id: account_id) }
++
++  before_validation :normalize_budget_fields
++  after_commit :rebuild_daily_spend_rows, on: [:create, :update]
++
++  validates :source_key, :source_label, :platform, :start_date, :end_date, presence: true
++  validates :allocation_mode, inclusion: { in: [ALLOCATION_EVEN_BY_DAY] }
++  validates :currency, presence: true, length: { is: 3 }
++  validates :total_budget, numericality: { greater_than_or_equal_to: 0 }
++  validates :fx_rate_to_aed, numericality: { greater_than: 0 }
++  validates :total_budget_aed, numericality: { greater_than_or_equal_to: 0 }
++  validate :end_date_is_not_before_start_date
++
++  private
++
++  def normalize_budget_fields
++    self.currency = currency.presence&.upcase || 'AED'
++    self.allocation_mode = allocation_mode.presence || ALLOCATION_EVEN_BY_DAY
++    self.fx_rate_to_aed = 1 if currency == 'AED'
++
++    return if total_budget.blank? || fx_rate_to_aed.blank?
++
++    self.total_budget_aed = BigDecimal(total_budget.to_s) * BigDecimal(fx_rate_to_aed.to_s)
++  end
++
++  def end_date_is_not_before_start_date
++    return if start_date.blank? || end_date.blank?
++    return if end_date >= start_date
++
++    errors.add(:end_date, 'must be on or after start date')
++  end
++
++  def rebuild_daily_spend_rows
++    Crm::MarketingSpend::ManualEntryNormalizer.new(self).rebuild!
++  end
++end
+diff --git a/app/models/marketing_spend_daily.rb b/app/models/marketing_spend_daily.rb
+new file mode 100644
+index 0000000..055ded6
+--- /dev/null
++++ b/app/models/marketing_spend_daily.rb
+@@ -0,0 +1,20 @@
++class MarketingSpendDaily < ApplicationRecord
++  self.table_name = 'marketing_spend_daily'
++
++  IMPORT_TYPE_MANUAL = 'manual'.freeze
++  SOURCE_SYSTEM_MANUAL = 'manual'.freeze
++
++  belongs_to :account
++  belongs_to :manual_spend_entry, optional: true
++
++  scope :for_account, ->(account_id) { where(account_id: account_id) }
++  scope :manual, -> { where(import_type: IMPORT_TYPE_MANUAL) }
++
++  validates :spend_date, :import_type, :source_system, :source_key, :source_label, presence: true
++  validates :source_currency, presence: true, length: { is: 3 }
++  validates :source_spend, :spend_aed, numericality: { greater_than_or_equal_to: 0 }
++  validates :fx_rate_to_aed, numericality: { greater_than: 0 }
++  validates :manual_spend_entry_id,
++            presence: true,
++            if: -> { import_type == IMPORT_TYPE_MANUAL }
++end
+diff --git a/app/services/crm/marketing_spend/manual_entry_normalizer.rb b/app/services/crm/marketing_spend/manual_entry_normalizer.rb
+new file mode 100644
+index 0000000..f57ec23
+--- /dev/null
++++ b/app/services/crm/marketing_spend/manual_entry_normalizer.rb
+@@ -0,0 +1,83 @@
++module Crm
++  module MarketingSpend
++    class ManualEntryNormalizer
++      def self.rebuild_all!(account_id: nil, entry_id: nil)
++        scope = ManualSpendEntry.all
++        scope = scope.where(account_id: account_id) if account_id.present?
++        scope = scope.where(id: entry_id) if entry_id.present?
++
++        scope.find_each do |entry|
++          new(entry).rebuild!
++        end
++      end
++
++      def initialize(entry)
++        @entry = entry
++      end
++
++      def rebuild!
++        MarketingSpendDaily.transaction do
++          daily_scope.delete_all
++
++          if entry.is_active?
++            rows.each { |row| MarketingSpendDaily.create!(row) }
++            rows.length
++          else
++            0
++          end
++        end
++      end
++
++      private
++
++      attr_reader :entry
++
++      def daily_scope
++        MarketingSpendDaily.manual.where(manual_spend_entry_id: entry.id)
++      end
++
++      def rows
++        spend_dates.map.with_index do |date, index|
++          {
++            account_id: entry.account_id,
++            spend_date: date,
++            import_type: MarketingSpendDaily::IMPORT_TYPE_MANUAL,
++            source_system: MarketingSpendDaily::SOURCE_SYSTEM_MANUAL,
++            source_key: entry.source_key,
++            source_label: entry.source_label,
++            platform: entry.platform,
++            vendor_name: entry.vendor_name,
++            campaign_name: entry.campaign_name,
++            source_currency: entry.currency,
++            source_spend: allocated_source_amount(index),
++            fx_rate_to_aed: entry.fx_rate_to_aed,
++            spend_aed: allocated_aed_amount(index),
++            manual_spend_entry_id: entry.id
++          }
++        end
++      end
++
++      def spend_dates
++        (entry.start_date..entry.end_date).to_a
++      end
++
++      def allocated_source_amount(index)
++        allocated_amount(entry.total_budget, index)
++      end
++
++      def allocated_aed_amount(index)
++        allocated_amount(entry.total_budget_aed, index)
++      end
++
++      def allocated_amount(total, index)
++        total_amount = BigDecimal(total.to_s).round(2)
++        return total_amount if spend_dates.one?
++
++        daily_amount = (total_amount / spend_dates.length).round(2)
++        return daily_amount unless index == spend_dates.length - 1
++
++        total_amount - (daily_amount * (spend_dates.length - 1))
++      end
++    end
++  end
++end
+diff --git a/config/routes.rb b/config/routes.rb
+index 4684a2b..f25f7ec 100644
+--- a/config/routes.rb
++++ b/config/routes.rb
+@@ -131,7 +131,9 @@ Rails.application.routes.draw do
+                 patch :stage_requirements
+               end
+             end
+-            resource :marketing_dashboard, controller: :marketing_dashboard, only: [:show, :update]
++            resource :marketing_dashboard, controller: :marketing_dashboard, only: [:show, :update] do
++              get :spend
++            end
+             resources :loss_reasons, only: [:index, :create, :update]
+           end
+           resources :canned_responses, only: [:index, :create, :update, :destroy]
+diff --git a/lib/tasks/crm_marketing_spend.rake b/lib/tasks/crm_marketing_spend.rake
+new file mode 100644
+index 0000000..4d0b5dd
+--- /dev/null
++++ b/lib/tasks/crm_marketing_spend.rake
+@@ -0,0 +1,52 @@
++namespace :crm do
++  namespace :marketing_spend do
++    desc 'Create the Stage 1A sample manual spend entry and normalized daily rows'
++    task :demo_manual_entry, [:account_id] => :environment do |_task, args|
++      account_id = args[:account_id].presence || ENV.fetch('ACCOUNT_ID', nil)
++      abort 'Usage: ACCOUNT_ID=1 rake crm:marketing_spend:demo_manual_entry' if account_id.blank?
++
++      entry = ManualSpendEntry.where(
++        account_id: account_id,
++        source_key: 'dubizzle_ads',
++        campaign_name: 'Homepage banner July'
++      ).first_or_initialize
++
++      entry.assign_attributes(
++        source_label: 'Dubizzle Ads',
++        platform: 'partner_site',
++        vendor_name: 'Dubizzle',
++        notes: 'Stage 1A demo manual spend entry',
++        start_date: Date.new(2026, 7, 1),
++        end_date: Date.new(2026, 7, 14),
++        total_budget: 5000,
++        currency: 'AED',
++        allocation_mode: ManualSpendEntry::ALLOCATION_EVEN_BY_DAY,
++        is_active: true
++      )
++      entry.save!
++
++      daily_rows = MarketingSpendDaily.manual.where(manual_spend_entry_id: entry.id)
++      puts "manual_spend_entry_id=#{entry.id}"
++      puts "daily_rows=#{daily_rows.count}"
++      puts "total_spend_aed=#{daily_rows.sum(:spend_aed).to_d.to_s('F')}"
++    end
++
++    desc 'Rebuild normalized marketing_spend_daily rows from manual spend entries'
++    task :rebuild, [:account_id, :entry_id] => :environment do |_task, args|
++      account_id = args[:account_id].presence || ENV['ACCOUNT_ID']
++      entry_id = args[:entry_id].presence || ENV['ENTRY_ID']
++
++      Crm::MarketingSpend::ManualEntryNormalizer.rebuild_all!(
++        account_id: account_id,
++        entry_id: entry_id
++      )
++
++      scope = MarketingSpendDaily.manual
++      scope = scope.where(account_id: account_id) if account_id.present?
++      scope = scope.where(manual_spend_entry_id: entry_id) if entry_id.present?
++
++      puts "daily_rows=#{scope.count}"
++      puts "total_spend_aed=#{scope.sum(:spend_aed).to_d.to_s('F')}"
++    end
++  end
++end
