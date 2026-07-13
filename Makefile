@@ -147,6 +147,7 @@ crm-copy-patches: ensure-env
 	$(COMPOSE) cp chatwoot-patches/crm-marketing-google-airbyte-backend.patch rails:/tmp/crm-marketing-google-airbyte-backend.patch
 	$(COMPOSE) cp chatwoot-patches/crm-marketing-meta-airbyte-backend.patch rails:/tmp/crm-marketing-meta-airbyte-backend.patch
 	$(COMPOSE) cp chatwoot-patches/crm-marketing-source-mapping-backend.patch rails:/tmp/crm-marketing-source-mapping-backend.patch
+	$(COMPOSE) cp chatwoot-patches/crm-marketing-monthly-spend-source-backend.patch rails:/tmp/crm-marketing-monthly-spend-source-backend.patch
 	@echo "CRM patch files copied to Rails container"
 
 crm-patch-check: crm-copy-patches
@@ -164,6 +165,7 @@ crm-patch-check: crm-copy-patches
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply --check /tmp/crm-marketing-google-airbyte-backend.patch"
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply --check /tmp/crm-marketing-meta-airbyte-backend.patch"
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply --check /tmp/crm-marketing-source-mapping-backend.patch"
+	$(COMPOSE) exec rails sh -lc "cd /app && git apply --check /tmp/crm-marketing-monthly-spend-source-backend.patch"
 	@echo "CRM patches validated"
 
 crm-patch:
@@ -181,6 +183,7 @@ crm-patch:
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply /tmp/crm-marketing-google-airbyte-backend.patch"
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply /tmp/crm-marketing-meta-airbyte-backend.patch"
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply /tmp/crm-marketing-source-mapping-backend.patch"
+	$(COMPOSE) exec rails sh -lc "cd /app && git apply /tmp/crm-marketing-monthly-spend-source-backend.patch"
 	@echo "CRM patches applied to Rails container"
 
 crm-install: crm-copy-patches crm-patch
@@ -201,6 +204,8 @@ crm-vue-copy: ensure-env
 	$(COMPOSE) cp chatwoot-patches/crm-marketing-dashboard-config-vue.patch rails:/tmp/crm-marketing-dashboard-config-vue.patch
 	$(COMPOSE) cp chatwoot-patches/crm-marketing-spend-vue.patch rails:/tmp/crm-marketing-spend-vue.patch
 	$(COMPOSE) cp chatwoot-patches/fleexa-global-branding-visible-ui.patch rails:/tmp/fleexa-global-branding-visible-ui.patch
+	$(COMPOSE) cp chatwoot-patches/crm-marketing-lead-trend-polish-vue.patch rails:/tmp/crm-marketing-lead-trend-polish-vue.patch
+	$(COMPOSE) cp chatwoot-patches/crm-marketing-monthly-spend-revenue-vue.patch rails:/tmp/crm-marketing-monthly-spend-revenue-vue.patch
 	@echo "CRM Vue patch copied to Rails container"
 
 crm-vue-check: crm-vue-copy
@@ -218,6 +223,8 @@ crm-vue-check: crm-vue-copy
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply --check /tmp/crm-marketing-dashboard-config-vue.patch"
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply --check /tmp/crm-marketing-spend-vue.patch"
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply --check /tmp/fleexa-global-branding-visible-ui.patch"
+	$(COMPOSE) exec rails sh -lc "cd /app && git apply --check /tmp/crm-marketing-lead-trend-polish-vue.patch"
+	$(COMPOSE) exec rails sh -lc "cd /app && git apply --check /tmp/crm-marketing-monthly-spend-revenue-vue.patch"
 	@echo "CRM Vue patch validated"
 
 crm-vue-patch: crm-vue-copy
@@ -235,6 +242,8 @@ crm-vue-patch: crm-vue-copy
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply /tmp/crm-marketing-dashboard-config-vue.patch"
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply /tmp/crm-marketing-spend-vue.patch"
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply /tmp/fleexa-global-branding-visible-ui.patch"
+	$(COMPOSE) exec rails sh -lc "cd /app && git apply /tmp/crm-marketing-lead-trend-polish-vue.patch"
+	$(COMPOSE) exec rails sh -lc "cd /app && git apply /tmp/crm-marketing-monthly-spend-revenue-vue.patch"
 	@echo "CRM Vue patch applied"
 
 crm-assets-build-host:
@@ -264,6 +273,7 @@ crm-assets-build-host:
 	git apply "$(CURDIR)/chatwoot-patches/crm-marketing-google-airbyte-backend.patch"; \
 	git apply "$(CURDIR)/chatwoot-patches/crm-marketing-meta-airbyte-backend.patch"; \
 	git apply "$(CURDIR)/chatwoot-patches/crm-marketing-source-mapping-backend.patch"; \
+	git apply "$(CURDIR)/chatwoot-patches/crm-marketing-monthly-spend-source-backend.patch"; \
 	git apply "$(CURDIR)/chatwoot-patches/crm-pipeline-vue.patch"; \
 	git apply "$(CURDIR)/chatwoot-patches/crm-deal-workspace-vue.patch"; \
 	git apply "$(CURDIR)/chatwoot-patches/crm-deal-fields-vue.patch"; \
@@ -278,6 +288,8 @@ crm-assets-build-host:
 	git apply "$(CURDIR)/chatwoot-patches/crm-marketing-dashboard-config-vue.patch"; \
 	git apply "$(CURDIR)/chatwoot-patches/crm-marketing-spend-vue.patch"; \
 	git apply "$(CURDIR)/chatwoot-patches/fleexa-global-branding-visible-ui.patch"; \
+	git apply "$(CURDIR)/chatwoot-patches/crm-marketing-lead-trend-polish-vue.patch"; \
+	git apply "$(CURDIR)/chatwoot-patches/crm-marketing-monthly-spend-revenue-vue.patch"; \
 	perl -0pi -e "s/import \\{ colors \\} from '\\.\\/theme\\/colors';/const { colors } = require('.\\/theme\\/colors.js');/; s/import \\{ icons \\} from '\\.\\/theme\\/icons';/const { icons } = require('.\\/theme\\/icons.js');/" tailwind.config.js; \
 	perl -0pi -e "s/export const colors =/const colors =/; s/\\n\\};\\s*\\z/\\n};\\nmodule.exports = { colors };\\n/s" theme/colors.js; \
 	perl -0pi -e "s/export const icons =/const icons =/; s/\\n\\};\\s*\\z/\\n};\\nmodule.exports = { icons };\\n/s" theme/icons.js; \
@@ -303,7 +315,10 @@ crm-assets-build-host:
 	grep -n "seed_source_mappings" lib/tasks/crm_marketing_spend.rake; \
 	grep -n "Customize dashboard" app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue; \
 	grep -n "Manual Spend Entries" app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue; \
-	grep -n "Spend by Month" app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue; \
+	grep -n "Spend & Revenue by Month" app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue; \
+	grep -n "selectedTrendSeriesKey" app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue; \
+	grep -n "leadTrendLayeredSeries" app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue; \
+	grep -n "selectedMonthlySourceKey" app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue; \
 	grep -n "fleexa_visible_config" app/views/layouts/vueapp.html.erb; \
 	grep -n "Chat Fleexa" public/manifest.json; \
 	grep -n "#0EA5A0" theme/colors.js; \
@@ -319,7 +334,7 @@ crm-assets-build-host:
 	ls public/vite/assets/DealWorkspace-*.js >/dev/null; \
 	grep -E "CRM Deal|Field setup|Operator" public/vite/assets/DealWorkspace-*.js >/dev/null; \
 	grep -E "Pipeline|crm_pipeline_index|crm_deal_workspace|crm_marketing_analytics|MarketingAnalytics" public/vite/.vite/manifest.json public/vite/assets/Pipeline-*.js public/vite/assets/MarketingAnalytics-*.js >/dev/null; \
-	grep -E "Customize dashboard|Add metric|Ad spend in selected period|Manual Spend Entries|Spend by Month|Add spend" public/vite/assets/MarketingAnalytics-*.js >/dev/null; \
+	grep -E "Customize dashboard|Add metric|Ad spend in selected period|Manual Spend Entries|Spend & Revenue by Month|Add spend" public/vite/assets/MarketingAnalytics-*.js >/dev/null; \
 	echo "CRM host assets built"
 
 crm-assets-install-local: ensure-env
@@ -415,7 +430,10 @@ crm-assets-install-local: ensure-env
 	docker exec "$$install_container" sh -lc "grep -n 'Marketing Analytics' /app/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue"; \
 	docker exec "$$install_container" sh -lc "grep -n 'Customize dashboard' /app/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue"; \
 	docker exec "$$install_container" sh -lc "grep -n 'Manual Spend Entries' /app/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue"; \
-	docker exec "$$install_container" sh -lc "grep -n 'Spend by Month' /app/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue"; \
+	docker exec "$$install_container" sh -lc "grep -n 'Spend & Revenue by Month' /app/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue"; \
+	docker exec "$$install_container" sh -lc "grep -n 'selectedTrendSeriesKey' /app/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue"; \
+	docker exec "$$install_container" sh -lc "grep -n 'leadTrendLayeredSeries' /app/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue"; \
+	docker exec "$$install_container" sh -lc "grep -n 'selectedMonthlySourceKey' /app/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue"; \
 	docker exec "$$install_container" sh -lc "grep -n 'fleexa_visible_config' /app/app/views/layouts/vueapp.html.erb"; \
 	docker exec "$$install_container" sh -lc "grep -n 'Chat Fleexa' /app/public/manifest.json"; \
 	docker exec "$$install_container" sh -lc "grep -n '#0EA5A0' /app/theme/colors.js"; \
@@ -464,7 +482,10 @@ crm-assets-refresh-local: crm-assets-build-host crm-assets-install-local
 	$(COMPOSE) exec -T rails sh -lc "grep -n 'Marketing Analytics' /app/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue"; \
 	$(COMPOSE) exec -T rails sh -lc "grep -n 'Customize dashboard' /app/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue"; \
 	$(COMPOSE) exec -T rails sh -lc "grep -n 'Manual Spend Entries' /app/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue"; \
-	$(COMPOSE) exec -T rails sh -lc "grep -n 'Spend by Month' /app/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue"; \
+	$(COMPOSE) exec -T rails sh -lc "grep -n 'Spend & Revenue by Month' /app/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue"; \
+	$(COMPOSE) exec -T rails sh -lc "grep -n 'selectedTrendSeriesKey' /app/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue"; \
+	$(COMPOSE) exec -T rails sh -lc "grep -n 'leadTrendLayeredSeries' /app/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue"; \
+	$(COMPOSE) exec -T rails sh -lc "grep -n 'selectedMonthlySourceKey' /app/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue"; \
 	$(COMPOSE) exec -T rails sh -lc "grep -n 'fleexa_visible_config' /app/app/views/layouts/vueapp.html.erb"; \
 	$(COMPOSE) exec -T rails sh -lc "grep -n 'Chat Fleexa' /app/public/manifest.json"; \
 	$(COMPOSE) exec -T rails sh -lc "grep -n '#0EA5A0' /app/theme/colors.js"; \
@@ -473,5 +494,5 @@ crm-assets-refresh-local: crm-assets-build-host crm-assets-install-local
 	$(COMPOSE) exec -T rails sh -lc "grep -n 'getManualSpendEntries' /app/app/javascript/dashboard/api/crmPipeline.js"; \
 	$(COMPOSE) exec -T rails sh -lc "if grep -n 'Reply to client' /app/app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue; then exit 1; fi"; \
 	$(COMPOSE) exec -T rails sh -lc "if grep -nE '>Title<|Title \\*' /app/app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue; then exit 1; fi"; \
-	$(COMPOSE) exec -T rails sh -lc "test -d /app/public/vite/assets && test -f /app/public/vite/.vite/manifest.json && ls /app/public/vite/assets/DealWorkspace-*.js >/dev/null && ls /app/public/vite/assets/MarketingAnalytics-*.js >/dev/null && grep -E 'CRM Deal|Field setup|Operator' /app/public/vite/assets/DealWorkspace-*.js >/dev/null && grep -E 'Marketing Analytics|Pipeline funnel|Customize dashboard|Add metric|Ad spend in selected period|Manual Spend Entries|Spend by Month|Add spend' /app/public/vite/assets/MarketingAnalytics-*.js >/dev/null"; \
+	$(COMPOSE) exec -T rails sh -lc "test -d /app/public/vite/assets && test -f /app/public/vite/.vite/manifest.json && ls /app/public/vite/assets/DealWorkspace-*.js >/dev/null && ls /app/public/vite/assets/MarketingAnalytics-*.js >/dev/null && grep -E 'CRM Deal|Field setup|Operator' /app/public/vite/assets/DealWorkspace-*.js >/dev/null && grep -E 'Marketing Analytics|Pipeline funnel|Customize dashboard|Add metric|Ad spend in selected period|Manual Spend Entries|Spend & Revenue by Month|Add spend' /app/public/vite/assets/MarketingAnalytics-*.js >/dev/null"; \
 	echo "CRM local frontend assets refreshed"
