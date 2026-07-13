@@ -20,7 +20,7 @@ new file mode 100644
 index 0000000..a4c30f7
 --- /dev/null
 +++ b/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue
-@@ -0,0 +1,443 @@
+@@ -0,0 +1,500 @@
 +<script setup>
 +import { computed, onMounted, ref } from 'vue';
 +
@@ -39,6 +39,8 @@ index 0000000..a4c30f7
 +
 +const rangeOptions = [
 +  { value: '', label: 'All' },
++  { value: 'today', label: 'Today' },
++  { value: 'yesterday', label: 'Yesterday' },
 +  { value: 'last_30_days', label: '30 days' },
 +  { value: 'this_month', label: 'This month' },
 +  { value: 'last_7_days', label: '7 days' },
@@ -48,6 +50,8 @@ index 0000000..a4c30f7
 +const deals = ref([]);
 +const meta = ref({});
 +const selectedRange = ref('');
++const customDateFrom = ref('');
++const customDateTo = ref('');
 +const isLoading = ref(false);
 +const errorMessage = ref('');
 +
@@ -72,6 +76,10 @@ index 0000000..a4c30f7
 +});
 +
 +const totalDeals = computed(() => deals.value.length);
++
++const isCustomRangeActive = computed(() => {
++  return Boolean(customDateFrom.value || customDateTo.value);
++});
 +
 +const stageCount = stageId => {
 +  return deals.value.filter(deal => String(deal.stage_id) === String(stageId)).length;
@@ -132,6 +140,14 @@ index 0000000..a4c30f7
 +};
 +
 +const countForStageTypes = types => dealsByStageTypes(types).length;
++
++const spamDealsCount = computed(() => {
++  return deals.value.filter(deal => normalizeText(deal.conversation?.status) === 'spam').length;
++});
++
++const spamRate = computed(() => {
++  return totalDeals.value ? (spamDealsCount.value / totalDeals.value) * 100 : 0;
++});
 +
 +const activityStageIds = deal => {
 +  const activityLists = [
@@ -197,40 +213,40 @@ index 0000000..a4c30f7
 +
 +const kpiCards = computed(() => [
 +  {
-+    label: 'Leads',
++    label: 'Spend',
++    value: formatAmount(0),
++    detail: 'Ad spend in selected period',
++    icon: 'i-lucide-wallet',
++  },
++  {
++    label: 'New Leads',
 +    value: formatNumber(totalDeals.value),
 +    detail: 'All new deals in selected period',
 +    icon: 'i-lucide-inbox',
 +  },
 +  {
-+    label: 'Forecast revenue',
-+    value: formatAmount(revenueForStageTypes(['reserved'])),
-+    detail: `${formatNumber(countForStageTypes(['reserved']))} Бронь`,
-+    icon: 'i-lucide-calendar',
++    label: 'Successful Deals',
++    value: formatNumber(countForStageTypes(SUCCESSFUL_STAGE_TYPES)),
++    detail: 'Reserved + Rental + Done',
++    icon: 'i-lucide-check-check',
 +  },
 +  {
-+    label: 'Active revenue',
-+    value: formatAmount(revenueForStageTypes(['rental'])),
-+    detail: `${formatNumber(countForStageTypes(['rental']))} В аренде`,
-+    icon: 'i-lucide-car',
-+  },
-+  {
-+    label: 'Confirmed revenue',
-+    value: formatAmount(revenueForStageTypes(['closed_won'])),
-+    detail: `${formatNumber(countForStageTypes(['closed_won']))} Завершено`,
-+    icon: 'i-lucide-check',
-+  },
-+  {
-+    label: 'Successful value',
++    label: 'Successful Deals Amount',
 +    value: formatAmount(revenueForStageTypes(SUCCESSFUL_STAGE_TYPES)),
-+    detail: 'Бронь + В аренде + Завершено',
++    detail: 'Reserved + Rental + Done value',
 +    icon: 'i-lucide-ticket',
 +  },
 +  {
-+    label: 'Lost / cancelled',
++    label: 'Lost',
 +    value: formatNumber(countForStageTypes(LOST_STAGE_TYPES)),
-+    detail: 'Excluded from revenue',
++    detail: 'Closed lost / cancelled',
 +    icon: 'i-lucide-circle-x',
++  },
++  {
++    label: 'Spam %',
++    value: formatPercent(spamRate.value),
++    detail: `${formatNumber(spamDealsCount.value)} spam conversations`,
++    icon: 'i-lucide-percent',
 +  },
 +]);
 +
@@ -243,6 +259,14 @@ index 0000000..a4c30f7
 +
 +  if (selectedRange.value) {
 +    params.created_at_preset = selectedRange.value;
++  }
++
++  if (customDateFrom.value) {
++    params.created_at_from = customDateFrom.value;
++  }
++
++  if (customDateTo.value) {
++    params.created_at_to = customDateTo.value;
 +  }
 +
 +  return params;
@@ -301,6 +325,15 @@ index 0000000..a4c30f7
 +
 +const selectRange = value => {
 +  selectedRange.value = value;
++  customDateFrom.value = '';
++  customDateTo.value = '';
++  fetchAnalytics();
++};
++
++const updateCustomDates = ({ from = customDateFrom.value, to = customDateTo.value } = {}) => {
++  customDateFrom.value = from;
++  customDateTo.value = to;
++  selectedRange.value = '';
 +  fetchAnalytics();
 +};
 +
@@ -325,28 +358,52 @@ index 0000000..a4c30f7
 +          </p>
 +        </div>
 +
-+        <div class="flex flex-wrap items-center gap-2">
++        <div class="flex flex-col items-end gap-2">
 +          <div class="inline-flex h-9 rounded-md border border-n-weak bg-n-surface-2 p-0.5">
 +            <button
 +              v-for="option in rangeOptions"
 +              :key="option.value || 'all'"
 +              type="button"
 +              class="rounded px-3 text-xs font-medium text-n-slate-11 transition"
-+              :class="{ 'bg-n-background text-n-slate-12 shadow-sm': selectedRange === option.value }"
++              :class="{
++                'bg-n-background text-n-slate-12 shadow-sm':
++                  selectedRange === option.value &&
++                  !(option.value === '' && isCustomRangeActive),
++              }"
 +              @click="selectRange(option.value)"
 +            >
 +              {{ option.label }}
 +            </button>
 +          </div>
-+          <Button
-+            icon="i-lucide-refresh-cw"
-+            size="sm"
-+            slate
-+            faded
-+            :is-loading="isLoading"
-+            aria-label="Refresh marketing analytics"
-+            @click="fetchAnalytics"
-+          />
++          <div class="flex items-center justify-end gap-2">
++            <label class="grid shrink-0 text-[11px] font-medium text-n-slate-10">
++              <span class="sr-only">Date from</span>
++              <input
++                :value="customDateFrom"
++                class="h-9 w-32 min-w-0 rounded-md border border-n-weak bg-n-background px-3 text-xs text-n-slate-12 outline-none transition focus:border-n-brand"
++                type="date"
++                @change="updateCustomDates({ from: $event.target.value, to: customDateTo })"
++              />
++            </label>
++            <label class="grid shrink-0 text-[11px] font-medium text-n-slate-10">
++              <span class="sr-only">Date to</span>
++              <input
++                :value="customDateTo"
++                class="h-9 w-32 min-w-0 rounded-md border border-n-weak bg-n-background px-3 text-xs text-n-slate-12 outline-none transition focus:border-n-brand"
++                type="date"
++                @change="updateCustomDates({ from: customDateFrom, to: $event.target.value })"
++              />
++            </label>
++            <Button
++              icon="i-lucide-refresh-cw"
++              size="sm"
++              slate
++              faded
++              :is-loading="isLoading"
++              aria-label="Refresh marketing analytics"
++              @click="fetchAnalytics"
++            />
++          </div>
 +        </div>
 +      </div>
 +    </header>
