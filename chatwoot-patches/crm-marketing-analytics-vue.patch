@@ -20,7 +20,7 @@ new file mode 100644
 index 0000000..a4c30f7
 --- /dev/null
 +++ b/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue
-@@ -0,0 +1,517 @@
+@@ -0,0 +1,585 @@
 +<script setup>
 +import { computed, onMounted, ref } from 'vue';
 +
@@ -83,27 +83,17 @@ index 0000000..a4c30f7
 +    .reduce((sum, deal) => sum + amountValue(deal.amount), 0);
 +};
 +
-+const maxStageCount = computed(() => {
-+  return Math.max(...orderedStages.value.map(stage => stageCount(stage.id)), 1);
-+});
++const stageIsLost = stage => {
++  const slug = normalizeText(stage?.slug);
++  const name = normalizeText(stage?.name);
++  const trigger = normalizeText(stage?.fleet_status_trigger);
 +
-+const stageRows = computed(() => {
-+  return orderedStages.value.map((stage, index) => {
-+    const count = stageCount(stage.id);
-+    const previousStage = orderedStages.value[index - 1];
-+    const previousCount = previousStage ? stageCount(previousStage.id) : count;
-+    const conversion = index === 0 ? 100 : previousCount ? (count / previousCount) * 100 : 0;
++  return slug === 'closed_lost' || trigger === 'cancel' || name === 'отмена';
++};
 +
-+    return {
-+      ...stage,
-+      count,
-+      amount: stageRevenue(stage.id),
-+      share: totalDeals.value ? (count / totalDeals.value) * 100 : 0,
-+      conversion,
-+      barWidth: (count / maxStageCount.value) * 100,
-+    };
-+  });
-+});
++const forwardStages = computed(() => orderedStages.value.filter(stage => !stageIsLost(stage)));
++const lostStages = computed(() => orderedStages.value.filter(stage => stageIsLost(stage)));
++const firstForwardStageId = computed(() => forwardStages.value[0]?.id);
 +
 +const stageType = stage => {
 +  const slug = normalizeText(stage?.slug);
@@ -112,9 +102,16 @@ index 0000000..a4c30f7
 +  if (slug === 'reserved' || name === 'бронь') return 'reserved';
 +  if (slug === 'rental' || name === 'в аренде') return 'rental';
 +  if (slug === 'closed_won' || name === 'завершено') return 'closed_won';
-+  if (slug === 'closed_lost' || name === 'отмена') return 'closed_lost';
++  if (stageIsLost(stage)) return 'closed_lost';
 +  return '';
 +};
++
++const stageById = computed(() => {
++  return orderedStages.value.reduce((memo, stage) => {
++    memo[String(stage.id)] = stage;
++    return memo;
++  }, {});
++});
 +
 +const stageTypeById = computed(() => {
 +  return orderedStages.value.reduce((memo, stage) => {
@@ -135,6 +132,63 @@ index 0000000..a4c30f7
 +};
 +
 +const countForStageTypes = types => dealsByStageTypes(types).length;
++
++const activityStageIds = deal => {
++  const activityLists = [
++    deal.stage_history,
++    deal.stageHistory,
++    deal.crm_deal_activities,
++    deal.activities,
++  ].filter(Array.isArray);
++  const ids = new Set();
++
++  activityLists.flat().forEach(activity => {
++    ['stage_id', 'from_stage_id', 'to_stage_id'].forEach(key => {
++      if (hasValue(activity?.[key])) ids.add(String(activity[key]));
++    });
++  });
++
++  return ids;
++};
++
++const dealReachedStage = (deal, stage) => {
++  const stageId = String(stage.id);
++  if (String(firstForwardStageId.value || '') === stageId) return true;
++  if (String(deal.stage_id) === stageId) return true;
++
++  const historyStageIds = activityStageIds(deal);
++  if (historyStageIds.size) return historyStageIds.has(stageId);
++
++  const currentStage = stageById.value[String(deal.stage_id)];
++  if (!currentStage || stageIsLost(currentStage)) return false;
++
++  return Number(stage.position || 0) <= Number(currentStage.position || 0);
++};
++
++const buildStageRow = (stage, count, label) => {
++  const share = totalDeals.value ? (count / totalDeals.value) * 100 : 0;
++
++  return {
++    ...stage,
++    count,
++    amount: stageRevenue(stage.id),
++    share,
++    barWidth: share,
++    metricLabel: label,
++  };
++};
++
++const stageRows = computed(() => {
++  const forwardRows = forwardStages.value.map(stage => {
++    const reachedCount = deals.value.filter(deal => dealReachedStage(deal, stage)).length;
++    return buildStageRow(stage, reachedCount, 'of new deals');
++  });
++  const lostRows = lostStages.value.map(stage => {
++    return buildStageRow(stage, stageCount(stage.id), 'lost of new deals');
++  });
++
++  return [...forwardRows, ...lostRows];
++});
 +
 +const customAttributes = deal => {
 +  const attributes = deal.custom_attributes;
@@ -172,8 +226,13 @@ index 0000000..a4c30f7
 +  const fallbackSource = firstCustomValue(custom, ['utm_source', 'from']);
 +  if (fallbackSource) return fallbackSource;
 +
-+  if (deal.conversation?.inbox_id) return `Inbox ${deal.conversation.inbox_id}`;
 +  return 'Unknown';
++};
++
++const communicationChannelValue = deal => {
++  if (hasValue(deal.conversation?.inbox?.name)) return cleanValue(deal.conversation.inbox.name);
++  if (deal.conversation?.inbox_id) return `Inbox ${deal.conversation.inbox_id}`;
++  return 'Unknown channel';
 +};
 +
 +const entryPointValue = deal => {
@@ -195,10 +254,12 @@ index 0000000..a4c30f7
 +  deals.value.forEach(deal => {
 +    const source = sourceValue(deal);
 +    const entryPoint = entryPointValue(deal);
-+    const rowKey = `${source}::${entryPoint}`;
++    const communicationChannel = communicationChannelValue(deal);
++    const rowKey = `${source}::${entryPoint}::${communicationChannel}`;
 +    const row = rows.get(rowKey) || {
 +      source,
 +      entryPoint,
++      communicationChannel,
 +      leads: 0,
 +      reserved: 0,
 +      rental: 0,
@@ -230,7 +291,7 @@ index 0000000..a4c30f7
 +  {
 +    label: 'Leads',
 +    value: formatNumber(totalDeals.value),
-+    detail: `${formatNumber(meta.value.total_count ?? totalDeals.value)} total`,
++    detail: 'All new deals in selected period',
 +    icon: 'i-lucide-inbox',
 +  },
 +  {
@@ -415,9 +476,14 @@ index 0000000..a4c30f7
 +
 +        <section class="grid gap-4 rounded-lg border border-n-weak bg-n-solid-1 p-5">
 +          <div class="flex items-center justify-between gap-3">
-+            <h2 class="text-sm font-semibold text-n-slate-12">
-+              Funnel
-+            </h2>
++            <div>
++              <h2 class="text-sm font-semibold text-n-slate-12">
++                Funnel
++              </h2>
++              <div class="mt-1 text-xs text-n-slate-10">
++                Reached stage from new deals
++              </div>
++            </div>
 +            <span class="text-xs text-n-slate-10">
 +              {{ orderedStages.length }} stages
 +            </span>
@@ -476,10 +542,10 @@ index 0000000..a4c30f7
 +
 +              <div>
 +                <div class="text-sm font-semibold text-n-slate-12">
-+                  {{ formatPercent(stage.conversion) }}
++                  {{ formatPercent(stage.share) }}
 +                </div>
 +                <div class="text-xs text-n-slate-10">
-+                  from previous
++                  {{ stage.metricLabel }}
 +                </div>
 +              </div>
 +            </div>
@@ -489,7 +555,7 @@ index 0000000..a4c30f7
 +        <section class="grid gap-4 rounded-lg border border-n-weak bg-n-solid-1 p-5">
 +          <div class="flex items-center justify-between gap-3">
 +            <h2 class="text-sm font-semibold text-n-slate-12">
-+              Channel / Entry Point
++              Source / Entry Point
 +            </h2>
 +            <span class="text-xs text-n-slate-10">
 +              {{ sourceRows.length }} rows
@@ -502,6 +568,7 @@ index 0000000..a4c30f7
 +                <tr class="text-left text-xs font-medium uppercase tracking-normal text-n-slate-10">
 +                  <th class="whitespace-nowrap py-3 pr-4">Source</th>
 +                  <th class="whitespace-nowrap px-4 py-3">Entry point</th>
++                  <th class="whitespace-nowrap px-4 py-3">Communication channel</th>
 +                  <th class="whitespace-nowrap px-4 py-3 text-right">Leads</th>
 +                  <th class="whitespace-nowrap px-4 py-3 text-right">Бронь</th>
 +                  <th class="whitespace-nowrap px-4 py-3 text-right">В аренде</th>
@@ -513,9 +580,10 @@ index 0000000..a4c30f7
 +                </tr>
 +              </thead>
 +              <tbody class="divide-y divide-n-weak">
-+                <tr v-for="row in sourceRows" :key="`${row.source}:${row.entryPoint}`" class="text-n-slate-12">
++                <tr v-for="row in sourceRows" :key="`${row.source}:${row.entryPoint}:${row.communicationChannel}`" class="text-n-slate-12">
 +                  <td class="whitespace-nowrap py-3 pr-4 font-medium">{{ row.source }}</td>
 +                  <td class="min-w-[220px] px-4 py-3 text-n-slate-11">{{ row.entryPoint }}</td>
++                  <td class="whitespace-nowrap px-4 py-3 text-n-slate-11">{{ row.communicationChannel }}</td>
 +                  <td class="whitespace-nowrap px-4 py-3 text-right">{{ formatNumber(row.leads) }}</td>
 +                  <td class="whitespace-nowrap px-4 py-3 text-right">{{ formatNumber(row.reserved) }}</td>
 +                  <td class="whitespace-nowrap px-4 py-3 text-right">{{ formatNumber(row.rental) }}</td>
@@ -526,7 +594,7 @@ index 0000000..a4c30f7
 +                  <td class="whitespace-nowrap px-4 py-3 text-right text-n-slate-10">{{ row.roas.toFixed(1) }}x</td>
 +                </tr>
 +                <tr v-if="!sourceRows.length">
-+                  <td colspan="10" class="py-10 text-center text-sm text-n-slate-10">
++                  <td colspan="11" class="py-10 text-center text-sm text-n-slate-10">
 +                    No marketing data yet
 +                  </td>
 +                </tr>
