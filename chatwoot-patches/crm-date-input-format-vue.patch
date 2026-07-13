@@ -1,16 +1,16 @@
 diff --git a/app/javascript/dashboard/routes/dashboard/crm/Pipeline.vue b/app/javascript/dashboard/routes/dashboard/crm/Pipeline.vue
-index ca26817..aad4f5a 100644
+index ca26817..38fb80b 100644
 --- a/app/javascript/dashboard/routes/dashboard/crm/Pipeline.vue
 +++ b/app/javascript/dashboard/routes/dashboard/crm/Pipeline.vue
 @@ -128,19 +128,59 @@ const moneyFormatter = new Intl.NumberFormat('en-AE', {
- 
+
  const dateFormatter = new Intl.DateTimeFormat('en-GB', {
    day: '2-digit',
 -  month: 'short',
 +  month: '2-digit',
    year: 'numeric',
  });
- 
+
  const dateTimeFormatter = new Intl.DateTimeFormat('en-GB', {
    day: '2-digit',
 -  month: 'short',
@@ -20,7 +20,7 @@ index ca26817..aad4f5a 100644
    minute: '2-digit',
    hour12: false,
  });
- 
+
 +const DATE_INPUT_PLACEHOLDER = 'dd/mm/yyyy';
 +const ISO_DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
 +const DISPLAY_DATE_PATTERN = /^(\d{1,2})[./-](\d{1,2})[./-](\d{4})$/;
@@ -66,7 +66,7 @@ index ca26817..aad4f5a 100644
    ...(filters || {}),
 @@ -611,7 +651,7 @@ const selectOptionsForField = field => {
  };
- 
+
  const inputTypeForField = field => {
 -  if (field.field_type === 'date') return 'date';
 +  if (field.field_type === 'date') return 'text';
@@ -76,7 +76,7 @@ index ca26817..aad4f5a 100644
 @@ -620,6 +660,20 @@ const stepForField = field => {
    return field.field_type === 'number' ? '0.01' : undefined;
  };
- 
+
 +const rangeInputValue = (field, value) => {
 +  return field.field_type === 'date' ? formatDateInputValue(value) : value || '';
 +};
@@ -94,112 +94,216 @@ index ca26817..aad4f5a 100644
  const isTextFilterField = field => {
    return !['select', 'boolean', 'date', 'number'].includes(field.field_type);
  };
-@@ -1823,9 +1877,12 @@ watch(
+@@ -1822,11 +1876,24 @@ watch(
+                 class="grid gap-1 text-[11px] font-medium text-n-slate-11"
                >
                  Created from
-                 <input
+-                <input
 -                  v-model="draftFilters.createdFrom"
-+                  :value="formatDateInputValue(draftFilters.createdFrom)"
-                   class="h-8 rounded-md border border-n-weak bg-n-background px-2 text-xs text-n-slate-12 outline-none focus:border-n-brand"
+-                  class="h-8 rounded-md border border-n-weak bg-n-background px-2 text-xs text-n-slate-12 outline-none focus:border-n-brand"
 -                  type="date"
-+                  inputmode="numeric"
-+                  :placeholder="DATE_INPUT_PLACEHOLDER"
-+                  type="text"
-+                  @change="draftFilters.createdFrom = normalizeDateInputValue($event.target.value)"
-                 />
+-                />
++                <span class="relative block">
++                  <input
++                    :value="formatDateInputValue(draftFilters.createdFrom)"
++                    class="h-8 w-full rounded-md border border-n-weak bg-n-background px-2 pr-8 text-xs text-n-slate-12 outline-none focus:border-n-brand"
++                    inputmode="numeric"
++                    :placeholder="DATE_INPUT_PLACEHOLDER"
++                    type="text"
++                    @change="draftFilters.createdFrom = normalizeDateInputValue($event.target.value)"
++                  />
++                  <input
++                    v-model="draftFilters.createdFrom"
++                    aria-label="Open created from calendar"
++                    class="absolute inset-y-0 right-0 z-10 h-full w-8 cursor-pointer opacity-0"
++                    style="width: 2rem; min-width: 2rem;"
++                    type="date"
++                  />
++                  <i class="i-lucide-calendar pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-n-slate-10" />
++                </span>
                </label>
- 
-@@ -1835,9 +1892,12 @@ watch(
+
+               <label
+@@ -1834,11 +1901,24 @@ watch(
+                 class="grid gap-1 text-[11px] font-medium text-n-slate-11"
                >
                  Created to
-                 <input
+-                <input
 -                  v-model="draftFilters.createdTo"
-+                  :value="formatDateInputValue(draftFilters.createdTo)"
-                   class="h-8 rounded-md border border-n-weak bg-n-background px-2 text-xs text-n-slate-12 outline-none focus:border-n-brand"
+-                  class="h-8 rounded-md border border-n-weak bg-n-background px-2 text-xs text-n-slate-12 outline-none focus:border-n-brand"
 -                  type="date"
-+                  inputmode="numeric"
-+                  :placeholder="DATE_INPUT_PLACEHOLDER"
-+                  type="text"
-+                  @change="draftFilters.createdTo = normalizeDateInputValue($event.target.value)"
-                 />
+-                />
++                <span class="relative block">
++                  <input
++                    :value="formatDateInputValue(draftFilters.createdTo)"
++                    class="h-8 w-full rounded-md border border-n-weak bg-n-background px-2 pr-8 text-xs text-n-slate-12 outline-none focus:border-n-brand"
++                    inputmode="numeric"
++                    :placeholder="DATE_INPUT_PLACEHOLDER"
++                    type="text"
++                    @change="draftFilters.createdTo = normalizeDateInputValue($event.target.value)"
++                  />
++                  <input
++                    v-model="draftFilters.createdTo"
++                    aria-label="Open created to calendar"
++                    class="absolute inset-y-0 right-0 z-10 h-full w-8 cursor-pointer opacity-0"
++                    style="width: 2rem; min-width: 2rem;"
++                    type="date"
++                  />
++                  <i class="i-lucide-calendar pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-n-slate-10" />
++                </span>
                </label>
- 
-@@ -1885,24 +1945,30 @@ watch(
+
+               <label class="grid gap-1 text-[11px] font-medium text-n-slate-11">
+@@ -1884,26 +1964,64 @@ watch(
+                 <template v-else-if="isRangeFilterField(field)">
                    <label class="grid gap-1 text-[11px] font-medium text-n-slate-11">
                      {{ field.label }} from
-                     <input
-+                      :inputmode="field.field_type === 'date' ? 'numeric' : undefined"
-                       :min="field.field_type === 'number' ? '0' : undefined"
-+                      :placeholder="field.field_type === 'date' ? DATE_INPUT_PLACEHOLDER : undefined"
-                       :step="stepForField(field)"
-                       :type="inputTypeForField(field)"
+-                    <input
+-                      :min="field.field_type === 'number' ? '0' : undefined"
+-                      :step="stepForField(field)"
+-                      :type="inputTypeForField(field)"
 -                      :value="fieldFilterState(draftFilters, field).from || ''"
-+                      :value="rangeInputValue(field, fieldFilterState(draftFilters, field).from)"
-                       class="h-8 rounded-md border border-n-weak bg-n-background px-2 text-xs text-n-slate-12 outline-none focus:border-n-brand"
+-                      class="h-8 rounded-md border border-n-weak bg-n-background px-2 text-xs text-n-slate-12 outline-none focus:border-n-brand"
 -                      @input="setDraftFieldFilter(field, { from: $event.target.value })"
-+                      @input="handleRangeFieldInput(field, 'from', $event.target.value)"
-+                      @change="setDraftRangeFieldFilter(field, 'from', $event.target.value)"
-                     />
+-                    />
++                    <span class="relative block">
++                      <input
++                        :inputmode="field.field_type === 'date' ? 'numeric' : undefined"
++                        :min="field.field_type === 'number' ? '0' : undefined"
++                        :placeholder="field.field_type === 'date' ? DATE_INPUT_PLACEHOLDER : undefined"
++                        :step="stepForField(field)"
++                        :type="inputTypeForField(field)"
++                        :value="rangeInputValue(field, fieldFilterState(draftFilters, field).from)"
++                        class="h-8 w-full rounded-md border border-n-weak bg-n-background px-2 text-xs text-n-slate-12 outline-none focus:border-n-brand"
++                        :class="{ 'pr-8': field.field_type === 'date' }"
++                        @input="handleRangeFieldInput(field, 'from', $event.target.value)"
++                        @change="setDraftRangeFieldFilter(field, 'from', $event.target.value)"
++                      />
++                      <input
++                        v-if="field.field_type === 'date'"
++                        :value="fieldFilterState(draftFilters, field).from || ''"
++                        aria-label="Open field from calendar"
++                        class="absolute inset-y-0 right-0 z-10 h-full w-8 cursor-pointer opacity-0"
++                        style="width: 2rem; min-width: 2rem;"
++                        type="date"
++                        @change="setDraftRangeFieldFilter(field, 'from', $event.target.value)"
++                      />
++                      <i
++                        v-if="field.field_type === 'date'"
++                        class="i-lucide-calendar pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-n-slate-10"
++                      />
++                    </span>
                    </label>
- 
+
                    <label class="grid gap-1 text-[11px] font-medium text-n-slate-11">
                      {{ field.label }} to
-                     <input
-+                      :inputmode="field.field_type === 'date' ? 'numeric' : undefined"
-                       :min="field.field_type === 'number' ? '0' : undefined"
-+                      :placeholder="field.field_type === 'date' ? DATE_INPUT_PLACEHOLDER : undefined"
-                       :step="stepForField(field)"
-                       :type="inputTypeForField(field)"
+-                    <input
+-                      :min="field.field_type === 'number' ? '0' : undefined"
+-                      :step="stepForField(field)"
+-                      :type="inputTypeForField(field)"
 -                      :value="fieldFilterState(draftFilters, field).to || ''"
-+                      :value="rangeInputValue(field, fieldFilterState(draftFilters, field).to)"
-                       class="h-8 rounded-md border border-n-weak bg-n-background px-2 text-xs text-n-slate-12 outline-none focus:border-n-brand"
+-                      class="h-8 rounded-md border border-n-weak bg-n-background px-2 text-xs text-n-slate-12 outline-none focus:border-n-brand"
 -                      @input="setDraftFieldFilter(field, { to: $event.target.value })"
-+                      @input="handleRangeFieldInput(field, 'to', $event.target.value)"
-+                      @change="setDraftRangeFieldFilter(field, 'to', $event.target.value)"
-                     />
+-                    />
++                    <span class="relative block">
++                      <input
++                        :inputmode="field.field_type === 'date' ? 'numeric' : undefined"
++                        :min="field.field_type === 'number' ? '0' : undefined"
++                        :placeholder="field.field_type === 'date' ? DATE_INPUT_PLACEHOLDER : undefined"
++                        :step="stepForField(field)"
++                        :type="inputTypeForField(field)"
++                        :value="rangeInputValue(field, fieldFilterState(draftFilters, field).to)"
++                        class="h-8 w-full rounded-md border border-n-weak bg-n-background px-2 text-xs text-n-slate-12 outline-none focus:border-n-brand"
++                        :class="{ 'pr-8': field.field_type === 'date' }"
++                        @input="handleRangeFieldInput(field, 'to', $event.target.value)"
++                        @change="setDraftRangeFieldFilter(field, 'to', $event.target.value)"
++                      />
++                      <input
++                        v-if="field.field_type === 'date'"
++                        :value="fieldFilterState(draftFilters, field).to || ''"
++                        aria-label="Open field to calendar"
++                        class="absolute inset-y-0 right-0 z-10 h-full w-8 cursor-pointer opacity-0"
++                        style="width: 2rem; min-width: 2rem;"
++                        type="date"
++                        @change="setDraftRangeFieldFilter(field, 'to', $event.target.value)"
++                      />
++                      <i
++                        v-if="field.field_type === 'date'"
++                        class="i-lucide-calendar pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-n-slate-10"
++                      />
++                    </span>
                    </label>
                  </template>
-@@ -2634,17 +2700,23 @@ watch(
+
+@@ -2633,19 +2751,45 @@ watch(
+             <div class="grid grid-cols-2 gap-3">
                <label class="grid gap-1.5 text-xs font-medium text-n-slate-11">
                  Rental start
-                 <input
+-                <input
 -                  v-model="newDealForm.rental_start"
-+                  :value="formatDateInputValue(newDealForm.rental_start)"
-                   class="h-10 rounded-md border border-n-weak bg-n-background px-3 text-sm text-n-slate-12 outline-none focus:border-n-brand"
+-                  class="h-10 rounded-md border border-n-weak bg-n-background px-3 text-sm text-n-slate-12 outline-none focus:border-n-brand"
 -                  type="date"
-+                  inputmode="numeric"
-+                  :placeholder="DATE_INPUT_PLACEHOLDER"
-+                  type="text"
-+                  @change="newDealForm.rental_start = normalizeDateInputValue($event.target.value)"
-                 />
+-                />
++                <span class="relative block">
++                  <input
++                    :value="formatDateInputValue(newDealForm.rental_start)"
++                    class="h-10 w-full rounded-md border border-n-weak bg-n-background px-3 pr-10 text-sm text-n-slate-12 outline-none focus:border-n-brand"
++                    inputmode="numeric"
++                    :placeholder="DATE_INPUT_PLACEHOLDER"
++                    type="text"
++                    @change="newDealForm.rental_start = normalizeDateInputValue($event.target.value)"
++                  />
++                  <input
++                    v-model="newDealForm.rental_start"
++                    aria-label="Open rental start calendar"
++                    class="absolute inset-y-0 right-0 z-10 h-full w-10 cursor-pointer opacity-0"
++                    style="width: 2.5rem; min-width: 2.5rem;"
++                    type="date"
++                  />
++                  <i class="i-lucide-calendar pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-n-slate-10" />
++                </span>
                </label>
                <label class="grid gap-1.5 text-xs font-medium text-n-slate-11">
                  Rental end
-                 <input
+-                <input
 -                  v-model="newDealForm.rental_end"
-+                  :value="formatDateInputValue(newDealForm.rental_end)"
-                   class="h-10 rounded-md border border-n-weak bg-n-background px-3 text-sm text-n-slate-12 outline-none focus:border-n-brand"
+-                  class="h-10 rounded-md border border-n-weak bg-n-background px-3 text-sm text-n-slate-12 outline-none focus:border-n-brand"
 -                  type="date"
-+                  inputmode="numeric"
-+                  :placeholder="DATE_INPUT_PLACEHOLDER"
-+                  type="text"
-+                  @change="newDealForm.rental_end = normalizeDateInputValue($event.target.value)"
-                 />
+-                />
++                <span class="relative block">
++                  <input
++                    :value="formatDateInputValue(newDealForm.rental_end)"
++                    class="h-10 w-full rounded-md border border-n-weak bg-n-background px-3 pr-10 text-sm text-n-slate-12 outline-none focus:border-n-brand"
++                    inputmode="numeric"
++                    :placeholder="DATE_INPUT_PLACEHOLDER"
++                    type="text"
++                    @change="newDealForm.rental_end = normalizeDateInputValue($event.target.value)"
++                  />
++                  <input
++                    v-model="newDealForm.rental_end"
++                    aria-label="Open rental end calendar"
++                    class="absolute inset-y-0 right-0 z-10 h-full w-10 cursor-pointer opacity-0"
++                    style="width: 2.5rem; min-width: 2.5rem;"
++                    type="date"
++                  />
++                  <i class="i-lucide-calendar pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-n-slate-10" />
++                </span>
                </label>
              </div>
+
 diff --git a/app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue b/app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue
-index f81c91a..f41e6aa 100644
+index f81c91a..524e1f9 100644
 --- a/app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue
 +++ b/app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue
 @@ -62,10 +62,50 @@ const moneyFormatter = new Intl.NumberFormat('en-AE', {
- 
+
  const dateFormatter = new Intl.DateTimeFormat('en-GB', {
    day: '2-digit',
 -  month: 'short',
 +  month: '2-digit',
    year: 'numeric',
  });
- 
+
 +const DATE_INPUT_PLACEHOLDER = 'dd/mm/yyyy';
 +const ISO_DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
 +const DISPLAY_DATE_PATTERN = /^(\d{1,2})[./-](\d{1,2})[./-](\d{4})$/;
@@ -245,7 +349,7 @@ index f81c91a..f41e6aa 100644
    car: ['car_model', 'car_type', 'requested_car', 'selected_car'],
 @@ -467,7 +507,7 @@ const isCustomField = field => {
  };
- 
+
  const inputTypeFor = field => {
 -  if (field.field_type === 'date') return 'date';
 +  if (field.field_type === 'date') return 'text';
@@ -255,7 +359,7 @@ index f81c91a..f41e6aa 100644
 @@ -490,6 +530,21 @@ const setFieldValue = (field, value) => {
    missingRequiredKeys.value = missingRequiredKeys.value.filter(key => key !== field.key);
  };
- 
+
 +const inputValueForField = field => {
 +  const value = valueForField(field);
 +  return field.field_type === 'date' ? formatDateInputValue(value) : value;
@@ -274,32 +378,62 @@ index f81c91a..f41e6aa 100644
  const fieldOptions = field => {
    return Array.isArray(field.options) ? field.options : [];
  };
-@@ -1141,12 +1196,15 @@ onUnmounted(() => {
- 
-                       <input
-                         v-else
+@@ -1139,15 +1194,38 @@ onUnmounted(() => {
+                         Enabled
+                       </label>
+
+-                      <input
+-                        v-else
 -                        :value="valueForField(field)"
-+                        :value="inputValueForField(field)"
-                         :class="[compactFieldClass, { 'border-n-ruby-8': isFieldMissing(field) }]"
-+                        :inputmode="field.field_type === 'date' ? 'numeric' : undefined"
-                         :min="field.field_type === 'number' ? 0 : undefined"
-+                        :placeholder="field.field_type === 'date' ? DATE_INPUT_PLACEHOLDER : undefined"
-                         :step="field.field_type === 'number' ? '0.01' : undefined"
-                         :type="inputTypeFor(field)"
+-                        :class="[compactFieldClass, { 'border-n-ruby-8': isFieldMissing(field) }]"
+-                        :min="field.field_type === 'number' ? 0 : undefined"
+-                        :step="field.field_type === 'number' ? '0.01' : undefined"
+-                        :type="inputTypeFor(field)"
 -                        @input="setFieldValue(field, $event.target.value)"
-+                        @input="handleFieldInput(field, $event.target.value)"
-+                        @change="setFieldValueFromInput(field, $event.target.value)"
-                       />
+-                      />
++                      <div v-else class="relative">
++                        <input
++                          :value="inputValueForField(field)"
++                          :class="[
++                            compactFieldClass,
++                            {
++                              'border-n-ruby-8': isFieldMissing(field),
++                              'pr-10': field.field_type === 'date',
++                            },
++                          ]"
++                          :inputmode="field.field_type === 'date' ? 'numeric' : undefined"
++                          :min="field.field_type === 'number' ? 0 : undefined"
++                          :placeholder="field.field_type === 'date' ? DATE_INPUT_PLACEHOLDER : undefined"
++                          :step="field.field_type === 'number' ? '0.01' : undefined"
++                          :type="inputTypeFor(field)"
++                          @input="handleFieldInput(field, $event.target.value)"
++                          @change="setFieldValueFromInput(field, $event.target.value)"
++                        />
++                        <input
++                          v-if="field.field_type === 'date'"
++                          :value="valueForField(field)"
++                          aria-label="Open field date calendar"
++                          class="absolute inset-y-0 right-0 z-10 h-full w-10 cursor-pointer opacity-0"
++                          style="width: 2.5rem; min-width: 2.5rem;"
++                          type="date"
++                          @change="setFieldValue(field, $event.target.value)"
++                        />
++                        <i
++                          v-if="field.field_type === 'date'"
++                          class="i-lucide-calendar pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-n-slate-10"
++                        />
++                      </div>
                      </div>
                    </div>
+                 </div>
 diff --git a/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue b/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue
-index 290ce6c..4c2b00e 100644
+index 290ce6c..d6e0342 100644
 --- a/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue
 +++ b/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue
 @@ -48,6 +48,46 @@ const formatPercent = value => {
    return `${parsed.toFixed(parsed >= 10 ? 0 : 1)}%`;
  };
- 
+
 +const DATE_INPUT_PLACEHOLDER = 'dd/mm/yyyy';
 +const ISO_DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
 +const DISPLAY_DATE_PATTERN = /^(\d{1,2})[./-](\d{1,2})[./-](\d{4})$/;
@@ -345,7 +479,7 @@ index 290ce6c..4c2b00e 100644
  });
 @@ -308,8 +348,8 @@ const selectRange = value => {
  };
- 
+
  const updateCustomDates = ({ from = customDateFrom.value, to = customDateTo.value } = {}) => {
 -  customDateFrom.value = from;
 -  customDateTo.value = to;
@@ -354,30 +488,63 @@ index 290ce6c..4c2b00e 100644
    selectedRange.value = '';
    fetchAnalytics();
  };
-@@ -356,18 +396,22 @@ onMounted(fetchAnalytics);
+@@ -355,21 +395,47 @@ onMounted(fetchAnalytics);
+           <div class="flex items-center justify-end gap-2">
              <label class="grid shrink-0 text-[11px] font-medium text-n-slate-10">
                <span class="sr-only">Date from</span>
-               <input
+-              <input
 -                :value="customDateFrom"
-+                :value="formatDateInputValue(customDateFrom)"
-                 class="h-9 w-32 min-w-0 rounded-md border border-n-weak bg-n-background px-3 text-xs text-n-slate-12 outline-none transition focus:border-n-brand"
+-                class="h-9 w-32 min-w-0 rounded-md border border-n-weak bg-n-background px-3 text-xs text-n-slate-12 outline-none transition focus:border-n-brand"
 -                type="date"
-+                inputmode="numeric"
-+                :placeholder="DATE_INPUT_PLACEHOLDER"
-+                type="text"
-                 @change="updateCustomDates({ from: $event.target.value, to: customDateTo })"
-               />
+-                @change="updateCustomDates({ from: $event.target.value, to: customDateTo })"
+-              />
++              <span class="relative block">
++                <input
++                  :value="formatDateInputValue(customDateFrom)"
++                  class="h-9 w-32 min-w-0 rounded-md border border-n-weak bg-n-background px-3 pr-9 text-xs text-n-slate-12 outline-none transition focus:border-n-brand"
++                  inputmode="numeric"
++                  :placeholder="DATE_INPUT_PLACEHOLDER"
++                  type="text"
++                  @change="updateCustomDates({ from: $event.target.value, to: customDateTo })"
++                />
++                <input
++                  :value="customDateFrom"
++                  aria-label="Open date from calendar"
++                  class="absolute inset-y-0 right-0 z-10 h-full w-9 cursor-pointer opacity-0"
++                  style="width: 2.25rem; min-width: 2.25rem;"
++                  type="date"
++                  @change="updateCustomDates({ from: $event.target.value, to: customDateTo })"
++                />
++                <i class="i-lucide-calendar pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-n-slate-10" />
++              </span>
              </label>
              <label class="grid shrink-0 text-[11px] font-medium text-n-slate-10">
                <span class="sr-only">Date to</span>
-               <input
+-              <input
 -                :value="customDateTo"
-+                :value="formatDateInputValue(customDateTo)"
-                 class="h-9 w-32 min-w-0 rounded-md border border-n-weak bg-n-background px-3 text-xs text-n-slate-12 outline-none transition focus:border-n-brand"
+-                class="h-9 w-32 min-w-0 rounded-md border border-n-weak bg-n-background px-3 text-xs text-n-slate-12 outline-none transition focus:border-n-brand"
 -                type="date"
-+                inputmode="numeric"
-+                :placeholder="DATE_INPUT_PLACEHOLDER"
-+                type="text"
-                 @change="updateCustomDates({ from: customDateFrom, to: $event.target.value })"
-               />
+-                @change="updateCustomDates({ from: customDateFrom, to: $event.target.value })"
+-              />
++              <span class="relative block">
++                <input
++                  :value="formatDateInputValue(customDateTo)"
++                  class="h-9 w-32 min-w-0 rounded-md border border-n-weak bg-n-background px-3 pr-9 text-xs text-n-slate-12 outline-none transition focus:border-n-brand"
++                  inputmode="numeric"
++                  :placeholder="DATE_INPUT_PLACEHOLDER"
++                  type="text"
++                  @change="updateCustomDates({ from: customDateFrom, to: $event.target.value })"
++                />
++                <input
++                  :value="customDateTo"
++                  aria-label="Open date to calendar"
++                  class="absolute inset-y-0 right-0 z-10 h-full w-9 cursor-pointer opacity-0"
++                  style="width: 2.25rem; min-width: 2.25rem;"
++                  type="date"
++                  @change="updateCustomDates({ from: customDateFrom, to: $event.target.value })"
++                />
++                <i class="i-lucide-calendar pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-n-slate-10" />
++              </span>
              </label>
+             <Button
+               icon="i-lucide-refresh-cw"
