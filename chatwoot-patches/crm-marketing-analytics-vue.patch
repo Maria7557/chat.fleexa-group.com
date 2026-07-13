@@ -1,5 +1,5 @@
 diff --git a/app/javascript/dashboard/components-next/sidebar/Sidebar.vue b/app/javascript/dashboard/components-next/sidebar/Sidebar.vue
-index 52768dc..4ff5e0e 100644
+index 52768dc..9d1f2c9 100644
 --- a/app/javascript/dashboard/components-next/sidebar/Sidebar.vue
 +++ b/app/javascript/dashboard/components-next/sidebar/Sidebar.vue
 @@ -387,6 +387,12 @@ const menuItems = computed(() => {
@@ -17,10 +17,10 @@ index 52768dc..4ff5e0e 100644
        icon: 'i-woot-captain',
 diff --git a/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue b/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue
 new file mode 100644
-index 0000000..a4c30f7
+index 0000000..8eb350d
 --- /dev/null
 +++ b/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue
-@@ -0,0 +1,500 @@
+@@ -0,0 +1,1023 @@
 +<script setup>
 +import { computed, onMounted, ref } from 'vue';
 +
@@ -46,6 +46,26 @@ index 0000000..a4c30f7
 +  { value: 'last_7_days', label: '7 days' },
 +];
 +
++const TREND_CHART_WIDTH = 720;
++const TREND_CHART_HEIGHT = 260;
++const TREND_CHART_PADDING = {
++  top: 18,
++  right: 18,
++  bottom: 34,
++  left: 42,
++};
++const TREND_CHART_INNER_WIDTH =
++  TREND_CHART_WIDTH - TREND_CHART_PADDING.left - TREND_CHART_PADDING.right;
++const TREND_CHART_INNER_HEIGHT =
++  TREND_CHART_HEIGHT - TREND_CHART_PADDING.top - TREND_CHART_PADDING.bottom;
++const TREND_SERIES = [
++  { key: 'all', label: 'All Leads', color: '#6B7280', width: 3 },
++  { key: 'google', label: 'Google', color: '#2563EB', width: 2 },
++  { key: 'meta', label: 'Meta', color: '#0EA5E9', width: 2 },
++  { key: 'tiktok', label: 'TikTok', color: '#DB2777', width: 2 },
++];
++const PAID_SOURCE_KEYS = ['google', 'meta', 'tiktok'];
++
 +const stages = ref([]);
 +const deals = ref([]);
 +const meta = ref({});
@@ -54,6 +74,13 @@ index 0000000..a4c30f7
 +const customDateTo = ref('');
 +const isLoading = ref(false);
 +const errorMessage = ref('');
++const visibleTrendSeries = ref({
++  all: true,
++  google: true,
++  meta: true,
++  tiktok: true,
++});
++const activeTrendIndex = ref(null);
 +
 +const normalizeText = value => String(value || '').trim().toLowerCase();
 +
@@ -211,6 +238,156 @@ index 0000000..a4c30f7
 +  return value !== null && value !== undefined && String(value).trim() !== '';
 +};
 +
++const trendPadDatePart = value => String(value).padStart(2, '0');
++
++const trendDateKeyFromDate = date => {
++  return [
++    date.getFullYear(),
++    trendPadDatePart(date.getMonth() + 1),
++    trendPadDatePart(date.getDate()),
++  ].join('-');
++};
++
++const trendDateFromKey = key => {
++  const [year, month, day] = String(key || '').split('-').map(Number);
++  if (!year || !month || !day) return null;
++  return new Date(year, month - 1, day);
++};
++
++const trendDateKeyFromValue = value => {
++  if (!hasValue(value)) return '';
++
++  const date = new Date(value);
++  if (Number.isNaN(date.getTime())) return '';
++  return trendDateKeyFromDate(date);
++};
++
++const addDaysToTrendKey = (key, days) => {
++  const date = trendDateFromKey(key);
++  if (!date) return '';
++
++  date.setDate(date.getDate() + days);
++  return trendDateKeyFromDate(date);
++};
++
++const trendDateKeysBetween = (fromKey, toKey) => {
++  const fromDate = trendDateFromKey(fromKey);
++  const toDate = trendDateFromKey(toKey);
++  if (!fromDate || !toDate || fromDate > toDate) return [];
++
++  const keys = [];
++  const cursor = new Date(fromDate);
++  while (cursor <= toDate) {
++    keys.push(trendDateKeyFromDate(cursor));
++    cursor.setDate(cursor.getDate() + 1);
++  }
++
++  return keys;
++};
++
++const displayTrendDateKey = key => {
++  const [year, month, day] = String(key || '').split('-');
++  return year && month && day ? `${day}/${month}/${year}` : '';
++};
++
++const dateBoundsForPreset = preset => {
++  const todayKey = trendDateKeyFromDate(new Date());
++
++  if (preset === 'today') {
++    return { from: todayKey, to: todayKey };
++  }
++
++  if (preset === 'yesterday') {
++    const yesterdayKey = addDaysToTrendKey(todayKey, -1);
++    return { from: yesterdayKey, to: yesterdayKey };
++  }
++
++  if (preset === 'last_7_days') {
++    return { from: addDaysToTrendKey(todayKey, -6), to: todayKey };
++  }
++
++  if (preset === 'last_30_days') {
++    return { from: addDaysToTrendKey(todayKey, -29), to: todayKey };
++  }
++
++  if (preset === 'this_month') {
++    const today = new Date();
++    return {
++      from: trendDateKeyFromDate(new Date(today.getFullYear(), today.getMonth(), 1)),
++      to: todayKey,
++    };
++  }
++
++  return { from: '', to: '' };
++};
++
++const normalizedAttributes = source => {
++  if (!source || Array.isArray(source) || typeof source !== 'object') return {};
++  return source;
++};
++
++const dealAttributeSources = deal => [
++  normalizedAttributes(deal),
++  normalizedAttributes(deal?.custom_attributes),
++  normalizedAttributes(deal?.contact?.custom_attributes),
++  normalizedAttributes(deal?.contact?.additional_attributes),
++  normalizedAttributes(deal?.conversation?.custom_attributes),
++  normalizedAttributes(deal?.conversation?.additional_attributes),
++];
++
++const valueFromDealSources = (deal, keys) => {
++  const sources = dealAttributeSources(deal);
++
++  for (const source of sources) {
++    for (const key of keys) {
++      if (hasValue(source[key])) return source[key];
++    }
++  }
++
++  return '';
++};
++
++const paidSourceKeyFromText = value => {
++  const normalized = normalizeText(value).replace(/[\s_-]+/g, '');
++  if (!normalized) return '';
++  if (normalized.includes('google')) return 'google';
++  if (
++    normalized.includes('meta') ||
++    normalized.includes('facebook') ||
++    normalized === 'fb' ||
++    normalized.includes('instagram') ||
++    normalized === 'ig'
++  ) {
++    return 'meta';
++  }
++  if (normalized.includes('tiktok')) return 'tiktok';
++  if (normalized.includes('unknown')) return 'unknown';
++  return 'other';
++};
++
++const classifyTrafficSource = deal => {
++  const firstTouchSource = valueFromDealSources(deal, [
++    'first_touch_source_label',
++    'first_touch_source_key',
++  ]);
++  const firstTouchSourceKey = paidSourceKeyFromText(firstTouchSource);
++  if (firstTouchSourceKey) return firstTouchSourceKey;
++
++  if (hasValue(valueFromDealSources(deal, ['gclid', 'gclientid']))) {
++    return 'google';
++  }
++
++  if (hasValue(valueFromDealSources(deal, ['fbclid']))) {
++    return 'meta';
++  }
++
++  if (paidSourceKeyFromText(valueFromDealSources(deal, ['utm_source'])) === 'tiktok') {
++    return 'tiktok';
++  }
++
++  return 'unknown';
++};
++
 +const kpiCards = computed(() => [
 +  {
 +    label: 'Spend',
@@ -249,6 +426,164 @@ index 0000000..a4c30f7
 +    icon: 'i-lucide-percent',
 +  },
 +]);
++
++const dealDateKeys = computed(() => {
++  return deals.value.map(deal => trendDateKeyFromValue(deal.created_at)).filter(Boolean).sort();
++});
++
++const trendDateKeys = computed(() => {
++  if (!dealDateKeys.value.length) return [];
++
++  const presetBounds = dateBoundsForPreset(selectedRange.value);
++  const fromKey = customDateFrom.value || presetBounds.from || dealDateKeys.value[0];
++  const toKey =
++    customDateTo.value ||
++    presetBounds.to ||
++    dealDateKeys.value[dealDateKeys.value.length - 1];
++
++  return trendDateKeysBetween(fromKey, toKey);
++});
++
++const leadTrendRows = computed(() => {
++  const rowsByDate = trendDateKeys.value.reduce((memo, dateKey) => {
++    memo[dateKey] = {
++      key: dateKey,
++      label: displayTrendDateKey(dateKey),
++      all: 0,
++      google: 0,
++      meta: 0,
++      tiktok: 0,
++    };
++    return memo;
++  }, {});
++
++  deals.value.forEach(deal => {
++    const dateKey = trendDateKeyFromValue(deal.created_at);
++    const row = rowsByDate[dateKey];
++    if (!row) return;
++
++    row.all += 1;
++    const sourceKey = classifyTrafficSource(deal);
++    if (PAID_SOURCE_KEYS.includes(sourceKey)) row[sourceKey] += 1;
++  });
++
++  return trendDateKeys.value.map(dateKey => rowsByDate[dateKey]).filter(Boolean);
++});
++
++const maxTrendValue = computed(() => {
++  const visibleKeys = TREND_SERIES
++    .filter(series => visibleTrendSeries.value[series.key] !== false)
++    .map(series => series.key);
++  const maxValue = leadTrendRows.value.reduce((max, row) => {
++    return Math.max(max, ...visibleKeys.map(key => row[key] || 0));
++  }, 0);
++
++  return Math.max(maxValue, 1);
++});
++
++const trendPointX = (index, total) => {
++  if (total <= 1) {
++    return TREND_CHART_PADDING.left + TREND_CHART_INNER_WIDTH / 2;
++  }
++
++  return TREND_CHART_PADDING.left + (TREND_CHART_INNER_WIDTH * index) / (total - 1);
++};
++
++const trendPointY = value => {
++  return TREND_CHART_PADDING.top +
++    TREND_CHART_INNER_HEIGHT -
++    (TREND_CHART_INNER_HEIGHT * Number(value || 0)) / maxTrendValue.value;
++};
++
++const linePathFromPoints = points => {
++  return points
++    .map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x.toFixed(2)} ${point.y.toFixed(2)}`)
++    .join(' ');
++};
++
++const leadTrendSeries = computed(() => {
++  const total = leadTrendRows.value.length;
++
++  return TREND_SERIES.map(series => {
++    const points = leadTrendRows.value.map((row, index) => ({
++      x: trendPointX(index, total),
++      y: trendPointY(row[series.key]),
++      value: row[series.key] || 0,
++      date: row.label,
++    }));
++
++    return {
++      ...series,
++      points,
++      path: points.length ? linePathFromPoints(points) : '',
++    };
++  });
++});
++
++const trendGridLines = computed(() => {
++  return [1, 0.5, 0].map(ratio => {
++    const value = Math.round(maxTrendValue.value * ratio);
++    return {
++      key: ratio,
++      y: trendPointY(value),
++      label: formatNumber(value),
++    };
++  });
++});
++
++const trendXAxisLabels = computed(() => {
++  const rows = leadTrendRows.value;
++  if (!rows.length) return [];
++
++  const lastIndex = rows.length - 1;
++  const indexes = [...new Set([0, Math.floor(lastIndex / 2), lastIndex])];
++
++  return indexes.map(index => ({
++    key: `${rows[index].key}-${index}`,
++    label: rows[index].label,
++    x: trendPointX(index, rows.length),
++  }));
++});
++
++const activeTrendRow = computed(() => {
++  if (activeTrendIndex.value === null) return null;
++  return leadTrendRows.value[activeTrendIndex.value] || null;
++});
++
++const activeTrendSeriesPoints = computed(() => {
++  if (activeTrendIndex.value === null) return [];
++
++  return leadTrendSeries.value
++    .filter(series => visibleTrendSeries.value[series.key] !== false)
++    .map(series => ({
++      ...series,
++      point: series.points[activeTrendIndex.value],
++    }))
++    .filter(series => series.point);
++});
++
++const activeTrendGuideX = computed(() => {
++  return activeTrendSeriesPoints.value[0]?.point?.x || 0;
++});
++
++const trendTooltipStyle = computed(() => {
++  const x = activeTrendGuideX.value || TREND_CHART_WIDTH / 2;
++  const anchor = x > TREND_CHART_WIDTH * 0.72 ? '-100%' : '-50%';
++
++  return {
++    left: `${(x / TREND_CHART_WIDTH) * 100}%`,
++    transform: `translateX(${anchor})`,
++  };
++});
++
++const isTrendSeriesVisible = key => visibleTrendSeries.value[key] !== false;
++
++const toggleTrendSeries = key => {
++  visibleTrendSeries.value = {
++    ...visibleTrendSeries.value,
++    [key]: !isTrendSeriesVisible(key),
++  };
++};
 +
 +const requestParams = page => {
 +  const params = {
@@ -335,6 +670,25 @@ index 0000000..a4c30f7
 +  customDateTo.value = to;
 +  selectedRange.value = '';
 +  fetchAnalytics();
++};
++
++const setActiveTrendPoint = event => {
++  if (!leadTrendRows.value.length) return;
++
++  const bounds = event.currentTarget.getBoundingClientRect();
++  const relativeX = ((event.clientX - bounds.left) / bounds.width) * TREND_CHART_WIDTH;
++  const clampedX = Math.min(
++    Math.max(relativeX, TREND_CHART_PADDING.left),
++    TREND_CHART_WIDTH - TREND_CHART_PADDING.right
++  );
++  const ratio = (clampedX - TREND_CHART_PADDING.left) / TREND_CHART_INNER_WIDTH;
++  const index = Math.round(ratio * (leadTrendRows.value.length - 1));
++
++  activeTrendIndex.value = Math.min(Math.max(index, 0), leadTrendRows.value.length - 1);
++};
++
++const clearActiveTrendPoint = () => {
++  activeTrendIndex.value = null;
 +};
 +
 +onMounted(fetchAnalytics);
@@ -440,6 +794,175 @@ index 0000000..a4c30f7
 +        </div>
 +
 +        <section class="grid gap-4 rounded-lg border border-n-weak bg-n-solid-1 p-5">
++          <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
++            <div>
++              <h2 class="text-sm font-semibold text-n-slate-12">
++                Lead Trend
++              </h2>
++              <div class="mt-1 text-xs text-n-slate-10">
++                New leads by source over time
++              </div>
++            </div>
++
++            <div class="flex flex-wrap gap-2">
++              <button
++                v-for="series in TREND_SERIES"
++                :key="series.key"
++                type="button"
++                class="inline-flex h-8 items-center gap-2 rounded-md border px-2.5 text-xs font-medium transition"
++                :class="isTrendSeriesVisible(series.key)
++                  ? 'border-n-weak bg-n-background text-n-slate-12'
++                  : 'border-n-weak bg-n-alpha-2 text-n-slate-9'"
++                :aria-pressed="isTrendSeriesVisible(series.key)"
++                @click="toggleTrendSeries(series.key)"
++              >
++                <span
++                  class="h-2.5 w-2.5 rounded-full"
++                  :style="{ backgroundColor: series.color }"
++                />
++                {{ series.label }}
++              </button>
++            </div>
++          </div>
++
++          <div
++            v-if="leadTrendRows.length"
++            class="relative min-h-[280px] overflow-hidden rounded-lg border border-n-weak bg-n-background p-3"
++          >
++            <div
++              v-if="activeTrendRow"
++              class="pointer-events-none absolute top-3 z-10 hidden min-w-[180px] rounded-md border border-n-weak bg-n-solid-1 px-3 py-2 text-xs shadow-lg sm:block"
++              :style="trendTooltipStyle"
++            >
++              <div class="mb-1 font-semibold text-n-slate-12">
++                {{ activeTrendRow.label }}
++              </div>
++              <div
++                v-for="series in TREND_SERIES"
++                :key="series.key"
++                class="flex items-center justify-between gap-4 text-n-slate-10"
++              >
++                <span class="inline-flex items-center gap-2">
++                  <span
++                    class="h-2 w-2 rounded-full"
++                    :style="{ backgroundColor: series.color }"
++                  />
++                  {{ series.label }}
++                </span>
++                <span class="font-medium text-n-slate-12">
++                  {{ formatNumber(activeTrendRow[series.key]) }}
++                </span>
++              </div>
++            </div>
++
++            <svg
++              class="h-[280px] w-full overflow-visible"
++              role="img"
++              aria-label="Lead trend by source over time"
++              :viewBox="`0 0 ${TREND_CHART_WIDTH} ${TREND_CHART_HEIGHT}`"
++              preserveAspectRatio="none"
++              @mousemove="setActiveTrendPoint"
++              @mouseleave="clearActiveTrendPoint"
++            >
++              <g>
++                <line
++                  v-for="line in trendGridLines"
++                  :key="line.key"
++                  :x1="TREND_CHART_PADDING.left"
++                  :x2="TREND_CHART_WIDTH - TREND_CHART_PADDING.right"
++                  :y1="line.y"
++                  :y2="line.y"
++                  class="stroke-n-alpha-2"
++                  stroke-width="1"
++                />
++                <text
++                  v-for="line in trendGridLines"
++                  :key="`${line.key}-label`"
++                  :x="TREND_CHART_PADDING.left - 10"
++                  :y="line.y + 4"
++                  class="fill-n-slate-9 text-[10px]"
++                  text-anchor="end"
++                >
++                  {{ line.label }}
++                </text>
++              </g>
++
++              <g>
++                <text
++                  v-for="label in trendXAxisLabels"
++                  :key="label.key"
++                  :x="label.x"
++                  :y="TREND_CHART_HEIGHT - 8"
++                  class="fill-n-slate-9 text-[10px]"
++                  text-anchor="middle"
++                >
++                  {{ label.label }}
++                </text>
++              </g>
++
++              <g>
++                <path
++                  v-for="series in leadTrendSeries"
++                  v-show="isTrendSeriesVisible(series.key)"
++                  :key="series.key"
++                  :d="series.path"
++                  fill="none"
++                  stroke-linecap="round"
++                  stroke-linejoin="round"
++                  :stroke="series.color"
++                  :stroke-width="series.width"
++                  vector-effect="non-scaling-stroke"
++                />
++              </g>
++
++              <g v-if="leadTrendRows.length === 1">
++                <circle
++                  v-for="series in leadTrendSeries"
++                  v-show="isTrendSeriesVisible(series.key)"
++                  :key="`${series.key}-single-point`"
++                  :cx="series.points[0].x"
++                  :cy="series.points[0].y"
++                  r="4"
++                  :fill="series.color"
++                  vector-effect="non-scaling-stroke"
++                />
++              </g>
++
++              <g v-if="activeTrendRow">
++                <line
++                  :x1="activeTrendGuideX"
++                  :x2="activeTrendGuideX"
++                  :y1="TREND_CHART_PADDING.top"
++                  :y2="TREND_CHART_HEIGHT - TREND_CHART_PADDING.bottom"
++                  class="stroke-n-slate-8"
++                  stroke-dasharray="4 4"
++                  stroke-width="1"
++                  vector-effect="non-scaling-stroke"
++                />
++                <circle
++                  v-for="series in activeTrendSeriesPoints"
++                  :key="series.key"
++                  :cx="series.point.x"
++                  :cy="series.point.y"
++                  r="4"
++                  class="fill-n-background"
++                  :stroke="series.color"
++                  stroke-width="2"
++                  vector-effect="non-scaling-stroke"
++                />
++              </g>
++            </svg>
++          </div>
++
++          <div
++            v-else
++            class="grid min-h-[280px] place-items-center rounded-lg border border-dashed border-n-weak bg-n-background px-4 text-center text-sm text-n-slate-10"
++          >
++            No leads in selected period
++          </div>
++        </section>
++
++        <section class="grid gap-4 rounded-lg border border-n-weak bg-n-solid-1 p-5">
 +          <div class="flex items-center justify-between gap-3">
 +            <div>
 +              <h2 class="text-sm font-semibold text-n-slate-12">
@@ -522,7 +1045,7 @@ index 0000000..a4c30f7
 +  </section>
 +</template>
 diff --git a/app/javascript/dashboard/routes/dashboard/crm/routes.js b/app/javascript/dashboard/routes/dashboard/crm/routes.js
-index abba8f0..89c3ca8 100644
+index abba8f0..8aab3bc 100644
 --- a/app/javascript/dashboard/routes/dashboard/crm/routes.js
 +++ b/app/javascript/dashboard/routes/dashboard/crm/routes.js
 @@ -9,6 +9,15 @@ export const routes = [
