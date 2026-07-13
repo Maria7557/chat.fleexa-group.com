@@ -20,7 +20,7 @@ new file mode 100644
 index 0000000..a4c30f7
 --- /dev/null
 +++ b/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue
-@@ -0,0 +1,585 @@
+@@ -0,0 +1,443 @@
 +<script setup>
 +import { computed, onMounted, ref } from 'vue';
 +
@@ -190,102 +190,10 @@ index 0000000..a4c30f7
 +  return [...forwardRows, ...lostRows];
 +});
 +
-+const customAttributes = deal => {
-+  const attributes = deal.custom_attributes;
-+  return attributes && typeof attributes === 'object' && !Array.isArray(attributes) ? attributes : {};
-+};
-+
 +const hasValue = value => {
 +  if (Array.isArray(value)) return value.length > 0;
 +  return value !== null && value !== undefined && String(value).trim() !== '';
 +};
-+
-+const cleanValue = value => String(value).trim();
-+
-+const firstCustomValue = (custom, keys) => {
-+  for (const key of keys) {
-+    if (hasValue(custom[key])) return cleanValue(custom[key]);
-+  }
-+
-+  return '';
-+};
-+
-+const sourceValue = deal => {
-+  const custom = customAttributes(deal);
-+
-+  const explicitSource = firstCustomValue(custom, [
-+    'first_touch_source_label',
-+    'source_request',
-+  ]);
-+  if (explicitSource) return explicitSource;
-+
-+  if (hasValue(custom.gclid) || hasValue(custom.gclientid)) return 'Google';
-+  if (hasValue(custom.fbclid)) return 'Meta';
-+  if (hasValue(custom.yclid) || hasValue(custom._ym_uid) || hasValue(custom._ym_counter)) return 'Yandex';
-+
-+  const fallbackSource = firstCustomValue(custom, ['utm_source', 'from']);
-+  if (fallbackSource) return fallbackSource;
-+
-+  return 'Unknown';
-+};
-+
-+const communicationChannelValue = deal => {
-+  if (hasValue(deal.conversation?.inbox?.name)) return cleanValue(deal.conversation.inbox.name);
-+  if (deal.conversation?.inbox_id) return `Inbox ${deal.conversation.inbox_id}`;
-+  return 'Unknown channel';
-+};
-+
-+const entryPointValue = deal => {
-+  const custom = customAttributes(deal);
-+  return firstCustomValue(custom, [
-+    'first_touch_entry_point_label',
-+    'landing_url',
-+    'landing_page',
-+    'utm_content',
-+    'utm_campaign',
-+    'utm_referrer',
-+    'from',
-+  ]) || 'Unknown entry point';
-+};
-+
-+const sourceRows = computed(() => {
-+  const rows = new Map();
-+
-+  deals.value.forEach(deal => {
-+    const source = sourceValue(deal);
-+    const entryPoint = entryPointValue(deal);
-+    const communicationChannel = communicationChannelValue(deal);
-+    const rowKey = `${source}::${entryPoint}::${communicationChannel}`;
-+    const row = rows.get(rowKey) || {
-+      source,
-+      entryPoint,
-+      communicationChannel,
-+      leads: 0,
-+      reserved: 0,
-+      rental: 0,
-+      closedWon: 0,
-+      closedLost: 0,
-+      successfulValue: 0,
-+      spend: 0,
-+    };
-+    const type = dealStageType(deal);
-+
-+    row.leads += 1;
-+    if (type === 'reserved') row.reserved += 1;
-+    if (type === 'rental') row.rental += 1;
-+    if (type === 'closed_won') row.closedWon += 1;
-+    if (type === 'closed_lost') row.closedLost += 1;
-+    if (SUCCESSFUL_STAGE_TYPES.includes(type)) row.successfulValue += amountValue(deal.amount);
-+    rows.set(rowKey, row);
-+  });
-+
-+  return [...rows.values()]
-+    .map(row => ({
-+      ...row,
-+      roas: row.spend ? row.successfulValue / row.spend : 0,
-+    }))
-+    .sort((a, b) => b.successfulValue - a.successfulValue || b.leads - a.leads);
-+});
 +
 +const kpiCards = computed(() => [
 +  {
@@ -552,56 +460,6 @@ index 0000000..a4c30f7
 +          </div>
 +        </section>
 +
-+        <section class="grid gap-4 rounded-lg border border-n-weak bg-n-solid-1 p-5">
-+          <div class="flex items-center justify-between gap-3">
-+            <h2 class="text-sm font-semibold text-n-slate-12">
-+              Source / Entry Point
-+            </h2>
-+            <span class="text-xs text-n-slate-10">
-+              {{ sourceRows.length }} rows
-+            </span>
-+          </div>
-+
-+          <div class="overflow-x-auto">
-+            <table class="min-w-full divide-y divide-n-weak text-sm">
-+              <thead>
-+                <tr class="text-left text-xs font-medium uppercase tracking-normal text-n-slate-10">
-+                  <th class="whitespace-nowrap py-3 pr-4">Source</th>
-+                  <th class="whitespace-nowrap px-4 py-3">Entry point</th>
-+                  <th class="whitespace-nowrap px-4 py-3">Communication channel</th>
-+                  <th class="whitespace-nowrap px-4 py-3 text-right">Leads</th>
-+                  <th class="whitespace-nowrap px-4 py-3 text-right">Бронь</th>
-+                  <th class="whitespace-nowrap px-4 py-3 text-right">В аренде</th>
-+                  <th class="whitespace-nowrap px-4 py-3 text-right">Завершено</th>
-+                  <th class="whitespace-nowrap px-4 py-3 text-right">Отмена</th>
-+                  <th class="whitespace-nowrap px-4 py-3 text-right">Successful value</th>
-+                  <th class="whitespace-nowrap px-4 py-3 text-right">Spend</th>
-+                  <th class="whitespace-nowrap px-4 py-3 text-right">ROAS</th>
-+                </tr>
-+              </thead>
-+              <tbody class="divide-y divide-n-weak">
-+                <tr v-for="row in sourceRows" :key="`${row.source}:${row.entryPoint}:${row.communicationChannel}`" class="text-n-slate-12">
-+                  <td class="whitespace-nowrap py-3 pr-4 font-medium">{{ row.source }}</td>
-+                  <td class="min-w-[220px] px-4 py-3 text-n-slate-11">{{ row.entryPoint }}</td>
-+                  <td class="whitespace-nowrap px-4 py-3 text-n-slate-11">{{ row.communicationChannel }}</td>
-+                  <td class="whitespace-nowrap px-4 py-3 text-right">{{ formatNumber(row.leads) }}</td>
-+                  <td class="whitespace-nowrap px-4 py-3 text-right">{{ formatNumber(row.reserved) }}</td>
-+                  <td class="whitespace-nowrap px-4 py-3 text-right">{{ formatNumber(row.rental) }}</td>
-+                  <td class="whitespace-nowrap px-4 py-3 text-right">{{ formatNumber(row.closedWon) }}</td>
-+                  <td class="whitespace-nowrap px-4 py-3 text-right">{{ formatNumber(row.closedLost) }}</td>
-+                  <td class="whitespace-nowrap px-4 py-3 text-right">{{ formatAmount(row.successfulValue) }}</td>
-+                  <td class="whitespace-nowrap px-4 py-3 text-right text-n-slate-10">{{ formatAmount(row.spend) }}</td>
-+                  <td class="whitespace-nowrap px-4 py-3 text-right text-n-slate-10">{{ row.roas.toFixed(1) }}x</td>
-+                </tr>
-+                <tr v-if="!sourceRows.length">
-+                  <td colspan="11" class="py-10 text-center text-sm text-n-slate-10">
-+                    No marketing data yet
-+                  </td>
-+                </tr>
-+              </tbody>
-+            </table>
-+          </div>
-+        </section>
 +      </div>
 +    </main>
 +  </section>
