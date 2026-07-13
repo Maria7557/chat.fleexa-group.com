@@ -27,7 +27,7 @@ index d92c986..a8ebaf2 100644
  const newFieldForm = ref({
    label: '',
    key: '',
-@@ -58,6 +62,48 @@ const dateFormatter = new Intl.DateTimeFormat('en-GB', {
+@@ -58,6 +62,64 @@ const dateFormatter = new Intl.DateTimeFormat('en-GB', {
    year: 'numeric',
  });
  
@@ -38,19 +38,35 @@ index d92c986..a8ebaf2 100644
 +  finance: ['amount', 'budget', 'debt_amount'],
 +};
 +
-+const MARKETING_KEYS = [
-+  'source_request',
-+  'source',
-+  'first_message',
-+  'landing_url',
-+  'requested_car',
-+  'utm_source',
-+  'utm_campaign',
-+  'utm_content',
-+  'utm_term',
++const ATTRIBUTION_FIELDS = [
++  { key: 'first_touch_source_key', label: 'First touch source key' },
++  { key: 'first_touch_source_label', label: 'First touch source label' },
++  { key: 'first_touch_entry_point_key', label: 'First touch entry point key' },
++  { key: 'first_touch_entry_point_label', label: 'First touch entry point label' },
++  { key: 'source_confidence', label: 'Source confidence' },
++  { key: 'source_override_by', label: 'Source override by' },
++  { key: 'source_raw_snapshot', label: 'Source raw snapshot' },
++  { key: 'source_request', label: 'Source request' },
++  { key: 'utm_source', label: 'UTM source' },
++  { key: 'utm_medium', label: 'UTM medium' },
++  { key: 'utm_campaign', label: 'UTM campaign' },
++  { key: 'utm_content', label: 'UTM content' },
++  { key: 'utm_term', label: 'UTM term' },
++  { key: 'utm_referrer', label: 'UTM referrer' },
++  { key: 'from', label: 'From' },
++  { key: 'gclientid', label: 'GClient ID' },
++  { key: '_ym_uid', label: 'YM UID' },
++  { key: '_ym_counter', label: 'YM counter' },
++  { key: 'gclid', label: 'GCLID' },
++  { key: 'yclid', label: 'YCLID' },
++  { key: 'fbclid', label: 'FBCLID' },
++  { key: 'ga_utm', label: 'GA UTM' },
++  { key: 'landing_url', label: 'Landing URL' },
++  { key: 'landing_page', label: 'Landing page' },
 +];
 +
-+const TRACKING_KEYS = ['gclid', 'fbclid', 'yclid'];
++const MARKETING_KEYS = ATTRIBUTION_FIELDS.map(field => field.key);
++const TRACKING_KEYS = [];
 +
 +const CLIENT_ATTRIBUTE_KEYS = [
 +  'client_name',
@@ -76,7 +92,7 @@ index d92c986..a8ebaf2 100644
  const orderedStages = computed(() => {
    return [...stages.value].sort((a, b) => a.position - b.position);
  });
-@@ -109,6 +155,182 @@ const contactIdentifier = computed(() => {
+@@ -109,6 +170,172 @@ const contactIdentifier = computed(() => {
  const contactCompany = computed(() => {
    return contact.value?.additional_attributes?.company_name || contact.value?.company_name || 'Not Available';
  });
@@ -184,17 +200,7 @@ index d92c986..a8ebaf2 100644
 +    }));
 +});
 +
-+const marketingFields = [
-+  { key: 'source_request', label: 'Source request' },
-+  { key: 'source', label: 'Source' },
-+  { key: 'first_message', label: 'First message' },
-+  { key: 'landing_url', label: 'Landing URL' },
-+  { key: 'requested_car', label: 'Requested car' },
-+  { key: 'utm_source', label: 'UTM source' },
-+  { key: 'utm_campaign', label: 'UTM campaign' },
-+  { key: 'utm_content', label: 'UTM content' },
-+  { key: 'utm_term', label: 'UTM term' },
-+];
++const marketingFields = ATTRIBUTION_FIELDS;
 +
 +const marketingRows = computed(() => {
 +  return marketingFields

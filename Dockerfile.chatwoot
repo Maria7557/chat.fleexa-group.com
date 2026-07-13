@@ -11,6 +11,7 @@ COPY chatwoot-patches/crm-deal-workspace-emoji-picker-vue.patch /tmp/crm-deal-wo
 COPY chatwoot-patches/crm-deal-workspace-tabs-vue.patch /tmp/crm-deal-workspace-tabs-vue.patch
 COPY chatwoot-patches/crm-deal-workspace-conversation-load-fix-vue.patch /tmp/crm-deal-workspace-conversation-load-fix-vue.patch
 COPY chatwoot-patches/crm-deal-workspace-assignee-vue.patch /tmp/crm-deal-workspace-assignee-vue.patch
+COPY chatwoot-patches/crm-marketing-analytics-vue.patch /tmp/crm-marketing-analytics-vue.patch
 
 RUN cd /app && \
     git apply /tmp/crm-pipeline-vue.patch && \
@@ -22,6 +23,7 @@ RUN cd /app && \
     git apply /tmp/crm-deal-workspace-tabs-vue.patch && \
     git apply /tmp/crm-deal-workspace-conversation-load-fix-vue.patch && \
     git apply /tmp/crm-deal-workspace-assignee-vue.patch && \
+    git apply /tmp/crm-marketing-analytics-vue.patch && \
     HUSKY=0 pnpm install --frozen-lockfile && \
     (node node_modules/esbuild/install.js 2>/dev/null || true)
 
@@ -53,6 +55,7 @@ COPY chatwoot-patches/crm-deal-workspace-emoji-picker-vue.patch /tmp/crm-deal-wo
 COPY chatwoot-patches/crm-deal-workspace-tabs-vue.patch /tmp/crm-deal-workspace-tabs-vue.patch
 COPY chatwoot-patches/crm-deal-workspace-conversation-load-fix-vue.patch /tmp/crm-deal-workspace-conversation-load-fix-vue.patch
 COPY chatwoot-patches/crm-deal-workspace-assignee-vue.patch /tmp/crm-deal-workspace-assignee-vue.patch
+COPY chatwoot-patches/crm-marketing-analytics-vue.patch /tmp/crm-marketing-analytics-vue.patch
 
 RUN cd /app && \
     git apply /tmp/patch.patch && \
@@ -73,4 +76,5 @@ RUN cd /app && \
     git apply /tmp/crm-deal-workspace-emoji-picker-vue.patch && \
     git apply /tmp/crm-deal-workspace-tabs-vue.patch && \
     git apply /tmp/crm-deal-workspace-conversation-load-fix-vue.patch && \
-    git apply /tmp/crm-deal-workspace-assignee-vue.patch
+    git apply /tmp/crm-deal-workspace-assignee-vue.patch && \
+    git apply /tmp/crm-marketing-analytics-vue.patch

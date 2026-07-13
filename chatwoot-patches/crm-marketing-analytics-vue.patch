@@ -1,0 +1,560 @@
+diff --git a/app/javascript/dashboard/components-next/sidebar/Sidebar.vue b/app/javascript/dashboard/components-next/sidebar/Sidebar.vue
+index 52768dc..4ff5e0e 100644
+--- a/app/javascript/dashboard/components-next/sidebar/Sidebar.vue
++++ b/app/javascript/dashboard/components-next/sidebar/Sidebar.vue
+@@ -387,6 +387,12 @@ const menuItems = computed(() => {
+       icon: 'i-lucide-table',
+       to: accountScopedRoute('crm_pipeline_index'),
+     },
++    {
++      name: 'Marketing',
++      label: 'Marketing',
++      icon: 'i-lucide-briefcase',
++      to: accountScopedRoute('crm_marketing_analytics'),
++    },
+     {
+       name: 'Captain',
+       icon: 'i-woot-captain',
+diff --git a/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue b/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue
+new file mode 100644
+index 0000000..a4c30f7
+--- /dev/null
++++ b/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue
+@@ -0,0 +1,517 @@
++<script setup>
++import { computed, onMounted, ref } from 'vue';
++
++import CrmPipelineAPI from 'dashboard/api/crmPipeline';
++import Button from 'dashboard/components-next/button/Button.vue';
++import Spinner from 'dashboard/components-next/spinner/Spinner.vue';
++
++const PAGE_SIZE = 200;
++const SUCCESSFUL_STAGE_TYPES = ['reserved', 'rental', 'closed_won'];
++const LOST_STAGE_TYPES = ['closed_lost'];
++const AED_FORMATTER = new Intl.NumberFormat('en-AE', {
++  style: 'currency',
++  currency: 'AED',
++  maximumFractionDigits: 2,
++});
++
++const rangeOptions = [
++  { value: '', label: 'All' },
++  { value: 'last_30_days', label: '30 days' },
++  { value: 'this_month', label: 'This month' },
++  { value: 'last_7_days', label: '7 days' },
++];
++
++const stages = ref([]);
++const deals = ref([]);
++const meta = ref({});
++const selectedRange = ref('');
++const isLoading = ref(false);
++const errorMessage = ref('');
++
++const normalizeText = value => String(value || '').trim().toLowerCase();
++
++const amountValue = value => {
++  const parsed = Number.parseFloat(value || 0);
++  return Number.isFinite(parsed) ? parsed : 0;
++};
++
++const formatAmount = value => AED_FORMATTER.format(amountValue(value));
++
++const formatNumber = value => new Intl.NumberFormat('en-US').format(value || 0);
++
++const formatPercent = value => {
++  const parsed = Number(value || 0);
++  return `${parsed.toFixed(parsed >= 10 ? 0 : 1)}%`;
++};
++
++const orderedStages = computed(() => {
++  return [...stages.value].sort((a, b) => Number(a.position || 0) - Number(b.position || 0));
++});
++
++const totalDeals = computed(() => deals.value.length);
++
++const stageCount = stageId => {
++  return deals.value.filter(deal => String(deal.stage_id) === String(stageId)).length;
++};
++
++const stageRevenue = stageId => {
++  return deals.value
++    .filter(deal => String(deal.stage_id) === String(stageId))
++    .reduce((sum, deal) => sum + amountValue(deal.amount), 0);
++};
++
++const maxStageCount = computed(() => {
++  return Math.max(...orderedStages.value.map(stage => stageCount(stage.id)), 1);
++});
++
++const stageRows = computed(() => {
++  return orderedStages.value.map((stage, index) => {
++    const count = stageCount(stage.id);
++    const previousStage = orderedStages.value[index - 1];
++    const previousCount = previousStage ? stageCount(previousStage.id) : count;
++    const conversion = index === 0 ? 100 : previousCount ? (count / previousCount) * 100 : 0;
++
++    return {
++      ...stage,
++      count,
++      amount: stageRevenue(stage.id),
++      share: totalDeals.value ? (count / totalDeals.value) * 100 : 0,
++      conversion,
++      barWidth: (count / maxStageCount.value) * 100,
++    };
++  });
++});
++
++const stageType = stage => {
++  const slug = normalizeText(stage?.slug);
++  const name = normalizeText(stage?.name);
++
++  if (slug === 'reserved' || name === 'бронь') return 'reserved';
++  if (slug === 'rental' || name === 'в аренде') return 'rental';
++  if (slug === 'closed_won' || name === 'завершено') return 'closed_won';
++  if (slug === 'closed_lost' || name === 'отмена') return 'closed_lost';
++  return '';
++};
++
++const stageTypeById = computed(() => {
++  return orderedStages.value.reduce((memo, stage) => {
++    const type = stageType(stage);
++    if (type) memo[String(stage.id)] = type;
++    return memo;
++  }, {});
++});
++
++const dealStageType = deal => stageTypeById.value[String(deal.stage_id)] || '';
++
++const dealsByStageTypes = types => {
++  return deals.value.filter(deal => types.includes(dealStageType(deal)));
++};
++
++const revenueForStageTypes = types => {
++  return dealsByStageTypes(types).reduce((sum, deal) => sum + amountValue(deal.amount), 0);
++};
++
++const countForStageTypes = types => dealsByStageTypes(types).length;
++
++const customAttributes = deal => {
++  const attributes = deal.custom_attributes;
++  return attributes && typeof attributes === 'object' && !Array.isArray(attributes) ? attributes : {};
++};
++
++const hasValue = value => {
++  if (Array.isArray(value)) return value.length > 0;
++  return value !== null && value !== undefined && String(value).trim() !== '';
++};
++
++const cleanValue = value => String(value).trim();
++
++const firstCustomValue = (custom, keys) => {
++  for (const key of keys) {
++    if (hasValue(custom[key])) return cleanValue(custom[key]);
++  }
++
++  return '';
++};
++
++const sourceValue = deal => {
++  const custom = customAttributes(deal);
++
++  const explicitSource = firstCustomValue(custom, [
++    'first_touch_source_label',
++    'source_request',
++  ]);
++  if (explicitSource) return explicitSource;
++
++  if (hasValue(custom.gclid) || hasValue(custom.gclientid)) return 'Google';
++  if (hasValue(custom.fbclid)) return 'Meta';
++  if (hasValue(custom.yclid) || hasValue(custom._ym_uid) || hasValue(custom._ym_counter)) return 'Yandex';
++
++  const fallbackSource = firstCustomValue(custom, ['utm_source', 'from']);
++  if (fallbackSource) return fallbackSource;
++
++  if (deal.conversation?.inbox_id) return `Inbox ${deal.conversation.inbox_id}`;
++  return 'Unknown';
++};
++
++const entryPointValue = deal => {
++  const custom = customAttributes(deal);
++  return firstCustomValue(custom, [
++    'first_touch_entry_point_label',
++    'landing_url',
++    'landing_page',
++    'utm_content',
++    'utm_campaign',
++    'utm_referrer',
++    'from',
++  ]) || 'Unknown entry point';
++};
++
++const sourceRows = computed(() => {
++  const rows = new Map();
++
++  deals.value.forEach(deal => {
++    const source = sourceValue(deal);
++    const entryPoint = entryPointValue(deal);
++    const rowKey = `${source}::${entryPoint}`;
++    const row = rows.get(rowKey) || {
++      source,
++      entryPoint,
++      leads: 0,
++      reserved: 0,
++      rental: 0,
++      closedWon: 0,
++      closedLost: 0,
++      successfulValue: 0,
++      spend: 0,
++    };
++    const type = dealStageType(deal);
++
++    row.leads += 1;
++    if (type === 'reserved') row.reserved += 1;
++    if (type === 'rental') row.rental += 1;
++    if (type === 'closed_won') row.closedWon += 1;
++    if (type === 'closed_lost') row.closedLost += 1;
++    if (SUCCESSFUL_STAGE_TYPES.includes(type)) row.successfulValue += amountValue(deal.amount);
++    rows.set(rowKey, row);
++  });
++
++  return [...rows.values()]
++    .map(row => ({
++      ...row,
++      roas: row.spend ? row.successfulValue / row.spend : 0,
++    }))
++    .sort((a, b) => b.successfulValue - a.successfulValue || b.leads - a.leads);
++});
++
++const kpiCards = computed(() => [
++  {
++    label: 'Leads',
++    value: formatNumber(totalDeals.value),
++    detail: `${formatNumber(meta.value.total_count ?? totalDeals.value)} total`,
++    icon: 'i-lucide-inbox',
++  },
++  {
++    label: 'Forecast revenue',
++    value: formatAmount(revenueForStageTypes(['reserved'])),
++    detail: `${formatNumber(countForStageTypes(['reserved']))} Бронь`,
++    icon: 'i-lucide-calendar',
++  },
++  {
++    label: 'Active revenue',
++    value: formatAmount(revenueForStageTypes(['rental'])),
++    detail: `${formatNumber(countForStageTypes(['rental']))} В аренде`,
++    icon: 'i-lucide-car',
++  },
++  {
++    label: 'Confirmed revenue',
++    value: formatAmount(revenueForStageTypes(['closed_won'])),
++    detail: `${formatNumber(countForStageTypes(['closed_won']))} Завершено`,
++    icon: 'i-lucide-check',
++  },
++  {
++    label: 'Successful value',
++    value: formatAmount(revenueForStageTypes(SUCCESSFUL_STAGE_TYPES)),
++    detail: 'Бронь + В аренде + Завершено',
++    icon: 'i-lucide-ticket',
++  },
++  {
++    label: 'Lost / cancelled',
++    value: formatNumber(countForStageTypes(LOST_STAGE_TYPES)),
++    detail: 'Excluded from revenue',
++    icon: 'i-lucide-circle-x',
++  },
++]);
++
++const requestParams = page => {
++  const params = {
++    include_meta: true,
++    page,
++    per_page: PAGE_SIZE,
++  };
++
++  if (selectedRange.value) {
++    params.created_at_preset = selectedRange.value;
++  }
++
++  return params;
++};
++
++const normalizeDealsResponse = response => {
++  const payload = response.data || {};
++  if (Array.isArray(payload)) {
++    return {
++      data: payload,
++      meta: {
++        total_count: payload.length,
++        has_more: false,
++      },
++    };
++  }
++
++  return {
++    data: payload.data || [],
++    meta: payload.meta || {},
++  };
++};
++
++const fetchAnalytics = async () => {
++  isLoading.value = true;
++  errorMessage.value = '';
++
++  try {
++    const [stageResponse, firstDealResponse] = await Promise.all([
++      CrmPipelineAPI.getStages(),
++      CrmPipelineAPI.getDeals(requestParams(1)),
++    ]);
++    const firstPage = normalizeDealsResponse(firstDealResponse);
++    const nextDeals = [...firstPage.data];
++    let nextMeta = firstPage.meta;
++
++    while (nextMeta.has_more) {
++      const response = await CrmPipelineAPI.getDeals(requestParams(Number(nextMeta.page || 1) + 1));
++      const page = normalizeDealsResponse(response);
++      nextDeals.push(...page.data);
++      nextMeta = page.meta;
++    }
++
++    stages.value = stageResponse.data || [];
++    deals.value = nextDeals;
++    meta.value = {
++      ...nextMeta,
++      total_count: nextMeta.total_count ?? nextDeals.length,
++    };
++  } catch (error) {
++    errorMessage.value = error?.response?.data?.error || error?.message || 'Failed to load analytics';
++  } finally {
++    isLoading.value = false;
++  }
++};
++
++const selectRange = value => {
++  selectedRange.value = value;
++  fetchAnalytics();
++};
++
++onMounted(fetchAnalytics);
++</script>
++
++<template>
++  <section class="flex h-full min-h-0 flex-col bg-n-background">
++    <header class="border-b border-n-weak px-8 py-6">
++      <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
++        <div>
++          <div class="flex items-center gap-3">
++            <h1 class="text-2xl font-semibold tracking-normal text-n-slate-12">
++              Marketing Analytics
++            </h1>
++            <span class="rounded-md border border-n-weak px-2 py-1 text-xs font-medium text-n-slate-10">
++              Read-only
++            </span>
++          </div>
++          <p class="mt-1 text-sm text-n-slate-10">
++            Pipeline funnel
++          </p>
++        </div>
++
++        <div class="flex flex-wrap items-center gap-2">
++          <div class="inline-flex h-9 rounded-md border border-n-weak bg-n-surface-2 p-0.5">
++            <button
++              v-for="option in rangeOptions"
++              :key="option.value || 'all'"
++              type="button"
++              class="rounded px-3 text-xs font-medium text-n-slate-11 transition"
++              :class="{ 'bg-n-background text-n-slate-12 shadow-sm': selectedRange === option.value }"
++              @click="selectRange(option.value)"
++            >
++              {{ option.label }}
++            </button>
++          </div>
++          <Button
++            icon="i-lucide-refresh-cw"
++            size="sm"
++            slate
++            faded
++            :is-loading="isLoading"
++            aria-label="Refresh marketing analytics"
++            @click="fetchAnalytics"
++          />
++        </div>
++      </div>
++    </header>
++
++    <main class="min-h-0 flex-1 overflow-y-auto px-8 py-6">
++      <div v-if="errorMessage" class="mb-4 rounded-lg border border-n-ruby-5 bg-n-ruby-3 px-4 py-3 text-sm text-n-ruby-11">
++        {{ errorMessage }}
++      </div>
++
++      <div v-if="isLoading && !deals.length" class="grid min-h-[320px] place-items-center text-n-slate-10">
++        <Spinner />
++      </div>
++
++      <div v-else class="grid gap-6">
++        <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
++          <article
++            v-for="card in kpiCards"
++            :key="card.label"
++            class="rounded-lg border border-n-weak bg-n-solid-1 p-4"
++          >
++            <div class="flex items-center justify-between gap-3">
++              <span class="text-xs font-medium uppercase tracking-normal text-n-slate-10">
++                {{ card.label }}
++              </span>
++              <i :class="card.icon" class="h-4 w-4 text-n-slate-9" />
++            </div>
++            <div class="mt-4 text-xl font-semibold text-n-slate-12">
++              {{ card.value }}
++            </div>
++            <div class="mt-1 text-xs text-n-slate-10">
++              {{ card.detail }}
++            </div>
++          </article>
++        </div>
++
++        <section class="grid gap-4 rounded-lg border border-n-weak bg-n-solid-1 p-5">
++          <div class="flex items-center justify-between gap-3">
++            <h2 class="text-sm font-semibold text-n-slate-12">
++              Funnel
++            </h2>
++            <span class="text-xs text-n-slate-10">
++              {{ orderedStages.length }} stages
++            </span>
++          </div>
++
++          <div class="grid gap-3">
++            <div
++              v-for="stage in stageRows"
++              :key="stage.id"
++              class="grid gap-3 rounded-lg border border-n-weak bg-n-background p-4 lg:grid-cols-[180px_1fr_120px_160px_140px]"
++            >
++              <div class="min-w-0">
++                <div class="flex min-w-0 items-center gap-2">
++                  <span
++                    class="h-2.5 w-2.5 shrink-0 rounded-full"
++                    :style="{ backgroundColor: stage.color || '#6B7280' }"
++                  />
++                  <span class="truncate text-sm font-medium text-n-slate-12">
++                    {{ stage.name }}
++                  </span>
++                </div>
++                <div class="mt-1 text-xs text-n-slate-10">
++                  {{ stage.slug }}
++                </div>
++              </div>
++
++              <div class="flex min-w-0 items-center gap-3">
++                <div class="h-2 min-w-0 flex-1 overflow-hidden rounded-full bg-n-alpha-2">
++                  <div
++                    class="h-full rounded-full"
++                    :style="{ width: `${stage.barWidth}%`, backgroundColor: stage.color || '#6B7280' }"
++                  />
++                </div>
++                <span class="w-14 text-right text-xs text-n-slate-10">
++                  {{ formatPercent(stage.share) }}
++                </span>
++              </div>
++
++              <div>
++                <div class="text-sm font-semibold text-n-slate-12">
++                  {{ formatNumber(stage.count) }}
++                </div>
++                <div class="text-xs text-n-slate-10">
++                  deals
++                </div>
++              </div>
++
++              <div>
++                <div class="text-sm font-semibold text-n-slate-12">
++                  {{ formatAmount(stage.amount) }}
++                </div>
++                <div class="text-xs text-n-slate-10">
++                  value
++                </div>
++              </div>
++
++              <div>
++                <div class="text-sm font-semibold text-n-slate-12">
++                  {{ formatPercent(stage.conversion) }}
++                </div>
++                <div class="text-xs text-n-slate-10">
++                  from previous
++                </div>
++              </div>
++            </div>
++          </div>
++        </section>
++
++        <section class="grid gap-4 rounded-lg border border-n-weak bg-n-solid-1 p-5">
++          <div class="flex items-center justify-between gap-3">
++            <h2 class="text-sm font-semibold text-n-slate-12">
++              Channel / Entry Point
++            </h2>
++            <span class="text-xs text-n-slate-10">
++              {{ sourceRows.length }} rows
++            </span>
++          </div>
++
++          <div class="overflow-x-auto">
++            <table class="min-w-full divide-y divide-n-weak text-sm">
++              <thead>
++                <tr class="text-left text-xs font-medium uppercase tracking-normal text-n-slate-10">
++                  <th class="whitespace-nowrap py-3 pr-4">Source</th>
++                  <th class="whitespace-nowrap px-4 py-3">Entry point</th>
++                  <th class="whitespace-nowrap px-4 py-3 text-right">Leads</th>
++                  <th class="whitespace-nowrap px-4 py-3 text-right">Бронь</th>
++                  <th class="whitespace-nowrap px-4 py-3 text-right">В аренде</th>
++                  <th class="whitespace-nowrap px-4 py-3 text-right">Завершено</th>
++                  <th class="whitespace-nowrap px-4 py-3 text-right">Отмена</th>
++                  <th class="whitespace-nowrap px-4 py-3 text-right">Successful value</th>
++                  <th class="whitespace-nowrap px-4 py-3 text-right">Spend</th>
++                  <th class="whitespace-nowrap px-4 py-3 text-right">ROAS</th>
++                </tr>
++              </thead>
++              <tbody class="divide-y divide-n-weak">
++                <tr v-for="row in sourceRows" :key="`${row.source}:${row.entryPoint}`" class="text-n-slate-12">
++                  <td class="whitespace-nowrap py-3 pr-4 font-medium">{{ row.source }}</td>
++                  <td class="min-w-[220px] px-4 py-3 text-n-slate-11">{{ row.entryPoint }}</td>
++                  <td class="whitespace-nowrap px-4 py-3 text-right">{{ formatNumber(row.leads) }}</td>
++                  <td class="whitespace-nowrap px-4 py-3 text-right">{{ formatNumber(row.reserved) }}</td>
++                  <td class="whitespace-nowrap px-4 py-3 text-right">{{ formatNumber(row.rental) }}</td>
++                  <td class="whitespace-nowrap px-4 py-3 text-right">{{ formatNumber(row.closedWon) }}</td>
++                  <td class="whitespace-nowrap px-4 py-3 text-right">{{ formatNumber(row.closedLost) }}</td>
++                  <td class="whitespace-nowrap px-4 py-3 text-right">{{ formatAmount(row.successfulValue) }}</td>
++                  <td class="whitespace-nowrap px-4 py-3 text-right text-n-slate-10">{{ formatAmount(row.spend) }}</td>
++                  <td class="whitespace-nowrap px-4 py-3 text-right text-n-slate-10">{{ row.roas.toFixed(1) }}x</td>
++                </tr>
++                <tr v-if="!sourceRows.length">
++                  <td colspan="10" class="py-10 text-center text-sm text-n-slate-10">
++                    No marketing data yet
++                  </td>
++                </tr>
++              </tbody>
++            </table>
++          </div>
++        </section>
++      </div>
++    </main>
++  </section>
++</template>
+diff --git a/app/javascript/dashboard/routes/dashboard/crm/routes.js b/app/javascript/dashboard/routes/dashboard/crm/routes.js
+index abba8f0..89c3ca8 100644
+--- a/app/javascript/dashboard/routes/dashboard/crm/routes.js
++++ b/app/javascript/dashboard/routes/dashboard/crm/routes.js
+@@ -9,6 +9,15 @@ export const routes = [
+     },
+     component: () => import('./Pipeline.vue'),
+   },
++  {
++    path: frontendURL('accounts/:accountId/pipeline/analytics'),
++    name: 'crm_marketing_analytics',
++    meta: {
++      requiresAuth: true,
++      permissions: ['administrator'],
++    },
++    component: () => import('./MarketingAnalytics.vue'),
++  },
+   {
+     path: frontendURL('accounts/:accountId/pipeline/deals/:dealId'),
+     name: 'crm_deal_workspace',
