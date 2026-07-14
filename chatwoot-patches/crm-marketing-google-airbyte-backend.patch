@@ -1,0 +1,315 @@
+diff --git a/app/controllers/api/v1/accounts/crm/marketing_dashboard_controller.rb b/app/controllers/api/v1/accounts/crm/marketing_dashboard_controller.rb
+index 698a1d7..6f6ce4c 100644
+--- a/app/controllers/api/v1/accounts/crm/marketing_dashboard_controller.rb
++++ b/app/controllers/api/v1/accounts/crm/marketing_dashboard_controller.rb
+@@ -164,7 +164,7 @@ class Api::V1::Accounts::Crm::MarketingDashboardController < Api::V1::Accounts::
+   def marketing_spend_scope
+     return MarketingSpendDaily.none unless MarketingSpendDaily.table_exists?
+ 
+-    scope = MarketingSpendDaily.for_account(Current.account.id)
++    scope = MarketingSpendDaily.for_account(Current.account.id).ready
+     from_date, to_date = spend_date_range
+     scope = scope.where('spend_date >= ?', from_date) if from_date.present?
+     scope = scope.where('spend_date <= ?', to_date) if to_date.present?
+diff --git a/app/models/airbyte_google_ads_daily_spend_mock.rb b/app/models/airbyte_google_ads_daily_spend_mock.rb
+new file mode 100644
+index 0000000..53cf8e7
+--- /dev/null
++++ b/app/models/airbyte_google_ads_daily_spend_mock.rb
+@@ -0,0 +1,20 @@
++class AirbyteGoogleAdsDailySpendMock < ApplicationRecord
++  self.table_name = 'airbyte_google_ads_daily_spend_mock'
++
++  belongs_to :account
++
++  scope :for_account, ->(account_id) { where(account_id: account_id) }
++
++  before_validation :normalize_currency
++
++  validates :external_row_id, :spend_date, :ad_account_id, :campaign_id, presence: true
++  validates :currency, presence: true, length: { is: 3 }
++  validates :spend, numericality: { greater_than_or_equal_to: 0 }
++
++  private
++
++  def normalize_currency
++    self.currency = currency.to_s.strip.upcase.presence || 'AED'
++    self.synced_at ||= Time.current
++  end
++end
+diff --git a/app/models/marketing_spend_daily.rb b/app/models/marketing_spend_daily.rb
+index 055ded6..10c6dd5 100644
+--- a/app/models/marketing_spend_daily.rb
++++ b/app/models/marketing_spend_daily.rb
+@@ -2,18 +2,25 @@ class MarketingSpendDaily < ApplicationRecord
+   self.table_name = 'marketing_spend_daily'
+ 
+   IMPORT_TYPE_MANUAL = 'manual'.freeze
++  IMPORT_TYPE_AIRBYTE = 'airbyte'.freeze
+   SOURCE_SYSTEM_MANUAL = 'manual'.freeze
++  SOURCE_SYSTEM_GOOGLE_ADS = 'google_ads'.freeze
++  SYNC_STATUS_READY = 'ready'.freeze
++  SYNC_STATUS_NEEDS_FX = 'needs_fx'.freeze
+ 
+   belongs_to :account
+   belongs_to :manual_spend_entry, optional: true
+ 
+   scope :for_account, ->(account_id) { where(account_id: account_id) }
+   scope :manual, -> { where(import_type: IMPORT_TYPE_MANUAL) }
++  scope :google_ads, -> { where(import_type: IMPORT_TYPE_AIRBYTE, source_system: SOURCE_SYSTEM_GOOGLE_ADS) }
++  scope :ready, -> { where(sync_status: [nil, SYNC_STATUS_READY]).where.not(spend_aed: nil) }
+ 
+   validates :spend_date, :import_type, :source_system, :source_key, :source_label, presence: true
+   validates :source_currency, presence: true, length: { is: 3 }
+-  validates :source_spend, :spend_aed, numericality: { greater_than_or_equal_to: 0 }
+-  validates :fx_rate_to_aed, numericality: { greater_than: 0 }
++  validates :source_spend, numericality: { greater_than_or_equal_to: 0 }
++  validates :spend_aed, numericality: { greater_than_or_equal_to: 0 }, allow_nil: true
++  validates :fx_rate_to_aed, numericality: { greater_than: 0 }, allow_nil: true
+   validates :manual_spend_entry_id,
+             presence: true,
+             if: -> { import_type == IMPORT_TYPE_MANUAL }
+diff --git a/app/services/crm/marketing_spend/google_ads_airbyte_normalizer.rb b/app/services/crm/marketing_spend/google_ads_airbyte_normalizer.rb
+new file mode 100644
+index 0000000..9a952a4
+--- /dev/null
++++ b/app/services/crm/marketing_spend/google_ads_airbyte_normalizer.rb
+@@ -0,0 +1,121 @@
++module Crm
++  module MarketingSpend
++    class GoogleAdsAirbyteNormalizer
++      SOURCE_KEY = MarketingSpendDaily::SOURCE_SYSTEM_GOOGLE_ADS
++      SOURCE_LABEL = 'Google Ads'.freeze
++
++      Result = Struct.new(
++        :account_id,
++        :date_from,
++        :date_to,
++        :mock_rows,
++        :deleted_rows,
++        :normalized_rows,
++        :ready_rows,
++        :needs_fx_rows,
++        :spend_aed,
++        keyword_init: true
++      )
++
++      def self.rebuild!(account_id:)
++        new(account_id).rebuild!
++      end
++
++      def initialize(account_id)
++        @account_id = account_id
++      end
++
++      def rebuild!
++        affected_from, affected_to = affected_date_range
++        mock_rows = rows_for_range(affected_from, affected_to).to_a
++        deleted_count = 0
++
++        MarketingSpendDaily.transaction do
++          deleted_count = normalized_scope_for_range(affected_from, affected_to).delete_all
++          mock_rows.each { |row| MarketingSpendDaily.create!(normalized_attributes(row)) }
++        end
++
++        Result.new(
++          account_id: account_id,
++          date_from: affected_from,
++          date_to: affected_to,
++          mock_rows: mock_rows.length,
++          deleted_rows: deleted_count,
++          normalized_rows: mock_rows.length,
++          ready_rows: mock_rows.count { |row| aed?(row.currency) },
++          needs_fx_rows: mock_rows.count { |row| !aed?(row.currency) },
++          spend_aed: mock_rows.sum { |row| aed?(row.currency) ? BigDecimal(row.spend.to_s) : 0.to_d }
++        )
++      end
++
++      private
++
++      attr_reader :account_id
++
++      def affected_date_range
++        mock_range = date_range(mock_scope)
++        normalized_range = date_range(normalized_scope)
++        dates = [mock_range, normalized_range].flatten.compact
++        return [nil, nil] if dates.blank?
++
++        [dates.min, dates.max]
++      end
++
++      def date_range(scope)
++        [scope.minimum(:spend_date), scope.maximum(:spend_date)]
++      end
++
++      def rows_for_range(date_from, date_to)
++        scope = mock_scope.order(:spend_date, :ad_account_id, :campaign_id, :id)
++        scope = scope.where('spend_date >= ?', date_from) if date_from.present?
++        scope = scope.where('spend_date <= ?', date_to) if date_to.present?
++        scope
++      end
++
++      def normalized_scope_for_range(date_from, date_to)
++        scope = normalized_scope
++        scope = scope.where('spend_date >= ?', date_from) if date_from.present?
++        scope = scope.where('spend_date <= ?', date_to) if date_to.present?
++        scope
++      end
++
++      def mock_scope
++        AirbyteGoogleAdsDailySpendMock.for_account(account_id)
++      end
++
++      def normalized_scope
++        MarketingSpendDaily.for_account(account_id).google_ads
++      end
++
++      def normalized_attributes(row)
++        row_is_aed = aed?(row.currency)
++
++        {
++          account_id: account_id,
++          spend_date: row.spend_date,
++          import_type: MarketingSpendDaily::IMPORT_TYPE_AIRBYTE,
++          source_system: MarketingSpendDaily::SOURCE_SYSTEM_GOOGLE_ADS,
++          source_key: SOURCE_KEY,
++          source_label: SOURCE_LABEL,
++          platform: MarketingSpendDaily::SOURCE_SYSTEM_GOOGLE_ADS,
++          vendor_name: SOURCE_LABEL,
++          ad_account_id: row.ad_account_id,
++          ad_account_name: row.ad_account_name,
++          campaign_id: row.campaign_id,
++          campaign_name: row.campaign_name,
++          source_currency: row.currency,
++          source_spend: row.spend,
++          fx_rate_to_aed: row_is_aed ? 1 : nil,
++          spend_aed: row_is_aed ? row.spend : nil,
++          sync_status: row_is_aed ? MarketingSpendDaily::SYNC_STATUS_READY : MarketingSpendDaily::SYNC_STATUS_NEEDS_FX,
++          last_synced_at: row.synced_at,
++          raw_row_id: row.external_row_id
++        }
++      end
++
++      def aed?(currency)
++        currency.to_s.casecmp('AED').zero?
++      end
++    end
++  end
++end
+diff --git a/lib/tasks/crm_marketing_spend.rake b/lib/tasks/crm_marketing_spend.rake
+index 4d0b5dd..f0c1903 100644
+--- a/lib/tasks/crm_marketing_spend.rake
++++ b/lib/tasks/crm_marketing_spend.rake
+@@ -48,5 +48,112 @@ namespace :crm do
+       puts "daily_rows=#{scope.count}"
+       puts "total_spend_aed=#{scope.sum(:spend_aed).to_d.to_s('F')}"
+     end
++
++    desc 'Seed local mock Airbyte Google Ads daily spend rows'
++    task :seed_google_ads_mock, [:account_id] => :environment do |_task, args|
++      account_id = args[:account_id].presence || ENV.fetch('ACCOUNT_ID', nil)
++      abort 'Usage: ACCOUNT_ID=1 rake crm:marketing_spend:seed_google_ads_mock' if account_id.blank?
++
++      rows = [
++        {
++          external_row_id: 'google-ads-2026-07-01-fleexa-search-aed',
++          spend_date: Date.new(2026, 7, 1),
++          ad_account_id: 'ga-act-1',
++          ad_account_name: 'Fleexa Google Ads',
++          campaign_id: 'ga-campaign-search',
++          campaign_name: 'Search leads July',
++          spend: 1000,
++          currency: 'AED',
++          synced_at: Time.zone.parse('2026-07-02 01:00:00')
++        },
++        {
++          external_row_id: 'google-ads-2026-07-02-fleexa-search-aed',
++          spend_date: Date.new(2026, 7, 2),
++          ad_account_id: 'ga-act-1',
++          ad_account_name: 'Fleexa Google Ads',
++          campaign_id: 'ga-campaign-search',
++          campaign_name: 'Search leads July',
++          spend: 1200,
++          currency: 'AED',
++          synced_at: Time.zone.parse('2026-07-03 01:00:00')
++        },
++        {
++          external_row_id: 'google-ads-2026-07-02-fleexa-display-aed',
++          spend_date: Date.new(2026, 7, 2),
++          ad_account_id: 'ga-act-1',
++          ad_account_name: 'Fleexa Google Ads',
++          campaign_id: 'ga-campaign-display',
++          campaign_name: 'Display retargeting July',
++          spend: 450,
++          currency: 'AED',
++          synced_at: Time.zone.parse('2026-07-03 01:15:00')
++        },
++        {
++          external_row_id: 'google-ads-2026-07-03-fleexa-video-usd',
++          spend_date: Date.new(2026, 7, 3),
++          ad_account_id: 'ga-act-2',
++          ad_account_name: 'Fleexa Google Ads USD',
++          campaign_id: 'ga-campaign-video',
++          campaign_name: 'Video awareness July',
++          spend: 300,
++          currency: 'USD',
++          synced_at: Time.zone.parse('2026-07-04 01:00:00')
++        }
++      ]
++
++      rows.each do |attributes|
++        row = AirbyteGoogleAdsDailySpendMock.where(
++          account_id: account_id,
++          external_row_id: attributes[:external_row_id]
++        ).first_or_initialize
++        row.assign_attributes(attributes.merge(account_id: account_id))
++        row.save!
++      end
++
++      scope = AirbyteGoogleAdsDailySpendMock.for_account(account_id)
++      puts "mock_rows=#{scope.count}"
++      puts "mock_source_spend=#{scope.sum(:spend).to_d.to_s('F')}"
++    end
++
++    desc 'Normalize mock Airbyte Google Ads rows into marketing_spend_daily'
++    task :normalize_google_ads, [:account_id] => :environment do |_task, args|
++      account_id = args[:account_id].presence || ENV.fetch('ACCOUNT_ID', nil)
++      abort 'Usage: ACCOUNT_ID=1 rake crm:marketing_spend:normalize_google_ads' if account_id.blank?
++
++      result = Crm::MarketingSpend::GoogleAdsAirbyteNormalizer.rebuild!(account_id: account_id)
++      scope = MarketingSpendDaily.for_account(account_id).google_ads
++
++      puts "account_id=#{result.account_id}"
++      puts "date_from=#{result.date_from}"
++      puts "date_to=#{result.date_to}"
++      puts "mock_rows=#{result.mock_rows}"
++      puts "deleted_rows=#{result.deleted_rows}"
++      puts "normalized_rows=#{result.normalized_rows}"
++      puts "ready_rows=#{result.ready_rows}"
++      puts "needs_fx_rows=#{result.needs_fx_rows}"
++      puts "total_spend_aed=#{scope.ready.sum(:spend_aed).to_d.to_s('F')}"
++      puts "duplicate_grains=#{duplicate_google_ads_grains(scope)}"
++    end
++
++    desc 'Clear local mock Airbyte Google Ads rows and rebuild normalized rows'
++    task :clear_google_ads_mock, [:account_id] => :environment do |_task, args|
++      account_id = args[:account_id].presence || ENV.fetch('ACCOUNT_ID', nil)
++      abort 'Usage: ACCOUNT_ID=1 rake crm:marketing_spend:clear_google_ads_mock' if account_id.blank?
++
++      deleted = AirbyteGoogleAdsDailySpendMock.for_account(account_id).delete_all
++      result = Crm::MarketingSpend::GoogleAdsAirbyteNormalizer.rebuild!(account_id: account_id)
++
++      puts "deleted_mock_rows=#{deleted}"
++      puts "deleted_normalized_rows=#{result.deleted_rows}"
++      puts "normalized_rows=#{result.normalized_rows}"
++    end
++
++    def duplicate_google_ads_grains(scope)
++      scope
++        .select('spend_date, ad_account_id, campaign_id, source_currency, COUNT(*) AS rows_count')
++        .group('spend_date, ad_account_id, campaign_id, source_currency')
++        .having('COUNT(*) > 1')
++        .length
++    end
+   end
+ end

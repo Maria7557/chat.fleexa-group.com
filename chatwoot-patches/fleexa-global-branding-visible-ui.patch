@@ -1,0 +1,3077 @@
+diff --git a/app/assets/stylesheets/administrate/library/_variables.scss b/app/assets/stylesheets/administrate/library/_variables.scss
+index 2e424fb..2e5364f 100644
+--- a/app/assets/stylesheets/administrate/library/_variables.scss
++++ b/app/assets/stylesheets/administrate/library/_variables.scss
+@@ -18,12 +18,12 @@ $small-spacing: $base-spacing / 2 !default;
+ $white: #fff !default;
+ $black: #000 !default;
+ 
+-$blue: #1f93ff !default;
++$blue: #0EA5A0 !default;
+ $red: #ff382d !default;
+ $light-yellow: #ffc532 !default;
+ $light-green: #44ce4b !default;
+ 
+-$grey-0: #f6f7f7 !default;
++$grey-0: #F2F4F6 !default;
+ $grey-1: #f0f4f5 !default;
+ $grey-2: #cfd8dc !default;
+ $grey-5: #adb5bd !default;
+diff --git a/app/assets/stylesheets/administrate/utilities/_variables.scss b/app/assets/stylesheets/administrate/utilities/_variables.scss
+index 9123667..da0586b 100644
+--- a/app/assets/stylesheets/administrate/utilities/_variables.scss
++++ b/app/assets/stylesheets/administrate/utilities/_variables.scss
+@@ -41,18 +41,18 @@ $header-height: 5.6rem;
+ $woot-logo-padding: $space-large $space-two;
+ 
+ // Colors
+-$color-woot: #1f93ff;
++$color-woot: #0EA5A0;
+ $color-gray: #6e6f73;
+ $color-light-gray: #747677;
+ $color-border: #e0e6ed;
+ $color-border-light: #f0f4f5;
+-$color-background: #f4f6fb;
++$color-background: #F2F4F6;
+ $color-border-dark: #cad0d4;
+ $color-background-light: #f9fafc;
+ $color-white: #fff;
+-$color-body: #3c4858;
+-$color-heading: #1f2d3d;
+-$color-extra-light-blue: #f5f7f9;
++$color-body: #0F1923;
++$color-heading: #0F1923;
++$color-extra-light-blue: #E0F5F4;
+ 
+ $primary-color: $color-woot;
+ $secondary-color: #5d7592;
+@@ -64,7 +64,7 @@ $masked-bg: rgba(0, 0, 0, .4);
+ 
+ // Color-palettes
+ 
+-$color-primary-light: #c7e3ff;
++$color-primary-light: #E0F5F4;
+ $color-primary-dark: darken($color-woot, 20%);
+ 
+ // Thumbnail
+diff --git a/app/javascript/dashboard/assets/scss/_next-colors.scss b/app/javascript/dashboard/assets/scss/_next-colors.scss
+index 784edce..38f777f 100644
+--- a/app/javascript/dashboard/assets/scss/_next-colors.scss
++++ b/app/javascript/dashboard/assets/scss/_next-colors.scss
+@@ -13,8 +13,8 @@
+     --slate-8: 185 187 198;
+     --slate-9: 139 141 152;
+     --slate-10: 128 131 141;
+-    --slate-11: 96 100 108;
+-    --slate-12: 28 32 36;
++    --slate-11: 88 96 105;
++    --slate-12: 15 25 35;
+ 
+     --iris-1: 253 253 255;
+     --iris-2: 248 248 255;
+@@ -29,18 +29,18 @@
+     --iris-11: 87 83 198;
+     --iris-12: 39 41 98;
+ 
+-    --blue-1: 251 253 255;
+-    --blue-2: 245 249 255;
+-    --blue-3: 233 243 255;
+-    --blue-4: 218 236 255;
+-    --blue-5: 201 226 255;
+-    --blue-6: 181 213 255;
+-    --blue-7: 155 195 252;
+-    --blue-8: 117 171 247;
+-    --blue-9: 39 129 246;
+-    --blue-10: 16 115 233;
+-    --blue-11: 8 109 224;
+-    --blue-12: 11 50 101;
++    --blue-1: 250 254 253;
++    --blue-2: 242 251 250;
++    --blue-3: 224 245 244;
++    --blue-4: 199 239 237;
++    --blue-5: 173 232 228;
++    --blue-6: 133 217 213;
++    --blue-7: 91 202 198;
++    --blue-8: 48 186 181;
++    --blue-9: 14 165 160;
++    --blue-10: 20 184 178;
++    --blue-11: 12 138 134;
++    --blue-12: 15 25 35;
+ 
+     --ruby-1: 255 252 253;
+     --ruby-2: 255 247 248;
+@@ -107,25 +107,25 @@
+     --violet-11: 101 85 183;
+     --violet-12: 47 38 95;
+ 
+-    --background-color: 247 247 247;
++    --background-color: 242 244 246;
+     --surface-1: 254 254 254;
+     --surface-2: 255 255 255;
+     --surface-active: 255 255 255;
+     --background-input-box: 0, 0, 0, 0.03;
+-    --text-blue: 1 22 44;
++    --text-blue: 15 25 35;
+     --text-purple: 2 4 49;
+     --text-amber: 37 24 1;
+     --border-container: 236 236 236;
+     --border-strong: 226 227 231;
+     --border-weak: 234 234 234;
+-    --border-blue-strong: 18 61 117;
++    --border-blue-strong: 12 138 134;
+     --solid-1: 255 255 255;
+     --solid-2: 255 255 255;
+     --solid-3: 255 255 255;
+     --solid-active: 255 255 255;
+     --solid-amber: 255 228 181;
+-    --solid-blue: 218 236 255;
+-    --solid-blue-2: 251 253 255;
++    --solid-blue: 224 245 244;
++    --solid-blue-2: 250 254 253;
+     --solid-iris: 230 231 255;
+     --solid-purple: 230 231 255;
+     --solid-red: 254 200 201;
+@@ -143,7 +143,7 @@
+     --alpha-3: 255, 255, 255, 0.96;
+     --black-alpha-1: 0, 0, 0, 0.12;
+     --black-alpha-2: 0, 0, 0, 0.04;
+-    --border-blue: 39, 129, 246, 0.5;
++    --border-blue: 14, 165, 160, 0.5;
+     --white-alpha: 255, 255, 255, 0.8;
+   }
+ 
+@@ -175,18 +175,18 @@
+     --iris-11: 158 177 255;
+     --iris-12: 224 223 254;
+ 
+-    --blue-1: 10 17 28;
+-    --blue-2: 15 24 38;
+-    --blue-3: 15 39 72;
+-    --blue-4: 10 49 99;
+-    --blue-5: 18 61 117;
+-    --blue-6: 29 84 134;
+-    --blue-7: 40 89 156;
+-    --blue-8: 48 106 186;
+-    --blue-9: 39 129 246;
+-    --blue-10: 21 116 231;
+-    --blue-11: 126 182 255;
+-    --blue-12: 205 227 255;
++    --blue-1: 10 15 30;
++    --blue-2: 12 26 34;
++    --blue-3: 10 50 51;
++    --blue-4: 8 68 67;
++    --blue-5: 10 82 80;
++    --blue-6: 12 101 98;
++    --blue-7: 14 121 118;
++    --blue-8: 12 138 134;
++    --blue-9: 14 165 160;
++    --blue-10: 20 184 178;
++    --blue-11: 114 224 219;
++    --blue-12: 224 245 244;
+ 
+     --ruby-1: 25 17 19;
+     --ruby-2: 30 21 23;
+@@ -258,18 +258,18 @@
+     --surface-2: 22 23 26;
+     --surface-active: 53 57 66;
+     --background-input-box: 255, 255, 255, 0.02;
+-    --text-blue: 213 234 255;
++    --text-blue: 224 245 244;
+     --text-purple: 232 233 254;
+     --text-amber: 255 247 234;
+     --border-strong: 46 45 50;
+     --border-weak: 31 31 37;
+-    --border-blue-strong: 201 226 255;
++    --border-blue-strong: 114 224 219;
+     --solid-1: 23 23 26;
+     --solid-2: 29 30 36;
+     --solid-3: 44 45 54;
+     --solid-active: 53 57 66;
+     --solid-amber: 56 50 41;
+-    --solid-blue: 15 57 102;
++    --solid-blue: 10 82 80;
+     --solid-blue-2: 26 29 35;
+     --solid-iris: 38 42 101;
+     --solid-purple: 51 51 107;
+@@ -288,7 +288,7 @@
+     --alpha-3: 33, 34, 38, 0.95;
+     --black-alpha-1: 0, 0, 0, 0.3;
+     --black-alpha-2: 0, 0, 0, 0.2;
+-    --border-blue: 39, 129, 246, 0.5;
++    --border-blue: 14, 165, 160, 0.5;
+     --border-container: 255, 255, 255, 0;
+     --white-alpha: 255, 255, 255, 0.1;
+   }
+diff --git a/app/javascript/dashboard/components-next/Campaigns/EmptyState/CampaignEmptyStateContent.js b/app/javascript/dashboard/components-next/Campaigns/EmptyState/CampaignEmptyStateContent.js
+index 4f40919..90ce044 100644
+--- a/app/javascript/dashboard/components-next/Campaigns/EmptyState/CampaignEmptyStateContent.js
++++ b/app/javascript/dashboard/components-next/Campaigns/EmptyState/CampaignEmptyStateContent.js
+@@ -60,9 +60,9 @@ export const ONGOING_CAMPAIGN_EMPTY_STATE_CONTENT = [
+     },
+     sender: {
+       id: 1,
+-      name: 'Chatwoot',
++      name: 'Chat Fleexa',
+     },
+-    message: 'Hi! Chatwoot here. Need help setting up? Let me know!',
++    message: 'Hi! Chat Fleexa here. Need help setting up? Let me know!',
+     campaign_status: 'active',
+     enabled: false,
+     campaign_type: 'ongoing',
+diff --git a/app/javascript/dashboard/components-next/HelpCenter/PortalSwitcher/CreatePortalDialog.vue b/app/javascript/dashboard/components-next/HelpCenter/PortalSwitcher/CreatePortalDialog.vue
+index 70c30a2..a0bc0cf 100644
+--- a/app/javascript/dashboard/components-next/HelpCenter/PortalSwitcher/CreatePortalDialog.vue
++++ b/app/javascript/dashboard/components-next/HelpCenter/PortalSwitcher/CreatePortalDialog.vue
+@@ -109,7 +109,7 @@ const handleDialogConfirm = async () => {
+     slug: state.slug,
+     custom_domain: state.domain,
+     blob_id: state.avatarBlobId || null,
+-    color: '#2781F6', // The default color is set to Chatwoot brand color
++    color: '#0EA5A0', // The default color is set to Fleexa brand color
+   };
+   await createPortal(portal);
+ };
+diff --git a/app/javascript/dashboard/components-next/captain/pageComponents/emptyStates/captainEmptyStateContent.js b/app/javascript/dashboard/components-next/captain/pageComponents/emptyStates/captainEmptyStateContent.js
+index af03314..1ec0af2 100644
+--- a/app/javascript/dashboard/components-next/captain/pageComponents/emptyStates/captainEmptyStateContent.js
++++ b/app/javascript/dashboard/components-next/captain/pageComponents/emptyStates/captainEmptyStateContent.js
+@@ -67,19 +67,19 @@ export const documentsList = [
+     external_link:
+       'https://www.chatwoot.com/hc/user-guide/articles/1677688192-how-to-use-conversation-filters',
+     id: 3059,
+-    name: 'How to use Conversation Filters? | User Guide | Chatwoot',
++    name: 'How to use Conversation Filters? | User Guide | Chat Fleexa',
+     status: 'available',
+   },
+   {
+     account_id: 2,
+     assistant: { id: 2, name: 'Support Genie' },
+     content:
+-      'Step-by-step guide for automating ticket assignments and improving support workflow in Chatwoot.',
++      'Step-by-step guide for automating ticket assignments and improving support workflow in Chat Fleexa.',
+     created_at: 1736143273,
+     external_link:
+       'https://www.chatwoot.com/hc/user-guide/articles/1677688200-automating-ticket-assignments',
+     id: 3060,
+-    name: 'Automating Ticket Assignments | User Guide | Chatwoot',
++    name: 'Automating Ticket Assignments | User Guide | Chat Fleexa',
+     status: 'available',
+   },
+   {
+@@ -91,7 +91,7 @@ export const documentsList = [
+     external_link:
+       'https://www.chatwoot.com/hc/user-guide/articles/1677688210-managing-customer-profiles',
+     id: 3061,
+-    name: 'Managing Customer Profiles | User Guide | Chatwoot',
++    name: 'Managing Customer Profiles | User Guide | Chat Fleexa',
+     status: 'available',
+   },
+   {
+@@ -103,19 +103,19 @@ export const documentsList = [
+     external_link:
+       'https://www.chatwoot.com/hc/user-guide/articles/1677688220-sales-tracking-guide',
+     id: 3062,
+-    name: 'Sales Tracking Guide | User Guide | Chatwoot',
++    name: 'Sales Tracking Guide | User Guide | Chat Fleexa',
+     status: 'available',
+   },
+   {
+     account_id: 5,
+     assistant: { id: 5, name: 'TicketBot' },
+     content:
+-      'How to efficiently create, manage, and resolve tickets in Chatwoot.',
++      'How to efficiently create, manage, and resolve tickets in Chat Fleexa.',
+     created_at: 1736143276,
+     external_link:
+       'https://www.chatwoot.com/hc/user-guide/articles/1677688230-managing-tickets',
+     id: 3063,
+-    name: 'Managing Tickets | User Guide | Chatwoot',
++    name: 'Managing Tickets | User Guide | Chat Fleexa',
+     status: 'available',
+   },
+   {
+@@ -127,7 +127,7 @@ export const documentsList = [
+     external_link:
+       'https://www.chatwoot.com/hc/user-guide/articles/1677688240-financial-reporting',
+     id: 3064,
+-    name: 'Financial Reporting | User Guide | Chatwoot',
++    name: 'Financial Reporting | User Guide | Chat Fleexa',
+     status: 'available',
+   },
+ ];
+@@ -139,11 +139,11 @@ export const responsesList = [
+       'Messenger may be deactivated because you are on a free plan or the limit for inboxes might have been reached.',
+     created_at: 1736283330,
+     id: 87,
+-    question: 'Why is my Messenger in Chatwoot deactivated?',
++    question: 'Why is my Messenger in Chat Fleexa deactivated?',
+     status: 'pending',
+     assistant: {
+       account_id: 1,
+-      config: { product_name: 'Chatwoot' },
++      config: { product_name: 'Chat Fleexa' },
+       created_at: 1736033280,
+       description: 'Assists with general queries and system-wide issues.',
+       id: 1,
+@@ -156,10 +156,10 @@ export const responsesList = [
+       'You can integrate your WhatsApp account by navigating to the Integrations section and selecting the WhatsApp integration option.',
+     created_at: 1736283340,
+     id: 88,
+-    question: 'How do I integrate WhatsApp with Chatwoot?',
++    question: 'How do I integrate WhatsApp with Chat Fleexa?',
+     assistant: {
+       account_id: 2,
+-      config: { product_name: 'Chatwoot' },
++      config: { product_name: 'Chat Fleexa' },
+       created_at: 1736033281,
+       description: 'Helps with integration and setup-related inquiries.',
+       id: 2,
+@@ -172,10 +172,10 @@ export const responsesList = [
+       "To reset your password, go to the login page and click on 'Forgot Password', then follow the instructions sent to your email.",
+     created_at: 1736283350,
+     id: 89,
+-    question: 'How can I reset my password in Chatwoot?',
++    question: 'How can I reset my password in Chat Fleexa?',
+     assistant: {
+       account_id: 3,
+-      config: { product_name: 'Chatwoot' },
++      config: { product_name: 'Chat Fleexa' },
+       created_at: 1736033282,
+       description: 'Handles account management and recovery support.',
+       id: 3,
+@@ -188,10 +188,10 @@ export const responsesList = [
+       "You can enable the dark mode in settings by navigating to 'Appearance' and selecting 'Dark Mode'.",
+     created_at: 1736283360,
+     id: 90,
+-    question: 'How do I enable dark mode in Chatwoot?',
++    question: 'How do I enable dark mode in Chat Fleexa?',
+     assistant: {
+       account_id: 4,
+-      config: { product_name: 'Chatwoot' },
++      config: { product_name: 'Chat Fleexa' },
+       created_at: 1736033283,
+       description: 'Helps with UI and theme-related inquiries.',
+       id: 4,
+@@ -204,10 +204,10 @@ export const responsesList = [
+       "To add a new team member, navigate to 'Settings', then 'Team', and click on 'Add Team Member'.",
+     created_at: 1736283370,
+     id: 91,
+-    question: 'How do I add a new team member in Chatwoot?',
++    question: 'How do I add a new team member in Chat Fleexa?',
+     assistant: {
+       account_id: 5,
+-      config: { product_name: 'Chatwoot' },
++      config: { product_name: 'Chat Fleexa' },
+       created_at: 1736033284,
+       description: 'Supports team management and user access-related queries.',
+       id: 5,
+@@ -217,13 +217,13 @@ export const responsesList = [
+   {
+     account_id: 6,
+     answer:
+-      "Campaigns in Chatwoot allow you to send targeted messages to specific user segments. You can create them in the 'Campaigns' section.",
++      "Campaigns in Chat Fleexa allow you to send targeted messages to specific user segments. You can create them in the 'Campaigns' section.",
+     created_at: 1736283380,
+     id: 92,
+-    question: 'What are campaigns in Chatwoot?',
++    question: 'What are campaigns in Chat Fleexa?',
+     assistant: {
+       account_id: 6,
+-      config: { product_name: 'Chatwoot' },
++      config: { product_name: 'Chat Fleexa' },
+       created_at: 1736033285,
+       description:
+         'Specialized in marketing, campaign management, and messaging strategies.',
+diff --git a/app/javascript/dashboard/components-next/icon/Logo.vue b/app/javascript/dashboard/components-next/icon/Logo.vue
+index 6dd0bbd..69a1bdc 100644
+--- a/app/javascript/dashboard/components-next/icon/Logo.vue
++++ b/app/javascript/dashboard/components-next/icon/Logo.vue
+@@ -25,7 +25,7 @@ const globalConfig = useMapGetter('globalConfig/get');
+     <g clip-path="url(#woot-logo-clip-2342424e23u32098)">
+       <path
+         d="M8 16C12.4183 16 16 12.4183 16 8C16 3.58172 12.4183 0 8 0C3.58172 0 0 3.58172 0 8C0 12.4183 3.58172 16 8 16Z"
+-        fill="#2781F6"
++        fill="#0EA5A0"
+       />
+       <path
+         d="M11.4172 11.4172H7.70831C5.66383 11.4172 4 9.75328 4 7.70828C4 5.66394 5.66383 4 7.70835 4C9.75339 4 11.4172 5.66394 11.4172 7.70828V11.4172Z"
+diff --git a/app/javascript/dashboard/components-next/message/bubbles/Dyte.vue b/app/javascript/dashboard/components-next/message/bubbles/Dyte.vue
+index 157298d..825ce00 100644
+--- a/app/javascript/dashboard/components-next/message/bubbles/Dyte.vue
++++ b/app/javascript/dashboard/components-next/message/bubbles/Dyte.vue
+@@ -45,7 +45,7 @@ const action = computed(() => ({
+ <template>
+   <BaseAttachmentBubble
+     icon="i-ph-video-camera-fill"
+-    icon-bg-color="bg-[#2781F6]"
++    icon-bg-color="bg-[#0EA5A0]"
+     sender-translation-key="CONVERSATION.SHARED_ATTACHMENT.MEETING"
+     :action="action"
+   >
+diff --git a/app/javascript/dashboard/components-next/template-preview/templates/twilio-templates.js b/app/javascript/dashboard/components-next/template-preview/templates/twilio-templates.js
+index a7857b2..271b6d3 100644
+--- a/app/javascript/dashboard/components-next/template-preview/templates/twilio-templates.js
++++ b/app/javascript/dashboard/components-next/template-preview/templates/twilio-templates.js
+@@ -129,18 +129,18 @@ export const twilioTemplates = [
+     template_type: 'quick_reply',
+   },
+   {
+-    body: 'What type of Chatwoot installation are you using? Select "Chatwoot Cloud" if you are using app.chatwoot.com, otherwise select "Self-hosted Chatwoot".',
++    body: 'What type of Chat Fleexa installation are you using? Select "Chat Fleexa Cloud" if you are using app.chatwoot.com, otherwise select "Self-hosted Chat Fleexa".',
+     types: {
+       'twilio/quick-reply': {
+-        body: 'What type of Chatwoot installation are you using? Select "Chatwoot Cloud" if you are using app.chatwoot.com, otherwise select "Self-hosted Chatwoot".',
++        body: 'What type of Chat Fleexa installation are you using? Select "Chat Fleexa Cloud" if you are using app.chatwoot.com, otherwise select "Self-hosted Chat Fleexa".',
+         actions: [
+           {
+             id: 'Chatwoot Cloud_payload',
+-            title: 'Chatwoot Cloud',
++            title: 'Chat Fleexa Cloud',
+           },
+           {
+             id: 'Self-hosted Chatwoot_payload',
+-            title: 'Self-hosted Chatwoot',
++            title: 'Self-hosted Chat Fleexa',
+           },
+         ],
+       },
+diff --git a/app/javascript/dashboard/components-next/year-in-review/slides/ThankYouSlide.vue b/app/javascript/dashboard/components-next/year-in-review/slides/ThankYouSlide.vue
+index 79c6293..f4f5fde 100644
+--- a/app/javascript/dashboard/components-next/year-in-review/slides/ThankYouSlide.vue
++++ b/app/javascript/dashboard/components-next/year-in-review/slides/ThankYouSlide.vue
+@@ -34,7 +34,7 @@ const signatureImage =
+       <div class="mt-12">
+         <img
+           :src="signatureImage"
+-          alt="Chatwoot Team Signature"
++          alt="Chat Fleexa Team Signature"
+           class="w-auto h-8 md:h-10"
+         />
+       </div>
+diff --git a/app/javascript/dashboard/components/Code.vue b/app/javascript/dashboard/components/Code.vue
+index e45caca..bce9be5 100644
+--- a/app/javascript/dashboard/components/Code.vue
++++ b/app/javascript/dashboard/components/Code.vue
+@@ -22,7 +22,7 @@ const props = defineProps({
+   },
+   codepenTitle: {
+     type: String,
+-    default: 'Chatwoot Codepen',
++    default: 'Chat Fleexa Codepen',
+   },
+ });
+ 
+diff --git a/app/javascript/dashboard/components/widgets/conversation/conversation/LabelSuggestion.vue b/app/javascript/dashboard/components/widgets/conversation/conversation/LabelSuggestion.vue
+index 0c8a4fb..ef3e8bf 100644
+--- a/app/javascript/dashboard/components/widgets/conversation/conversation/LabelSuggestion.vue
++++ b/app/javascript/dashboard/components/widgets/conversation/conversation/LabelSuggestion.vue
+@@ -182,7 +182,7 @@ export default {
+             <woot-label
+               variant="dashed"
+               v-bind="label"
+-              :bg-color="selectedLabels.includes(label.title) ? '#2781F6' : ''"
++              :bg-color="selectedLabels.includes(label.title) ? '#0EA5A0' : ''"
+             />
+           </button>
+           <NextButton
+diff --git a/app/javascript/dashboard/i18n/locale/en/auditLogs.json b/app/javascript/dashboard/i18n/locale/en/auditLogs.json
+index f85ad2a..0c3a787 100644
+--- a/app/javascript/dashboard/i18n/locale/en/auditLogs.json
++++ b/app/javascript/dashboard/i18n/locale/en/auditLogs.json
+@@ -6,11 +6,11 @@
+     "DESCRIPTION": "Audit Logs maintain a record of activities in your account, allowing you to track and audit your account, team, or services.",
+     "LEARN_MORE": "Learn more about audit logs",
+     "SEARCH_404": "There are no items matching this query",
+-    "SIDEBAR_TXT": "<p><b>Audit Logs</b> </p><p> Audit Logs are trails for events and actions in a Chatwoot System. </p>",
++    "SIDEBAR_TXT": "<p><b>Audit Logs</b> </p><p> Audit Logs are trails for events and actions in a Chat Fleexa System. </p>",
+     "LIST": {
+       "404": "There are no Audit Logs available in this account.",
+       "TITLE": "Manage Audit Logs",
+-      "DESC": "Audit Logs are trails for events and actions in a Chatwoot System.",
++      "DESC": "Audit Logs are trails for events and actions in a Chat Fleexa System.",
+       "TABLE_HEADER": {
+         "ACTIVITY": "Activity",
+         "TIME": "Time",
+diff --git a/app/javascript/dashboard/i18n/locale/en/conversation.json b/app/javascript/dashboard/i18n/locale/en/conversation.json
+index 3eb83fd..2c766e6 100644
+--- a/app/javascript/dashboard/i18n/locale/en/conversation.json
++++ b/app/javascript/dashboard/i18n/locale/en/conversation.json
+@@ -283,7 +283,7 @@
+     "SENT_BY": "Sent by:",
+     "BOT": "Bot",
+     "NATIVE_APP": "Native app",
+-    "NATIVE_APP_ADVISORY": "This message was sent from the native app. Reply from Chatwoot to maintain the message window.",
++    "NATIVE_APP_ADVISORY": "This message was sent from the native app. Reply from Chat Fleexa to maintain the message window.",
+     "SEND_FAILED": "Couldn't send message! Try again",
+     "TRY_AGAIN": "retry",
+     "ASSIGNMENT": {
+diff --git a/app/javascript/dashboard/i18n/locale/en/generalSettings.json b/app/javascript/dashboard/i18n/locale/en/generalSettings.json
+index fab8020..c4601de 100644
+--- a/app/javascript/dashboard/i18n/locale/en/generalSettings.json
++++ b/app/javascript/dashboard/i18n/locale/en/generalSettings.json
+@@ -123,11 +123,11 @@
+         "CUSTOM_EMAIL_DOMAIN_ENABLED": "You can receive emails in your custom domain now."
+       }
+     },
+-    "UPDATE_CHATWOOT": "An update {latestChatwootVersion} for Chatwoot is available. Please update your instance.",
++    "UPDATE_CHATWOOT": "An update {latestChatwootVersion} for Chat Fleexa is available. Please update your instance.",
+     "LEARN_MORE": "Learn more",
+-    "PAYMENT_PENDING": "Your payment is pending. Please update your payment information to continue using Chatwoot",
+-    "UPGRADE": "Upgrade to continue using Chatwoot",
+-    "LIMITS_UPGRADE": "Your account has exceeded the usage limits, please upgrade your plan to continue using Chatwoot",
++    "PAYMENT_PENDING": "Your payment is pending. Please update your payment information to continue using Chat Fleexa",
++    "UPGRADE": "Upgrade to continue using Chat Fleexa",
++    "LIMITS_UPGRADE": "Your account has exceeded the usage limits, please upgrade your plan to continue using Chat Fleexa",
+     "OPEN_BILLING": "Open billing"
+   },
+   "FORMS": {
+diff --git a/app/javascript/dashboard/i18n/locale/en/helpCenter.json b/app/javascript/dashboard/i18n/locale/en/helpCenter.json
+index dfaec81..d519fdd 100644
+--- a/app/javascript/dashboard/i18n/locale/en/helpCenter.json
++++ b/app/javascript/dashboard/i18n/locale/en/helpCenter.json
+@@ -784,7 +784,7 @@
+       "CONFIRM_BUTTON_LABEL": "Create",
+       "NAME": {
+         "LABEL": "Name",
+-        "PLACEHOLDER": "User Guide | Chatwoot",
++        "PLACEHOLDER": "User Guide | Chat Fleexa",
+         "MESSAGE": "Choose an name for your portal.",
+         "ERROR": "Name is required"
+       },
+diff --git a/app/javascript/dashboard/i18n/locale/en/inboxMgmt.json b/app/javascript/dashboard/i18n/locale/en/inboxMgmt.json
+index cd7e463..7d6150c 100644
+--- a/app/javascript/dashboard/i18n/locale/en/inboxMgmt.json
++++ b/app/javascript/dashboard/i18n/locale/en/inboxMgmt.json
+@@ -16,7 +16,7 @@
+     "CREATE_FLOW": {
+       "CHANNEL": {
+         "TITLE": "Choose Channel",
+-        "BODY": "Choose the provider you want to integrate with Chatwoot."
++        "BODY": "Choose the provider you want to integrate with Chat Fleexa."
+       },
+       "INBOX": {
+         "TITLE": "Create Inbox",
+@@ -42,7 +42,7 @@
+         "PLACEHOLDER": "Enter your website name (eg: Acme Inc)"
+       },
+       "FB": {
+-        "HELP": "PS: By signing in, we only get access to your Page's messages. Your private messages can never be accessed by Chatwoot.",
++        "HELP": "PS: By signing in, we only get access to your Page's messages. Your private messages can never be accessed by Chat Fleexa.",
+         "CHOOSE_PAGE": "Choose Page",
+         "CHOOSE_PLACEHOLDER": "Select a page from the list",
+         "INBOX_NAME": "Inbox Name",
+@@ -451,7 +451,7 @@
+       },
+       "AUTH": {
+         "TITLE": "Choose a channel",
+-        "DESC": "Chatwoot supports live-chat widgets, Facebook Messenger, WhatsApp, Emails, etc., as channels. If you want to build a custom channel, you can create it using the API channel. To get started, choose one of the channels below.",
++        "DESC": "Chat Fleexa supports live-chat widgets, Facebook Messenger, WhatsApp, Emails, etc., as channels. If you want to build a custom channel, you can create it using the API channel. To get started, choose one of the channels below.",
+         "TITLE_NEXT": "Complete the setup",
+         "TITLE_FINISH": "Voilà!",
+         "CHANNEL": {
+@@ -513,11 +513,11 @@
+       },
+       "DETAILS": {
+         "TITLE": "Inbox Details",
+-        "DESC": "From the dropdown below, select the Facebook Page you want to connect to Chatwoot. You can also give a custom name to your inbox for better identification."
++        "DESC": "From the dropdown below, select the Facebook Page you want to connect to Chat Fleexa. You can also give a custom name to your inbox for better identification."
+       },
+       "FINISH": {
+         "TITLE": "Nailed It!",
+-        "DESC": "You have successfully finished integrating your Facebook Page with Chatwoot. Next time a customer messages your Page, the conversation will automatically appear on your inbox.<br>We are also providing you with a widget script that you can easily add to your website. Once this is live on your website, customers can message you right from your website without the help of any external tool and the conversation will appear right here, on Chatwoot.<br>Cool, huh? Well, we sure try to be :)"
++        "DESC": "You have successfully finished integrating your Facebook Page with Chat Fleexa. Next time a customer messages your Page, the conversation will automatically appear on your inbox.<br>We are also providing you with a widget script that you can easily add to your website. Once this is live on your website, customers can message you right from your website without the help of any external tool and the conversation will appear right here, on Chat Fleexa.<br>Cool, huh? Well, we sure try to be :)"
+       },
+       "EMAIL_PROVIDER": {
+         "TITLE": "Select your email provider",
+@@ -1166,7 +1166,7 @@
+         "USER_MESSAGE": "Hi",
+         "AGENT_MESSAGE": "Hello"
+       },
+-      "BRANDING_TEXT": "Powered by Chatwoot",
++      "BRANDING_TEXT": "Powered by Chat Fleexa",
+       "SCRIPT_SETTINGS": "\n      window.chatwootSettings = {options};"
+     },
+     "EMAIL_PROVIDERS": {
+diff --git a/app/javascript/dashboard/i18n/locale/en/integrations.json b/app/javascript/dashboard/i18n/locale/en/integrations.json
+index 79f881b..cea2fe3 100644
+--- a/app/javascript/dashboard/i18n/locale/en/integrations.json
++++ b/app/javascript/dashboard/i18n/locale/en/integrations.json
+@@ -17,7 +17,7 @@
+       "ERROR": "There was an error connecting to Shopify. Please try again or contact support if the issue persists."
+     },
+     "HEADER": "Integrations",
+-    "DESCRIPTION": "Chatwoot integrates with multiple tools and services to improve your team's efficiency. Explore the list below to configure your favorite apps.",
++    "DESCRIPTION": "Chat Fleexa integrates with multiple tools and services to improve your team's efficiency. Explore the list below to configure your favorite apps.",
+     "LEARN_MORE": "Learn more about integrations",
+     "LOADING": "Fetching integrations",
+     "SEARCH_PLACEHOLDER": "Search integrations...",
+@@ -44,7 +44,7 @@
+       "NO_RESULTS": "No webhooks found matching your search",
+       "FORM": {
+         "CANCEL": "Cancel",
+-        "DESC": "Webhook events provide you the realtime information about what's happening in your Chatwoot account. Please enter a valid URL to configure a callback.",
++        "DESC": "Webhook events provide you the realtime information about what's happening in your Chat Fleexa account. Please enter a valid URL to configure a callback.",
+         "SUBSCRIPTIONS": {
+           "LABEL": "Events",
+           "EVENTS": {
+@@ -79,7 +79,7 @@
+       "HEADER_BTN_TXT": "Add new webhook",
+       "LOADING": "Fetching attached webhooks",
+       "SEARCH_404": "There are no items matching this query",
+-      "SIDEBAR_TXT": "<p><b>Webhooks</b> </p> <p>Webhooks are HTTP callbacks which can be defined for every account. They are triggered by events like message creation in Chatwoot. You can create more than one webhook for this account. <br /><br /> For creating a <b>webhook</b>, click on the <b>Add new webhook</b> button. You can also remove any existing webhook by clicking on the Delete button.</p>",
++      "SIDEBAR_TXT": "<p><b>Webhooks</b> </p> <p>Webhooks are HTTP callbacks which can be defined for every account. They are triggered by events like message creation in Chat Fleexa. You can create more than one webhook for this account. <br /><br /> For creating a <b>webhook</b>, click on the <b>Add new webhook</b> button. You can also remove any existing webhook by clicking on the Delete button.</p>",
+       "LIST": {
+         "404": "There are no webhooks configured for this account.",
+         "TITLE": "Manage webhooks",
+@@ -127,14 +127,14 @@
+       },
+       "HELP_TEXT": {
+         "TITLE": "How to use the Slack Integration?",
+-        "BODY": "With this integration, all of your incoming conversations will be synced to the ***{selectedChannelName}*** channel in your Slack workspace. You can manage all your customer conversations right within the channel and never miss a message.\n\nHere are the main features of the integration:\n\n**Respond to conversations from within Slack:** To respond to a conversation in the ***{selectedChannelName}*** Slack channel, simply type out your message and send it as a thread. This will create a response back to the customer through Chatwoot. It's that simple!\n\n **Create private notes:** If you want to create private notes instead of replies, start your message with ***`note:`***. This ensures that your message is kept private and won't be visible to the customer.\n\n**Associate an agent profile:** If the person who replied on Slack has an agent profile in Chatwoot under the same email, the replies will be associated with that agent profile automatically. This means you can easily track who said what and when. On the other hand, when the replier doesn't have an associated agent profile, the replies will appear from the bot profile to the customer.",
++        "BODY": "With this integration, all of your incoming conversations will be synced to the ***{selectedChannelName}*** channel in your Slack workspace. You can manage all your customer conversations right within the channel and never miss a message.\n\nHere are the main features of the integration:\n\n**Respond to conversations from within Slack:** To respond to a conversation in the ***{selectedChannelName}*** Slack channel, simply type out your message and send it as a thread. This will create a response back to the customer through Chat Fleexa. It's that simple!\n\n **Create private notes:** If you want to create private notes instead of replies, start your message with ***`note:`***. This ensures that your message is kept private and won't be visible to the customer.\n\n**Associate an agent profile:** If the person who replied on Slack has an agent profile in Chat Fleexa under the same email, the replies will be associated with that agent profile automatically. This means you can easily track who said what and when. On the other hand, when the replier doesn't have an associated agent profile, the replies will appear from the bot profile to the customer.",
+         "SELECTED": "selected"
+       },
+       "SELECT_CHANNEL": {
+         "OPTION_LABEL": "Select a channel",
+         "UPDATE": "Update",
+         "BUTTON_TEXT": "Connect channel",
+-        "DESCRIPTION": "Your Slack workspace is now linked with Chatwoot. However, the integration is currently inactive. To activate the integration and connect a channel to Chatwoot, please click the button below.\n\n**Note:** If you are attempting to connect a private channel, add the Chatwoot app to the Slack channel before proceeding with this step.",
++        "DESCRIPTION": "Your Slack workspace is now linked with Chat Fleexa. However, the integration is currently inactive. To activate the integration and connect a channel to Chat Fleexa, please click the button below.\n\n**Note:** If you are attempting to connect a private channel, add the Chat Fleexa app to the Slack channel before proceeding with this step.",
+         "ATTENTION_REQUIRED": "Attention required",
+         "EXPIRED": "Your Slack integration has expired. To continue receiving messages on Slack, please delete the integration and connect your workspace again."
+       },
+@@ -236,7 +236,7 @@
+     "DASHBOARD_APPS": {
+       "TITLE": "Dashboard Apps",
+       "HEADER_BTN_TXT": "Add a new dashboard app",
+-      "SIDEBAR_TXT": "<p><b>Dashboard Apps</b></p><p>Dashboard Apps allow organizations to embed an application inside the Chatwoot dashboard to provide the context for customer support agents. This feature allows you to create an application independently and embed that inside the dashboard to provide user information, their orders, or their previous payment history.</p><p>When you embed your application using the dashboard in Chatwoot, your application will get the context of the conversation and contact as a window event. Implement a listener for the message event on your page to receive the context.</p><p>To add a new dashboard app, click on the button 'Add a new dashboard app'.</p>",
++      "SIDEBAR_TXT": "<p><b>Dashboard Apps</b></p><p>Dashboard Apps allow organizations to embed an application inside the Chat Fleexa dashboard to provide the context for customer support agents. This feature allows you to create an application independently and embed that inside the dashboard to provide user information, their orders, or their previous payment history.</p><p>When you embed your application using the dashboard in Chat Fleexa, your application will get the context of the conversation and contact as a window event. Implement a listener for the message event on your page to receive the context.</p><p>To add a new dashboard app, click on the button 'Add a new dashboard app'.</p>",
+       "DESCRIPTION": "Dashboard Apps allow organizations to embed an application inside the dashboard to provide the context for customer support agents. This feature allows you to create an application independently and embed that to provide user information, their orders, or their previous payment history.",
+       "LEARN_MORE": "Learn more about Dashboard Apps",
+       "COUNT": "{n} dashboard app | {n} dashboard apps",
+diff --git a/app/javascript/dashboard/i18n/locale/en/labelsMgmt.json b/app/javascript/dashboard/i18n/locale/en/labelsMgmt.json
+index 96e272e..63f6adc 100644
+--- a/app/javascript/dashboard/i18n/locale/en/labelsMgmt.json
++++ b/app/javascript/dashboard/i18n/locale/en/labelsMgmt.json
+@@ -50,7 +50,7 @@
+         "DESELECT": "Deselect label",
+         "DISMISS": "Dismiss suggestion"
+       },
+-      "POWERED_BY": "Chatwoot AI",
++      "POWERED_BY": "Chat Fleexa AI",
+       "DISMISS": "Dismiss",
+       "ADD_SELECTED_LABELS": "Add selected labels",
+       "ADD_SELECTED_LABEL": "Add selected label",
+diff --git a/app/javascript/dashboard/i18n/locale/en/login.json b/app/javascript/dashboard/i18n/locale/en/login.json
+index 0612842..24cbcce 100644
+--- a/app/javascript/dashboard/i18n/locale/en/login.json
++++ b/app/javascript/dashboard/i18n/locale/en/login.json
+@@ -1,6 +1,6 @@
+ {
+   "LOGIN": {
+-    "TITLE": "Login to Chatwoot",
++    "TITLE": "Login to Chat Fleexa",
+     "EMAIL": {
+       "LABEL": "Email",
+       "PLACEHOLDER": "example{'@'}companyname.com",
+diff --git a/app/javascript/dashboard/i18n/locale/en/mfa.json b/app/javascript/dashboard/i18n/locale/en/mfa.json
+index 8e356aa..ba943c0 100644
+--- a/app/javascript/dashboard/i18n/locale/en/mfa.json
++++ b/app/javascript/dashboard/i18n/locale/en/mfa.json
+@@ -102,7 +102,7 @@
+       "BACKUP_TITLE": "Using a Backup Code",
+       "BACKUP_DESC": "If you don't have access to your authenticator app, you can use one of the backup codes you saved when setting up 2FA. Each code can only be used once.",
+       "CONTACT_TITLE": "Need More Help?",
+-      "CONTACT_DESC_CLOUD": "If you've lost access to both your authenticator app and backup codes, please reach out to Chatwoot support for assistance.",
++      "CONTACT_DESC_CLOUD": "If you've lost access to both your authenticator app and backup codes, please reach out to Chat Fleexa support for assistance.",
+       "CONTACT_DESC_SELF_HOSTED": "If you've lost access to both your authenticator app and backup codes, please contact your administrator for assistance."
+     },
+     "VERIFICATION_FAILED": "Verification failed. Please try again."
+diff --git a/app/javascript/dashboard/i18n/locale/en/resetPassword.json b/app/javascript/dashboard/i18n/locale/en/resetPassword.json
+index 955696b..c79f339 100644
+--- a/app/javascript/dashboard/i18n/locale/en/resetPassword.json
++++ b/app/javascript/dashboard/i18n/locale/en/resetPassword.json
+@@ -1,7 +1,7 @@
+ {
+   "RESET_PASSWORD": {
+     "TITLE": "Reset password",
+-    "DESCRIPTION": "Enter the email address you use to log in to Chatwoot to get the password reset instructions.",
++    "DESCRIPTION": "Enter the email address you use to log in to Chat Fleexa to get the password reset instructions.",
+     "GO_BACK_TO_LOGIN": "If you want to go back to the login page,",
+     "EMAIL": {
+       "LABEL": "Email",
+diff --git a/app/javascript/dashboard/i18n/locale/en/settings.json b/app/javascript/dashboard/i18n/locale/en/settings.json
+index bfbd920..0358301 100644
+--- a/app/javascript/dashboard/i18n/locale/en/settings.json
++++ b/app/javascript/dashboard/i18n/locale/en/settings.json
+@@ -37,7 +37,7 @@
+       },
+       "INTERFACE_SECTION": {
+         "TITLE": "Interface",
+-        "NOTE": "Customize the look and feel of your Chatwoot dashboard.",
++        "NOTE": "Customize the look and feel of your Chat Fleexa dashboard.",
+         "FONT_SIZE": {
+           "TITLE": "Font size",
+           "NOTE": "Adjust the text size across the dashboard based on your preference.",
+@@ -516,7 +516,7 @@
+       "SP_ENTITY_ID": {
+         "LABEL": "SP Entity ID",
+         "HELP": "Unique identifier for this application as a service provider (auto-generated).",
+-        "TOOLTIP": "Unique identifier for Chatwoot as the Service Provider - Configure this in your IdP settings"
++        "TOOLTIP": "Unique identifier for Chat Fleexa as the Service Provider - Configure this in your IdP settings"
+       },
+       "IDP_ENTITY_ID": {
+         "LABEL": "Identity Provider Entity ID",
+@@ -611,7 +611,7 @@
+     }
+   },
+   "CREATE_ACCOUNT": {
+-    "NO_ACCOUNT_WARNING": "Uh oh! We could not find any Chatwoot accounts. Please create a new account to continue.",
++    "NO_ACCOUNT_WARNING": "Uh oh! We could not find any Chat Fleexa accounts. Please create a new account to continue.",
+     "NEW_ACCOUNT": "New Account",
+     "SELECTOR_SUBTITLE": "Create a new account",
+     "API": {
+diff --git a/app/javascript/dashboard/i18n/locale/en/signup.json b/app/javascript/dashboard/i18n/locale/en/signup.json
+index 238a1f0..1e439fd 100644
+--- a/app/javascript/dashboard/i18n/locale/en/signup.json
++++ b/app/javascript/dashboard/i18n/locale/en/signup.json
+@@ -1,7 +1,7 @@
+ {
+   "REGISTER": {
+     "TRY_WOOT": "Create an account",
+-    "GET_STARTED": "Get started with Chatwoot",
++    "GET_STARTED": "Get started with Chat Fleexa",
+     "TITLE": "Register",
+     "TESTIMONIAL_HEADER": "All it takes is one step to move forward",
+     "TESTIMONIAL_CONTENT": "You're one step away from engaging your customers, retaining them and finding new ones.",
+diff --git a/app/javascript/dashboard/i18n/locale/en/yearInReview.json b/app/javascript/dashboard/i18n/locale/en/yearInReview.json
+index d72e0c6..c593476 100644
+--- a/app/javascript/dashboard/i18n/locale/en/yearInReview.json
++++ b/app/javascript/dashboard/i18n/locale/en/yearInReview.json
+@@ -48,8 +48,8 @@
+       "PREPARING": "Preparing your image...",
+       "DOWNLOAD": "Download",
+       "SHARE_TITLE": "My {year} Year in Review",
+-      "SHARE_TEXT": "Check out my {year} Year in Review with Chatwoot!",
+-      "BRANDING": "Made with Chatwoot"
++      "SHARE_TEXT": "Check out my {year} Year in Review with Chat Fleexa!",
++      "BRANDING": "Made with Chat Fleexa"
+     },
+     "BANNER": {
+       "TITLE": "Your {year} Year in Review is here",
+diff --git a/app/javascript/dashboard/i18n/locale/ru/auditLogs.json b/app/javascript/dashboard/i18n/locale/ru/auditLogs.json
+index 8818396..9ca57e1 100644
+--- a/app/javascript/dashboard/i18n/locale/ru/auditLogs.json
++++ b/app/javascript/dashboard/i18n/locale/ru/auditLogs.json
+@@ -6,11 +6,11 @@
+     "DESCRIPTION": "Журнал аудита фиксирует действия в вашей учетной записи, позволяя отслеживать и проверять действия пользователей, команд и сервисов.",
+     "LEARN_MORE": "Узнать больше о журнале аудита",
+     "SEARCH_404": "По вашему запросу ничего не найдено",
+-    "SIDEBAR_TXT": "<p><b>Журнал аудита</b> </p><p>Журнал аудита фиксирует события и действия в системе Chatwoot.</p>",
++    "SIDEBAR_TXT": "<p><b>Журнал аудита</b> </p><p>Журнал аудита фиксирует события и действия в системе Chat Fleexa.</p>",
+     "LIST": {
+       "404": "В этой учетной записи нет записей журнала аудита.",
+       "TITLE": "Управление журналом аудита",
+-      "DESC": "Журнал аудита фиксирует события и действия в системе Chatwoot.",
++      "DESC": "Журнал аудита фиксирует события и действия в системе Chat Fleexa.",
+       "TABLE_HEADER": {
+         "ACTIVITY": "Действие",
+         "TIME": "Время",
+diff --git a/app/javascript/dashboard/i18n/locale/ru/generalSettings.json b/app/javascript/dashboard/i18n/locale/ru/generalSettings.json
+index 66a41b2..e08c267 100644
+--- a/app/javascript/dashboard/i18n/locale/ru/generalSettings.json
++++ b/app/javascript/dashboard/i18n/locale/ru/generalSettings.json
+@@ -123,11 +123,11 @@
+         "CUSTOM_EMAIL_DOMAIN_ENABLED": "Теперь вы можете получать письма на свой домен."
+       }
+     },
+-    "UPDATE_CHATWOOT": "Доступно обновление {latestChatwootVersion} для Chatwoot. Пожалуйста, обновите свою версию.",
++    "UPDATE_CHATWOOT": "Доступно обновление {latestChatwootVersion} для Chat Fleexa. Пожалуйста, обновите свою версию.",
+     "LEARN_MORE": "Узнайте больше",
+-    "PAYMENT_PENDING": "Ваш платеж в ожидании. Пожалуйста, обновите платежную информацию, чтобы продолжить использовать Chatwoot",
+-    "UPGRADE": "Обновитесь, чтобы продолжить использовать Chatwoot",
+-    "LIMITS_UPGRADE": "Превышен лимит использования вашего тарифного плана, пожалуйста, обновите тарифный план, чтобы продолжить использовать Chatwoot",
++    "PAYMENT_PENDING": "Ваш платеж в ожидании. Пожалуйста, обновите платежную информацию, чтобы продолжить использовать Chat Fleexa",
++    "UPGRADE": "Обновитесь, чтобы продолжить использовать Chat Fleexa",
++    "LIMITS_UPGRADE": "Превышен лимит использования вашего тарифного плана, пожалуйста, обновите тарифный план, чтобы продолжить использовать Chat Fleexa",
+     "OPEN_BILLING": "Открыть платеж"
+   },
+   "FORMS": {
+diff --git a/app/javascript/dashboard/i18n/locale/ru/helpCenter.json b/app/javascript/dashboard/i18n/locale/ru/helpCenter.json
+index 25f82d5..261e591 100644
+--- a/app/javascript/dashboard/i18n/locale/ru/helpCenter.json
++++ b/app/javascript/dashboard/i18n/locale/ru/helpCenter.json
+@@ -766,7 +766,7 @@
+       "CONFIRM_BUTTON_LABEL": "Создать",
+       "NAME": {
+         "LABEL": "Имя",
+-        "PLACEHOLDER": "Руководство пользователя | Chatwoot",
++        "PLACEHOLDER": "Руководство пользователя | Chat Fleexa",
+         "MESSAGE": "Выберите имя для вашего портала.",
+         "ERROR": "Необходимо указать имя"
+       },
+diff --git a/app/javascript/dashboard/i18n/locale/ru/inboxMgmt.json b/app/javascript/dashboard/i18n/locale/ru/inboxMgmt.json
+index 0f10f46..36b254f 100644
+--- a/app/javascript/dashboard/i18n/locale/ru/inboxMgmt.json
++++ b/app/javascript/dashboard/i18n/locale/ru/inboxMgmt.json
+@@ -16,7 +16,7 @@
+     "CREATE_FLOW": {
+       "CHANNEL": {
+         "TITLE": "Выберите источник",
+-        "BODY": "Выберите канал, который вы хотите подключить к Chatwoot."
++        "BODY": "Выберите канал, который вы хотите подключить к Chat Fleexa."
+       },
+       "INBOX": {
+         "TITLE": "Создать источник",
+@@ -42,7 +42,7 @@
+         "PLACEHOLDER": "Введите имя вашего сайта (например: Acme Inc)"
+       },
+       "FB": {
+-        "HELP": "PS: После авторизации мы получим доступ только к вашим сообщениям на странице. Личные сообщения недоступны Chatwoot.",
++        "HELP": "PS: После авторизации мы получим доступ только к вашим сообщениям на странице. Личные сообщения недоступны Chat Fleexa.",
+         "CHOOSE_PAGE": "Выберите страницы",
+         "CHOOSE_PLACEHOLDER": "Выберите страницу из списка",
+         "INBOX_NAME": "Имя источника",
+@@ -451,7 +451,7 @@
+       },
+       "AUTH": {
+         "TITLE": "Выберите источник",
+-        "DESC": "Chatwoot поддерживает виджет чата, страницу Facebook, профиль Twitter, WhatsApp, Email и т. д., как канал связи с пользователями. Если вы хотите настроить пользовательский канал, вы можете создать его с помощью канала API. Выберите один канал из списка ниже, чтобы продолжить.",
++        "DESC": "Chat Fleexa поддерживает виджет чата, страницу Facebook, профиль Twitter, WhatsApp, Email и т. д., как канал связи с пользователями. Если вы хотите настроить пользовательский канал, вы можете создать его с помощью канала API. Выберите один канал из списка ниже, чтобы продолжить.",
+         "TITLE_NEXT": "Завершить установку",
+         "TITLE_FINISH": "Voilà!",
+         "CHANNEL": {
+@@ -517,7 +517,7 @@
+       },
+       "FINISH": {
+         "TITLE": "Готово!",
+-        "DESC": "Вы успешно подключили страницу Facebook к Chatwoot. В следующий раз, когда покупатель напишет вашей странице, диалог автоматически отобразится здесь.<br>Мы также предоставляем вам скрипт виджета, который вы можете легко добавить на ваш сайт. Как только вы добавите его на сайт, клиенты смогут отправлять вам сообщения прямо с вашего сайта без помощи какого-либо внешнего инструмента и диалог появится прямо здесь, в Chatwoot.<br>Круто, да"
++        "DESC": "Вы успешно подключили страницу Facebook к Chat Fleexa. В следующий раз, когда покупатель напишет вашей странице, диалог автоматически отобразится здесь.<br>Мы также предоставляем вам скрипт виджета, который вы можете легко добавить на ваш сайт. Как только вы добавите его на сайт, клиенты смогут отправлять вам сообщения прямо с вашего сайта без помощи какого-либо внешнего инструмента и диалог появится прямо здесь, в Chat Fleexa.<br>Круто, да"
+       },
+       "EMAIL_PROVIDER": {
+         "TITLE": "Выберите почтового провайдера",
+@@ -1166,7 +1166,7 @@
+         "USER_MESSAGE": "Хай",
+         "AGENT_MESSAGE": "Привет"
+       },
+-      "BRANDING_TEXT": "Работает на Chatwoot",
++      "BRANDING_TEXT": "Работает на Chat Fleexa",
+       "SCRIPT_SETTINGS": "\n      window.chatwootSettings = {options};"
+     },
+     "EMAIL_PROVIDERS": {
+diff --git a/app/javascript/dashboard/i18n/locale/ru/integrations.json b/app/javascript/dashboard/i18n/locale/ru/integrations.json
+index c58f87d..688aa6f 100644
+--- a/app/javascript/dashboard/i18n/locale/ru/integrations.json
++++ b/app/javascript/dashboard/i18n/locale/ru/integrations.json
+@@ -17,7 +17,7 @@
+       "ERROR": "There was an error connecting to Shopify. Please try again or contact support if the issue persists."
+     },
+     "HEADER": "Интеграции",
+-    "DESCRIPTION": "Chatwoot интегрируется с несколькими инструментами и сервисами, чтобы повысить эффективность вашей команды. Изучите список ниже, чтобы настроить ваши любимые приложения.",
++    "DESCRIPTION": "Chat Fleexa интегрируется с несколькими инструментами и сервисами, чтобы повысить эффективность вашей команды. Изучите список ниже, чтобы настроить ваши любимые приложения.",
+     "LEARN_MORE": "Узнать больше об интеграциях",
+     "LOADING": "Получение интеграций",
+     "SEARCH_PLACEHOLDER": "Search integrations...",
+@@ -44,7 +44,7 @@
+       "NO_RESULTS": "No webhooks found matching your search",
+       "FORM": {
+         "CANCEL": "Отменить",
+-        "DESC": "Вебхуки позволяют получить вам информацию о том, что происходит в вашей учетной записи Chatwoot. Пожалуйста, введите корректный URL.",
++        "DESC": "Вебхуки позволяют получить вам информацию о том, что происходит в вашей учетной записи Chat Fleexa. Пожалуйста, введите корректный URL.",
+         "SUBSCRIPTIONS": {
+           "LABEL": "События",
+           "EVENTS": {
+@@ -79,7 +79,7 @@
+       "HEADER_BTN_TXT": "Добавить новый вебхук",
+       "LOADING": "Получение подключенных вебхуков",
+       "SEARCH_404": "Нет вебхуков, соответствующих запросу",
+-      "SIDEBAR_TXT": "<p><b>Вебхуки</b> </p> <p>Вебхуки – это HTTP запросы, которые можно установить для любого аккаунта. Они вызываются по событиям: например, при создании новых сообщений в Chatwoot. Вы можете создать сколько угодно вебхуков для этой учетной записи. <br /><br /> Для создания <b>вебхука</b>, нажмите на кнопку <b>Добавить новый вебхук</b>. Вы также можете удалить любой существующий вебхук, нажав на кнопку Удалить.</p>",
++      "SIDEBAR_TXT": "<p><b>Вебхуки</b> </p> <p>Вебхуки – это HTTP запросы, которые можно установить для любого аккаунта. Они вызываются по событиям: например, при создании новых сообщений в Chat Fleexa. Вы можете создать сколько угодно вебхуков для этой учетной записи. <br /><br /> Для создания <b>вебхука</b>, нажмите на кнопку <b>Добавить новый вебхук</b>. Вы также можете удалить любой существующий вебхук, нажав на кнопку Удалить.</p>",
+       "LIST": {
+         "404": "У вас нет вебхуков.",
+         "TITLE": "Управление вебхуками",
+@@ -127,14 +127,14 @@
+       },
+       "HELP_TEXT": {
+         "TITLE": "Как использовать интеграцию Slack?",
+-        "BODY": "С этой интеграцией, все входящие диалоги будут синхронизированы с **{selectedChannelName}*** каналом в вашей рабочей области Slack. Вы можете управлять переписками клиентов прямо на канале и никогда не пропускать сообщения.\n\nВот основные особенности интеграции:\n\n**Ответить на диалоги из Slack:** Чтобы ответить на разговор в ***{selectedChannelName}*** канале Slack, просто напечатайте ваше сообщение и отправьте его. Это создаст ответ клиенту через Chatwoot. Это так просто!\n\n **Создавайте личные заметки:** Если вы хотите создавать личные заметки вместо ответов, начните свое сообщение с ***`note:`***. Это гарантирует, что ваше сообщение будет приватным и не будет видно клиенту.\n\n**Связать профиль агента:** Если человек, ответивший в Slack имеет профиль агента в Chatwoot с такой же электронной почты, ответы будут автоматически связаны с профилем этого агента. Это означает, что вы легко можете отслеживать кто, когда и что ответил,. С другой стороны, если у отвечающего нет соответствующего профиля агента, ответы отправятся клиенту от имени бота.",
++        "BODY": "С этой интеграцией, все входящие диалоги будут синхронизированы с **{selectedChannelName}*** каналом в вашей рабочей области Slack. Вы можете управлять переписками клиентов прямо на канале и никогда не пропускать сообщения.\n\nВот основные особенности интеграции:\n\n**Ответить на диалоги из Slack:** Чтобы ответить на разговор в ***{selectedChannelName}*** канале Slack, просто напечатайте ваше сообщение и отправьте его. Это создаст ответ клиенту через Chat Fleexa. Это так просто!\n\n **Создавайте личные заметки:** Если вы хотите создавать личные заметки вместо ответов, начните свое сообщение с ***`note:`***. Это гарантирует, что ваше сообщение будет приватным и не будет видно клиенту.\n\n**Связать профиль агента:** Если человек, ответивший в Slack имеет профиль агента в Chat Fleexa с такой же электронной почты, ответы будут автоматически связаны с профилем этого агента. Это означает, что вы легко можете отслеживать кто, когда и что ответил,. С другой стороны, если у отвечающего нет соответствующего профиля агента, ответы отправятся клиенту от имени бота.",
+         "SELECTED": "выбрано"
+       },
+       "SELECT_CHANNEL": {
+         "OPTION_LABEL": "Выбрать канал",
+         "UPDATE": "Обновить",
+         "BUTTON_TEXT": "Подключить канал",
+-        "DESCRIPTION": "Рабочая область Slack теперь связана с Chatwoot. Однако интеграция в настоящее время неактивна. Чтобы активировать интеграцию и подключить канал к чату, нажмите на кнопку ниже.\n\n**Примечание:** Если вы пытаетесь подключить частный канал, добавьте приложение Чатвут в канал Slack перед тем как приступить к этому шагу.",
++        "DESCRIPTION": "Рабочая область Slack теперь связана с Chat Fleexa. Однако интеграция в настоящее время неактивна. Чтобы активировать интеграцию и подключить канал к чату, нажмите на кнопку ниже.\n\n**Примечание:** Если вы пытаетесь подключить частный канал, добавьте приложение Чатвут в канал Slack перед тем как приступить к этому шагу.",
+         "ATTENTION_REQUIRED": "Требуется внимание",
+         "EXPIRED": "Ваша интеграция в Slack истекла. Чтобы продолжить получение сообщений в Slack, удалите интеграцию и подключите рабочую область снова."
+       },
+@@ -236,7 +236,7 @@
+     "DASHBOARD_APPS": {
+       "TITLE": "Панель приложений",
+       "HEADER_BTN_TXT": "Добавить новое приложение",
+-      "SIDEBAR_TXT": "<p><b>Панель приложений</b></p><p>Панель приложений, позволяют организациям встраивать приложение в панель управления Chatwoot, чтобы предоставлять контекст для агентов службы поддержки клиентов. Эта функция позволяет вам создать приложение независимо и встроить его в панель инструментов для предоставления информации о пользователях, их заказах или их предыдущей истории платежей.</p><p>Когда вы встраиваете свое приложение с помощью панели инструментов в Chatwoot, ваше приложение будет получить контекст разговора и связей событий. Реализуйте связи для события сообщения на своей странице, чтобы получать контекст.</p><p>Чтобы добавить новое приложение панели приложений, нажмите кнопку \"Добавить приложение\".</p>",
++      "SIDEBAR_TXT": "<p><b>Панель приложений</b></p><p>Панель приложений, позволяют организациям встраивать приложение в панель управления Chat Fleexa, чтобы предоставлять контекст для агентов службы поддержки клиентов. Эта функция позволяет вам создать приложение независимо и встроить его в панель инструментов для предоставления информации о пользователях, их заказах или их предыдущей истории платежей.</p><p>Когда вы встраиваете свое приложение с помощью панели инструментов в Chat Fleexa, ваше приложение будет получить контекст разговора и связей событий. Реализуйте связи для события сообщения на своей странице, чтобы получать контекст.</p><p>Чтобы добавить новое приложение панели приложений, нажмите кнопку \"Добавить приложение\".</p>",
+       "DESCRIPTION": "Панель приложений, позволяют организациям встраивать приложение внутри панели управления для обеспечения контекста агентов по поддержке клиентов. Эта функция позволяет создать приложение независимо и встраивать информацию о пользователе, его заказах или их истории платежей.",
+       "LEARN_MORE": "Подробнее об интеграциях",
+       "COUNT": "{n} dashboard app | {n} dashboard apps",
+diff --git a/app/javascript/dashboard/i18n/locale/ru/labelsMgmt.json b/app/javascript/dashboard/i18n/locale/ru/labelsMgmt.json
+index 454ec65..b85feb1 100644
+--- a/app/javascript/dashboard/i18n/locale/ru/labelsMgmt.json
++++ b/app/javascript/dashboard/i18n/locale/ru/labelsMgmt.json
+@@ -50,7 +50,7 @@
+         "DESELECT": "Отменить выбор метки",
+         "DISMISS": "Отменить предложение"
+       },
+-      "POWERED_BY": "Chatwoot AI",
++      "POWERED_BY": "Chat Fleexa AI",
+       "DISMISS": "Отклонить",
+       "ADD_SELECTED_LABELS": "Добавить выбранные метки",
+       "ADD_SELECTED_LABEL": "Добавить метку",
+diff --git a/app/javascript/dashboard/i18n/locale/ru/login.json b/app/javascript/dashboard/i18n/locale/ru/login.json
+index 2121ae0..a6ffbe9 100644
+--- a/app/javascript/dashboard/i18n/locale/ru/login.json
++++ b/app/javascript/dashboard/i18n/locale/ru/login.json
+@@ -1,6 +1,6 @@
+ {
+   "LOGIN": {
+-    "TITLE": "Войти в Chatwoot",
++    "TITLE": "Войти в Chat Fleexa",
+     "EMAIL": {
+       "LABEL": "Email",
+       "PLACEHOLDER": "example{'@'}companyname.com",
+diff --git a/app/javascript/dashboard/i18n/locale/ru/mfa.json b/app/javascript/dashboard/i18n/locale/ru/mfa.json
+index 5e386d9..dd24dba 100644
+--- a/app/javascript/dashboard/i18n/locale/ru/mfa.json
++++ b/app/javascript/dashboard/i18n/locale/ru/mfa.json
+@@ -102,7 +102,7 @@
+       "BACKUP_TITLE": "Использовать код резервной копии",
+       "BACKUP_DESC": "Если у вас нет доступа к приложению для аутентификации, вы можете использовать один из резервных кодов, сохраненных при настройке 2FA. Каждый код может быть использован только один раз.",
+       "CONTACT_TITLE": "Нужна помощь?",
+-      "CONTACT_DESC_CLOUD": "Если вы потеряли доступ к приложению для аутентификации и резервным кодам, пожалуйста, обратитесь в службу поддержки Chatwoot.",
++      "CONTACT_DESC_CLOUD": "Если вы потеряли доступ к приложению для аутентификации и резервным кодам, пожалуйста, обратитесь в службу поддержки Chat Fleexa.",
+       "CONTACT_DESC_SELF_HOSTED": "Если вы потеряли доступ к приложению для аутентификации и резервным кодам, обратитесь к администратору за помощью."
+     },
+     "VERIFICATION_FAILED": "Проверка не удалась. Пожалуйста, попробуйте еще раз."
+diff --git a/app/javascript/dashboard/i18n/locale/ru/settings.json b/app/javascript/dashboard/i18n/locale/ru/settings.json
+index 5be58d5..0a20ad8 100644
+--- a/app/javascript/dashboard/i18n/locale/ru/settings.json
++++ b/app/javascript/dashboard/i18n/locale/ru/settings.json
+@@ -37,7 +37,7 @@
+       },
+       "INTERFACE_SECTION": {
+         "TITLE": "Интерфейс",
+-        "NOTE": "Настройте внешний вид и оформление вашей панели Chatwoot.",
++        "NOTE": "Настройте внешний вид и оформление вашей панели Chat Fleexa.",
+         "FONT_SIZE": {
+           "TITLE": "Размер шрифта",
+           "NOTE": "Измените размер текста на всей панели в соответствии с вашими предпочтениями.",
+@@ -516,7 +516,7 @@
+       "SP_ENTITY_ID": {
+         "LABEL": "ID сущности SP",
+         "HELP": "Уникальный идентификатор для этого приложения как поставщика услуг (автосгенерированный).",
+-        "TOOLTIP": "Уникальный идентификатор для Chatwoot как поставщик услуг - Настройте это в настройках IdP"
++        "TOOLTIP": "Уникальный идентификатор для Chat Fleexa как поставщик услуг - Настройте это в настройках IdP"
+       },
+       "IDP_ENTITY_ID": {
+         "LABEL": "ID сущности провайдера идентификации",
+@@ -611,7 +611,7 @@
+     }
+   },
+   "CREATE_ACCOUNT": {
+-    "NO_ACCOUNT_WARNING": "Ой! Мы не смогли найти ни одного аккаунта в Chatwoot. Пожалуйста, создайте новый аккаунт, чтобы продолжить.",
++    "NO_ACCOUNT_WARNING": "Ой! Мы не смогли найти ни одного аккаунта в Chat Fleexa. Пожалуйста, создайте новый аккаунт, чтобы продолжить.",
+     "NEW_ACCOUNT": "Новый аккаунт",
+     "SELECTOR_SUBTITLE": "Создать новый аккаунт",
+     "API": {
+diff --git a/app/javascript/dashboard/i18n/locale/ru/signup.json b/app/javascript/dashboard/i18n/locale/ru/signup.json
+index 9693adf..4b4bffb 100644
+--- a/app/javascript/dashboard/i18n/locale/ru/signup.json
++++ b/app/javascript/dashboard/i18n/locale/ru/signup.json
+@@ -1,7 +1,7 @@
+ {
+   "REGISTER": {
+     "TRY_WOOT": "Создать новый аккаунт",
+-    "GET_STARTED": "Get started with Chatwoot",
++    "GET_STARTED": "Get started with Chat Fleexa",
+     "TITLE": "Регистрация",
+     "TESTIMONIAL_HEADER": "Все, что нужно сделать, это один шаг для продвижения вперед",
+     "TESTIMONIAL_CONTENT": "Вы находитесь на расстоянии всего одного шага от привлечения своих клиентов, удержав их и находя новые.",
+diff --git a/app/javascript/dashboard/i18n/locale/ru/yearInReview.json b/app/javascript/dashboard/i18n/locale/ru/yearInReview.json
+index 8c49e99..388adbf 100644
+--- a/app/javascript/dashboard/i18n/locale/ru/yearInReview.json
++++ b/app/javascript/dashboard/i18n/locale/ru/yearInReview.json
+@@ -48,8 +48,8 @@
+       "PREPARING": "Preparing your image...",
+       "DOWNLOAD": "Скачать",
+       "SHARE_TITLE": "My {year} Year in Review",
+-      "SHARE_TEXT": "Check out my {year} Year in Review with Chatwoot!",
+-      "BRANDING": "Made with Chatwoot"
++      "SHARE_TEXT": "Check out my {year} Year in Review with Chat Fleexa!",
++      "BRANDING": "Made with Chat Fleexa"
+     },
+     "BANNER": {
+       "TITLE": "Your {year} Year in Review is here",
+diff --git a/app/javascript/dashboard/modules/widget-preview/components/Widget.vue b/app/javascript/dashboard/modules/widget-preview/components/Widget.vue
+index 90985a9..f5a6d6d 100644
+--- a/app/javascript/dashboard/modules/widget-preview/components/Widget.vue
++++ b/app/javascript/dashboard/modules/widget-preview/components/Widget.vue
+@@ -243,7 +243,7 @@ const handleToggleWidget = () => {
+           :script="widgetScript"
+           lang="html"
+           class="!text-start"
+-          :codepen-title="`${websiteName} - Chatwoot Widget Test`"
++          :codepen-title="`${websiteName} - Chat Fleexa Widget Test`"
+           enable-code-pen
+         />
+       </div>
+diff --git a/app/javascript/dashboard/routes/dashboard/helpcenter/components/ArticleSearch/Header.vue b/app/javascript/dashboard/routes/dashboard/helpcenter/components/ArticleSearch/Header.vue
+index 516984b..da29e6c 100644
+--- a/app/javascript/dashboard/routes/dashboard/helpcenter/components/ArticleSearch/Header.vue
++++ b/app/javascript/dashboard/routes/dashboard/helpcenter/components/ArticleSearch/Header.vue
+@@ -6,7 +6,7 @@ import Button from 'dashboard/components-next/button/Button.vue';
+ defineProps({
+   title: {
+     type: String,
+-    default: 'Chatwoot',
++    default: 'Chat Fleexa',
+   },
+ });
+ 
+diff --git a/app/javascript/dashboard/routes/dashboard/settings/inbox/components/SenderNameExamplePreview.vue b/app/javascript/dashboard/routes/dashboard/settings/inbox/components/SenderNameExamplePreview.vue
+index abd2552..f42cf30 100644
+--- a/app/javascript/dashboard/routes/dashboard/settings/inbox/components/SenderNameExamplePreview.vue
++++ b/app/javascript/dashboard/routes/dashboard/settings/inbox/components/SenderNameExamplePreview.vue
+@@ -30,7 +30,7 @@ const senderNameKeyOptions = computed(() => [
+     content: t('INBOX_MGMT.EDIT.SENDER_NAME_SECTION.FRIENDLY.SUBTITLE'),
+     preview: {
+       senderName: 'Smith',
+-      businessName: 'Chatwoot',
++      businessName: 'Chat Fleexa',
+       email: '<support@yourbusiness.com>',
+     },
+   },
+@@ -40,7 +40,7 @@ const senderNameKeyOptions = computed(() => [
+     content: t('INBOX_MGMT.EDIT.SENDER_NAME_SECTION.PROFESSIONAL.SUBTITLE'),
+     preview: {
+       senderName: '',
+-      businessName: 'Chatwoot',
++      businessName: 'Chat Fleexa',
+       email: '<support@yourbusiness.com>',
+     },
+   },
+diff --git a/app/javascript/dashboard/routes/dashboard/settings/profile/MfaManagementActions.vue b/app/javascript/dashboard/routes/dashboard/settings/profile/MfaManagementActions.vue
+index b49bae0..8e1f64b 100644
+--- a/app/javascript/dashboard/routes/dashboard/settings/profile/MfaManagementActions.vue
++++ b/app/javascript/dashboard/routes/dashboard/settings/profile/MfaManagementActions.vue
+@@ -43,12 +43,12 @@ const copyBackupCodes = async () => {
+ };
+ 
+ const downloadBackupCodes = () => {
+-  const codesText = `Chatwoot Two-Factor Authentication Backup Codes\n\n${props.backupCodes.join('\n')}\n\nKeep these codes in a safe place.`;
++  const codesText = `Chat Fleexa Two-Factor Authentication Backup Codes\n\n${props.backupCodes.join('\n')}\n\nKeep these codes in a safe place.`;
+   const blob = new Blob([codesText], { type: 'text/plain' });
+   const url = URL.createObjectURL(blob);
+   const a = document.createElement('a');
+   a.href = url;
+-  a.download = 'chatwoot-backup-codes.txt';
++  a.download = 'chat-fleexa-backup-codes.txt';
+   a.click();
+   URL.revokeObjectURL(url);
+ };
+diff --git a/app/javascript/dashboard/routes/dashboard/settings/profile/MfaSetupWizard.vue b/app/javascript/dashboard/routes/dashboard/settings/profile/MfaSetupWizard.vue
+index 528df76..b08ea47 100644
+--- a/app/javascript/dashboard/routes/dashboard/settings/profile/MfaSetupWizard.vue
++++ b/app/javascript/dashboard/routes/dashboard/settings/profile/MfaSetupWizard.vue
+@@ -99,12 +99,12 @@ const copyBackupCodes = async () => {
+ };
+ 
+ const downloadBackupCodes = () => {
+-  const codesText = `Chatwoot Two-Factor Authentication Backup Codes\n\n${props.backupCodes.join('\n')}\n\nKeep these codes in a safe place.`;
++  const codesText = `Chat Fleexa Two-Factor Authentication Backup Codes\n\n${props.backupCodes.join('\n')}\n\nKeep these codes in a safe place.`;
+   const blob = new Blob([codesText], { type: 'text/plain' });
+   const url = URL.createObjectURL(blob);
+   const a = document.createElement('a');
+   a.href = url;
+-  a.download = 'chatwoot-backup-codes.txt';
++  a.download = 'chat-fleexa-backup-codes.txt';
+   a.click();
+   URL.revokeObjectURL(url);
+ };
+diff --git a/app/javascript/sdk/sdk.js b/app/javascript/sdk/sdk.js
+index 095fe80..6c5c37d 100644
+--- a/app/javascript/sdk/sdk.js
++++ b/app/javascript/sdk/sdk.js
+@@ -39,7 +39,7 @@ export const SDK_CSS = `
+ }
+ 
+ .woot-widget-bubble {
+-  background: #1f93ff;
++  background: #0EA5A0;
+   border-radius: 100px;
+   border-width: 0px;
+   bottom: 20px;
+@@ -129,7 +129,7 @@ export const SDK_CSS = `
+ }
+ 
+ .woot-widget-bubble:hover {
+-  background: #1f93ff;
++  background: #14B8B2;
+   box-shadow: 0 8px 32px rgba(0, 0, 0, .4) !important;
+ }
+ 
+diff --git a/app/javascript/shared/components/emoji/EmojiInput.vue b/app/javascript/shared/components/emoji/EmojiInput.vue
+index 586496d..a5bb308 100644
+--- a/app/javascript/shared/components/emoji/EmojiInput.vue
++++ b/app/javascript/shared/components/emoji/EmojiInput.vue
+@@ -197,7 +197,7 @@ export default {
+ @layer components {
+   .box-shadow-blue {
+     box-shadow:
+-      0 0 0 1px #1f93ff,
++      0 0 0 1px #0EA5A0,
+       0 0 1px 2px #c7e3ff;
+   }
+ 
+diff --git a/app/javascript/survey/i18n/locale/am.json b/app/javascript/survey/i18n/locale/am.json
+index beee65a..aa5828a 100644
+--- a/app/javascript/survey/i18n/locale/am.json
++++ b/app/javascript/survey/i18n/locale/am.json
+@@ -15,5 +15,5 @@
+       "ERROR_MESSAGE": "Could not connect to Woot Server, Please try again later"
+     }
+   },
+-  "POWERED_BY": "Powered by Chatwoot"
++  "POWERED_BY": "Powered by Chat Fleexa"
+ }
+diff --git a/app/javascript/survey/i18n/locale/ar.json b/app/javascript/survey/i18n/locale/ar.json
+index 02029b2..8140c5f 100644
+--- a/app/javascript/survey/i18n/locale/ar.json
++++ b/app/javascript/survey/i18n/locale/ar.json
+@@ -15,5 +15,5 @@
+       "ERROR_MESSAGE": "تعذر الاتصال بالخادم، الرجاء المحاولة مرة أخرى لاحقاً"
+     }
+   },
+-  "POWERED_BY": "مدعوم بواسطة Chatwoot"
++  "POWERED_BY": "مدعوم بواسطة Chat Fleexa"
+ }
+diff --git a/app/javascript/survey/i18n/locale/az.json b/app/javascript/survey/i18n/locale/az.json
+index beee65a..aa5828a 100644
+--- a/app/javascript/survey/i18n/locale/az.json
++++ b/app/javascript/survey/i18n/locale/az.json
+@@ -15,5 +15,5 @@
+       "ERROR_MESSAGE": "Could not connect to Woot Server, Please try again later"
+     }
+   },
+-  "POWERED_BY": "Powered by Chatwoot"
++  "POWERED_BY": "Powered by Chat Fleexa"
+ }
+diff --git a/app/javascript/survey/i18n/locale/bg.json b/app/javascript/survey/i18n/locale/bg.json
+index 08842ad..adb74a8 100644
+--- a/app/javascript/survey/i18n/locale/bg.json
++++ b/app/javascript/survey/i18n/locale/bg.json
+@@ -15,5 +15,5 @@
+       "ERROR_MESSAGE": "Не можа да се свърже с Woot сървър. Моля, опитайте отново по-късно"
+     }
+   },
+-  "POWERED_BY": "Осъществено от Chatwoot"
++  "POWERED_BY": "Осъществено от Chat Fleexa"
+ }
+diff --git a/app/javascript/survey/i18n/locale/bn.json b/app/javascript/survey/i18n/locale/bn.json
+index beee65a..aa5828a 100644
+--- a/app/javascript/survey/i18n/locale/bn.json
++++ b/app/javascript/survey/i18n/locale/bn.json
+@@ -15,5 +15,5 @@
+       "ERROR_MESSAGE": "Could not connect to Woot Server, Please try again later"
+     }
+   },
+-  "POWERED_BY": "Powered by Chatwoot"
++  "POWERED_BY": "Powered by Chat Fleexa"
+ }
+diff --git a/app/javascript/survey/i18n/locale/ca.json b/app/javascript/survey/i18n/locale/ca.json
+index 4d36ebc..2148147 100644
+--- a/app/javascript/survey/i18n/locale/ca.json
++++ b/app/javascript/survey/i18n/locale/ca.json
+@@ -15,5 +15,5 @@
+       "ERROR_MESSAGE": "No s'ha pogut connectar amb el servidor Woot. Torna-ho a provar més endavant"
+     }
+   },
+-  "POWERED_BY": "Desenvolupat per Chatwoot"
++  "POWERED_BY": "Desenvolupat per Chat Fleexa"
+ }
+diff --git a/app/javascript/survey/i18n/locale/cs.json b/app/javascript/survey/i18n/locale/cs.json
+index c2df0d4..1d9bee0 100644
+--- a/app/javascript/survey/i18n/locale/cs.json
++++ b/app/javascript/survey/i18n/locale/cs.json
+@@ -15,5 +15,5 @@
+       "ERROR_MESSAGE": "Nelze se připojit k Woot serveru, opakujte akci později"
+     }
+   },
+-  "POWERED_BY": "Powered by Chatwoot"
++  "POWERED_BY": "Powered by Chat Fleexa"
+ }
+diff --git a/app/javascript/survey/i18n/locale/da.json b/app/javascript/survey/i18n/locale/da.json
+index b2741f7..67b5d32 100644
+--- a/app/javascript/survey/i18n/locale/da.json
++++ b/app/javascript/survey/i18n/locale/da.json
+@@ -15,5 +15,5 @@
+       "ERROR_MESSAGE": "Kunne ikke oprette forbindelse til Woot Server, Prøv igen senere"
+     }
+   },
+-  "POWERED_BY": "Drevet af Chatwoot"
++  "POWERED_BY": "Drevet af Chat Fleexa"
+ }
+diff --git a/app/javascript/survey/i18n/locale/de.json b/app/javascript/survey/i18n/locale/de.json
+index bd5c513..4e43380 100644
+--- a/app/javascript/survey/i18n/locale/de.json
++++ b/app/javascript/survey/i18n/locale/de.json
+@@ -15,5 +15,5 @@
+       "ERROR_MESSAGE": "Es konnte keine Verbindung zum Woot-Server hergestellt werden. Bitte versuchen Sie es später erneut"
+     }
+   },
+-  "POWERED_BY": "Unterstützt von Chatwoot"
++  "POWERED_BY": "Unterstützt von Chat Fleexa"
+ }
+diff --git a/app/javascript/survey/i18n/locale/el.json b/app/javascript/survey/i18n/locale/el.json
+index 0814c43..163e351 100644
+--- a/app/javascript/survey/i18n/locale/el.json
++++ b/app/javascript/survey/i18n/locale/el.json
+@@ -15,5 +15,5 @@
+       "ERROR_MESSAGE": "Αδυναμία σύνδεσης με τον Woot Server, Παρακαλώ προσπαθήστε αργότερα"
+     }
+   },
+-  "POWERED_BY": "με την δύναμη του Chatwoot"
++  "POWERED_BY": "με την δύναμη του Chat Fleexa"
+ }
+diff --git a/app/javascript/survey/i18n/locale/en.json b/app/javascript/survey/i18n/locale/en.json
+index beee65a..aa5828a 100644
+--- a/app/javascript/survey/i18n/locale/en.json
++++ b/app/javascript/survey/i18n/locale/en.json
+@@ -15,5 +15,5 @@
+       "ERROR_MESSAGE": "Could not connect to Woot Server, Please try again later"
+     }
+   },
+-  "POWERED_BY": "Powered by Chatwoot"
++  "POWERED_BY": "Powered by Chat Fleexa"
+ }
+diff --git a/app/javascript/survey/i18n/locale/es.json b/app/javascript/survey/i18n/locale/es.json
+index dedf921..7cb9454 100644
+--- a/app/javascript/survey/i18n/locale/es.json
++++ b/app/javascript/survey/i18n/locale/es.json
+@@ -15,5 +15,5 @@
+       "ERROR_MESSAGE": "No se pudo conectar al servidor Woot, por favor inténtalo de nuevo más tarde"
+     }
+   },
+-  "POWERED_BY": "Desarrollado por Chatwoot"
++  "POWERED_BY": "Desarrollado por Chat Fleexa"
+ }
+diff --git a/app/javascript/survey/i18n/locale/et.json b/app/javascript/survey/i18n/locale/et.json
+index beee65a..aa5828a 100644
+--- a/app/javascript/survey/i18n/locale/et.json
++++ b/app/javascript/survey/i18n/locale/et.json
+@@ -15,5 +15,5 @@
+       "ERROR_MESSAGE": "Could not connect to Woot Server, Please try again later"
+     }
+   },
+-  "POWERED_BY": "Powered by Chatwoot"
++  "POWERED_BY": "Powered by Chat Fleexa"
+ }
+diff --git a/app/javascript/survey/i18n/locale/fi.json b/app/javascript/survey/i18n/locale/fi.json
+index e0e425f..d041c4b 100644
+--- a/app/javascript/survey/i18n/locale/fi.json
++++ b/app/javascript/survey/i18n/locale/fi.json
+@@ -15,5 +15,5 @@
+       "ERROR_MESSAGE": "Yhteyden muodostaminen Woot-palvelimelle ei onnistunut, yritä myöhemmin uudelleen"
+     }
+   },
+-  "POWERED_BY": "Palvelun tarjoaa Chatwoot"
++  "POWERED_BY": "Palvelun tarjoaa Chat Fleexa"
+ }
+diff --git a/app/javascript/survey/i18n/locale/fr.json b/app/javascript/survey/i18n/locale/fr.json
+index 8387d67..0200b28 100644
+--- a/app/javascript/survey/i18n/locale/fr.json
++++ b/app/javascript/survey/i18n/locale/fr.json
+@@ -15,5 +15,5 @@
+       "ERROR_MESSAGE": "L'attribut personnalisé a été ajouté"
+     }
+   },
+-  "POWERED_BY": "Propulsé par Chatwoot"
++  "POWERED_BY": "Propulsé par Chat Fleexa"
+ }
+diff --git a/app/javascript/survey/i18n/locale/he.json b/app/javascript/survey/i18n/locale/he.json
+index 41a61f6..8bba5c9 100644
+--- a/app/javascript/survey/i18n/locale/he.json
++++ b/app/javascript/survey/i18n/locale/he.json
+@@ -15,5 +15,5 @@
+       "ERROR_MESSAGE": "לא ניתן להתחבר לשרת Woot, נסה שוב מאוחר יותר"
+     }
+   },
+-  "POWERED_BY": "מופעל על ידי Chatwoot"
++  "POWERED_BY": "מופעל על ידי Chat Fleexa"
+ }
+diff --git a/app/javascript/survey/i18n/locale/hi.json b/app/javascript/survey/i18n/locale/hi.json
+index beee65a..aa5828a 100644
+--- a/app/javascript/survey/i18n/locale/hi.json
++++ b/app/javascript/survey/i18n/locale/hi.json
+@@ -15,5 +15,5 @@
+       "ERROR_MESSAGE": "Could not connect to Woot Server, Please try again later"
+     }
+   },
+-  "POWERED_BY": "Powered by Chatwoot"
++  "POWERED_BY": "Powered by Chat Fleexa"
+ }
+diff --git a/app/javascript/survey/i18n/locale/hr.json b/app/javascript/survey/i18n/locale/hr.json
+index 29e94db..b12d9dc 100644
+--- a/app/javascript/survey/i18n/locale/hr.json
++++ b/app/javascript/survey/i18n/locale/hr.json
+@@ -15,5 +15,5 @@
+       "ERROR_MESSAGE": "Neuspješno spajanje na Woot Server, Molimo pokušajte kasnije"
+     }
+   },
+-  "POWERED_BY": "Powered by Chatwoot"
++  "POWERED_BY": "Powered by Chat Fleexa"
+ }
+diff --git a/app/javascript/survey/i18n/locale/hu.json b/app/javascript/survey/i18n/locale/hu.json
+index c6c61c5..5c32fb8 100644
+--- a/app/javascript/survey/i18n/locale/hu.json
++++ b/app/javascript/survey/i18n/locale/hu.json
+@@ -15,5 +15,5 @@
+       "ERROR_MESSAGE": "Nem sikerült csatlakozni a Woot szerverhez, kérjük próbáld később"
+     }
+   },
+-  "POWERED_BY": "Chatwoot"
++  "POWERED_BY": "Chat Fleexa"
+ }
+diff --git a/app/javascript/survey/i18n/locale/hy.json b/app/javascript/survey/i18n/locale/hy.json
+index beee65a..aa5828a 100644
+--- a/app/javascript/survey/i18n/locale/hy.json
++++ b/app/javascript/survey/i18n/locale/hy.json
+@@ -15,5 +15,5 @@
+       "ERROR_MESSAGE": "Could not connect to Woot Server, Please try again later"
+     }
+   },
+-  "POWERED_BY": "Powered by Chatwoot"
++  "POWERED_BY": "Powered by Chat Fleexa"
+ }
+diff --git a/app/javascript/survey/i18n/locale/id.json b/app/javascript/survey/i18n/locale/id.json
+index 47edd5f..da942b5 100644
+--- a/app/javascript/survey/i18n/locale/id.json
++++ b/app/javascript/survey/i18n/locale/id.json
+@@ -15,5 +15,5 @@
+       "ERROR_MESSAGE": "Tidak dapat terhubung ke Server Woot, Silahkan coba lagi nanti"
+     }
+   },
+-  "POWERED_BY": "Powered by Chatwoot"
++  "POWERED_BY": "Powered by Chat Fleexa"
+ }
+diff --git a/app/javascript/survey/i18n/locale/is.json b/app/javascript/survey/i18n/locale/is.json
+index d3bee9c..fd71966 100644
+--- a/app/javascript/survey/i18n/locale/is.json
++++ b/app/javascript/survey/i18n/locale/is.json
+@@ -15,5 +15,5 @@
+       "ERROR_MESSAGE": "Náði ekki að tengjast við Woot þjónin, Vinsamlegast reyndu aftur síðar"
+     }
+   },
+-  "POWERED_BY": "Keyrt af Chatwoot"
++  "POWERED_BY": "Keyrt af Chat Fleexa"
+ }
+diff --git a/app/javascript/survey/i18n/locale/it.json b/app/javascript/survey/i18n/locale/it.json
+index d7d7132..d50aa01 100644
+--- a/app/javascript/survey/i18n/locale/it.json
++++ b/app/javascript/survey/i18n/locale/it.json
+@@ -15,5 +15,5 @@
+       "ERROR_MESSAGE": "Impossibile connettersi al server Woot, riprova più tardi"
+     }
+   },
+-  "POWERED_BY": "Offerto da Chatwoot"
++  "POWERED_BY": "Offerto da Chat Fleexa"
+ }
+diff --git a/app/javascript/survey/i18n/locale/ja.json b/app/javascript/survey/i18n/locale/ja.json
+index 8bf8421..983d3cc 100644
+--- a/app/javascript/survey/i18n/locale/ja.json
++++ b/app/javascript/survey/i18n/locale/ja.json
+@@ -15,5 +15,5 @@
+       "ERROR_MESSAGE": "サーバーに接続できませんでした。後でもう一度お試しください。"
+     }
+   },
+-  "POWERED_BY": "提供：Chatwoot"
++  "POWERED_BY": "提供：Chat Fleexa"
+ }
+diff --git a/app/javascript/survey/i18n/locale/ka.json b/app/javascript/survey/i18n/locale/ka.json
+index beee65a..aa5828a 100644
+--- a/app/javascript/survey/i18n/locale/ka.json
++++ b/app/javascript/survey/i18n/locale/ka.json
+@@ -15,5 +15,5 @@
+       "ERROR_MESSAGE": "Could not connect to Woot Server, Please try again later"
+     }
+   },
+-  "POWERED_BY": "Powered by Chatwoot"
++  "POWERED_BY": "Powered by Chat Fleexa"
+ }
+diff --git a/app/javascript/survey/i18n/locale/ko.json b/app/javascript/survey/i18n/locale/ko.json
+index 563d1a0..5b82511 100644
+--- a/app/javascript/survey/i18n/locale/ko.json
++++ b/app/javascript/survey/i18n/locale/ko.json
+@@ -15,5 +15,5 @@
+       "ERROR_MESSAGE": "Woot 서버에 연결할 수 없음. 나중에 다시 시도하십시오."
+     }
+   },
+-  "POWERED_BY": "Chatwoot 작동중"
++  "POWERED_BY": "Chat Fleexa 작동중"
+ }
+diff --git a/app/javascript/survey/i18n/locale/lt.json b/app/javascript/survey/i18n/locale/lt.json
+index c1a0933..f5e328b 100644
+--- a/app/javascript/survey/i18n/locale/lt.json
++++ b/app/javascript/survey/i18n/locale/lt.json
+@@ -15,5 +15,5 @@
+       "ERROR_MESSAGE": "Nepavyko prisijungti prie Woot serverio, bandykite dar kartą vėliau"
+     }
+   },
+-  "POWERED_BY": "Parengta pagal Chatwoot"
++  "POWERED_BY": "Parengta pagal Chat Fleexa"
+ }
+diff --git a/app/javascript/survey/i18n/locale/lv.json b/app/javascript/survey/i18n/locale/lv.json
+index 4bd5627..0bd6518 100644
+--- a/app/javascript/survey/i18n/locale/lv.json
++++ b/app/javascript/survey/i18n/locale/lv.json
+@@ -15,5 +15,5 @@
+       "ERROR_MESSAGE": "Nevar izveidot savienojumu ar Woot serveri. Lūdzu, vēlāk pamēģiniet vēlreiz"
+     }
+   },
+-  "POWERED_BY": "Darbināts ar Chatwoot"
++  "POWERED_BY": "Darbināts ar Chat Fleexa"
+ }
+diff --git a/app/javascript/survey/i18n/locale/ml.json b/app/javascript/survey/i18n/locale/ml.json
+index 29ef82a..e58aa19 100644
+--- a/app/javascript/survey/i18n/locale/ml.json
++++ b/app/javascript/survey/i18n/locale/ml.json
+@@ -15,5 +15,5 @@
+       "ERROR_MESSAGE": "വൂട്ട് സെർവറിലേക്ക് കണക്റ്റുചെയ്യാനായില്ല, ദയവായി പിന്നീട് വീണ്ടും ശ്രമിക്കുക"
+     }
+   },
+-  "POWERED_BY": "പ്രായോജകർ Chatwoot"
++  "POWERED_BY": "പ്രായോജകർ Chat Fleexa"
+ }
+diff --git a/app/javascript/survey/i18n/locale/ms.json b/app/javascript/survey/i18n/locale/ms.json
+index fee5a55..035a97d 100644
+--- a/app/javascript/survey/i18n/locale/ms.json
++++ b/app/javascript/survey/i18n/locale/ms.json
+@@ -15,5 +15,5 @@
+       "ERROR_MESSAGE": "Masalah untuk hubungi Woot Server, Sila cuba sebentar lagi"
+     }
+   },
+-  "POWERED_BY": "Powered by Chatwoot"
++  "POWERED_BY": "Powered by Chat Fleexa"
+ }
+diff --git a/app/javascript/survey/i18n/locale/ne.json b/app/javascript/survey/i18n/locale/ne.json
+index f82a651..7bd3e14 100644
+--- a/app/javascript/survey/i18n/locale/ne.json
++++ b/app/javascript/survey/i18n/locale/ne.json
+@@ -15,5 +15,5 @@
+       "ERROR_MESSAGE": "Could not connect to Woot Server, Please try again later"
+     }
+   },
+-  "POWERED_BY": "Chatwoot द्वारा संचालित"
++  "POWERED_BY": "Chat Fleexa द्वारा संचालित"
+ }
+diff --git a/app/javascript/survey/i18n/locale/nl.json b/app/javascript/survey/i18n/locale/nl.json
+index 3702d97..4449c33 100644
+--- a/app/javascript/survey/i18n/locale/nl.json
++++ b/app/javascript/survey/i18n/locale/nl.json
+@@ -15,5 +15,5 @@
+       "ERROR_MESSAGE": "Kan geen verbinding maken met Woot Server, probeer het later opnieuw"
+     }
+   },
+-  "POWERED_BY": "Mogelijk gemaakt door Chatwoot"
++  "POWERED_BY": "Mogelijk gemaakt door Chat Fleexa"
+ }
+diff --git a/app/javascript/survey/i18n/locale/no.json b/app/javascript/survey/i18n/locale/no.json
+index 501066c..9e4d174 100644
+--- a/app/javascript/survey/i18n/locale/no.json
++++ b/app/javascript/survey/i18n/locale/no.json
+@@ -15,5 +15,5 @@
+       "ERROR_MESSAGE": "Kunne ikke koble til Woot Server, vennligst prøv igjen senere"
+     }
+   },
+-  "POWERED_BY": "Drevet av Chatwoot"
++  "POWERED_BY": "Drevet av Chat Fleexa"
+ }
+diff --git a/app/javascript/survey/i18n/locale/pl.json b/app/javascript/survey/i18n/locale/pl.json
+index a67902d..61381ff 100644
+--- a/app/javascript/survey/i18n/locale/pl.json
++++ b/app/javascript/survey/i18n/locale/pl.json
+@@ -15,5 +15,5 @@
+       "ERROR_MESSAGE": "Nie można połączyć się z Woot Server, spróbuj ponownie później"
+     }
+   },
+-  "POWERED_BY": "Napędzany przez Chatwoot"
++  "POWERED_BY": "Napędzany przez Chat Fleexa"
+ }
+diff --git a/app/javascript/survey/i18n/locale/pt.json b/app/javascript/survey/i18n/locale/pt.json
+index 814c915..0c53bba 100644
+--- a/app/javascript/survey/i18n/locale/pt.json
++++ b/app/javascript/survey/i18n/locale/pt.json
+@@ -15,5 +15,5 @@
+       "ERROR_MESSAGE": "Não foi possível ligar ao servidor, por favor tente novamente mais tarde"
+     }
+   },
+-  "POWERED_BY": "Desenvolvido por Chatwoot"
++  "POWERED_BY": "Desenvolvido por Chat Fleexa"
+ }
+diff --git a/app/javascript/survey/i18n/locale/pt_BR.json b/app/javascript/survey/i18n/locale/pt_BR.json
+index b999fd9..0958721 100644
+--- a/app/javascript/survey/i18n/locale/pt_BR.json
++++ b/app/javascript/survey/i18n/locale/pt_BR.json
+@@ -15,5 +15,5 @@
+       "ERROR_MESSAGE": "Não foi possível conectar ao servidor Woot, por favor tente novamente mais tarde"
+     }
+   },
+-  "POWERED_BY": "Desenvolvido por Chatwoot"
++  "POWERED_BY": "Desenvolvido por Chat Fleexa"
+ }
+diff --git a/app/javascript/survey/i18n/locale/ro.json b/app/javascript/survey/i18n/locale/ro.json
+index 2b1fd54..0fb9fdd 100644
+--- a/app/javascript/survey/i18n/locale/ro.json
++++ b/app/javascript/survey/i18n/locale/ro.json
+@@ -15,5 +15,5 @@
+       "ERROR_MESSAGE": "Nu s-a putut conecta la Woot Server, încercați din nou mai târziu"
+     }
+   },
+-  "POWERED_BY": "Oferit de Chatwoot"
++  "POWERED_BY": "Oferit de Chat Fleexa"
+ }
+diff --git a/app/javascript/survey/i18n/locale/ru.json b/app/javascript/survey/i18n/locale/ru.json
+index 9fad2c9..ad59981 100644
+--- a/app/javascript/survey/i18n/locale/ru.json
++++ b/app/javascript/survey/i18n/locale/ru.json
+@@ -15,5 +15,5 @@
+       "ERROR_MESSAGE": "Не удается соединиться с сервером Woot, попробуйте позже"
+     }
+   },
+-  "POWERED_BY": "Работает на Chatwoot"
++  "POWERED_BY": "Работает на Chat Fleexa"
+ }
+diff --git a/app/javascript/survey/i18n/locale/sh.json b/app/javascript/survey/i18n/locale/sh.json
+index beee65a..aa5828a 100644
+--- a/app/javascript/survey/i18n/locale/sh.json
++++ b/app/javascript/survey/i18n/locale/sh.json
+@@ -15,5 +15,5 @@
+       "ERROR_MESSAGE": "Could not connect to Woot Server, Please try again later"
+     }
+   },
+-  "POWERED_BY": "Powered by Chatwoot"
++  "POWERED_BY": "Powered by Chat Fleexa"
+ }
+diff --git a/app/javascript/survey/i18n/locale/sk.json b/app/javascript/survey/i18n/locale/sk.json
+index 5a419c0..08f0d2d 100644
+--- a/app/javascript/survey/i18n/locale/sk.json
++++ b/app/javascript/survey/i18n/locale/sk.json
+@@ -15,5 +15,5 @@
+       "ERROR_MESSAGE": "Nepodarilo sa pripojiť k serveru Woot, skúste to prosím neskôr"
+     }
+   },
+-  "POWERED_BY": "Používame Chatwoot"
++  "POWERED_BY": "Používame Chat Fleexa"
+ }
+diff --git a/app/javascript/survey/i18n/locale/sl.json b/app/javascript/survey/i18n/locale/sl.json
+index 9eaab33..944959c 100644
+--- a/app/javascript/survey/i18n/locale/sl.json
++++ b/app/javascript/survey/i18n/locale/sl.json
+@@ -15,5 +15,5 @@
+       "ERROR_MESSAGE": "Ni bilo mogoče vzpostaviti povezave s strežnikom, poskusite znova pozneje"
+     }
+   },
+-  "POWERED_BY": "Poganja Chatwoot"
++  "POWERED_BY": "Poganja Chat Fleexa"
+ }
+diff --git a/app/javascript/survey/i18n/locale/sq.json b/app/javascript/survey/i18n/locale/sq.json
+index beee65a..aa5828a 100644
+--- a/app/javascript/survey/i18n/locale/sq.json
++++ b/app/javascript/survey/i18n/locale/sq.json
+@@ -15,5 +15,5 @@
+       "ERROR_MESSAGE": "Could not connect to Woot Server, Please try again later"
+     }
+   },
+-  "POWERED_BY": "Powered by Chatwoot"
++  "POWERED_BY": "Powered by Chat Fleexa"
+ }
+diff --git a/app/javascript/survey/i18n/locale/sr.json b/app/javascript/survey/i18n/locale/sr.json
+index 87d58ef..4771b70 100644
+--- a/app/javascript/survey/i18n/locale/sr.json
++++ b/app/javascript/survey/i18n/locale/sr.json
+@@ -15,5 +15,5 @@
+       "ERROR_MESSAGE": "Nije moguće se povezati sa Woot serverom, pokušajte ponovo kasnije"
+     }
+   },
+-  "POWERED_BY": "Pokreće Chatwoot"
++  "POWERED_BY": "Pokreće Chat Fleexa"
+ }
+diff --git a/app/javascript/survey/i18n/locale/sv.json b/app/javascript/survey/i18n/locale/sv.json
+index 444048a..8fd570f 100644
+--- a/app/javascript/survey/i18n/locale/sv.json
++++ b/app/javascript/survey/i18n/locale/sv.json
+@@ -15,5 +15,5 @@
+       "ERROR_MESSAGE": "Kunde inte ansluta till Woot Server, försök igen senare"
+     }
+   },
+-  "POWERED_BY": "Drivs av Chatwoot"
++  "POWERED_BY": "Drivs av Chat Fleexa"
+ }
+diff --git a/app/javascript/survey/i18n/locale/th.json b/app/javascript/survey/i18n/locale/th.json
+index 55e0c0a..0a1a410 100644
+--- a/app/javascript/survey/i18n/locale/th.json
++++ b/app/javascript/survey/i18n/locale/th.json
+@@ -15,5 +15,5 @@
+       "ERROR_MESSAGE": "ไม่สามารถเชื่อมต่อเซิฟเวอร์ได้โปรดลองอีกครั้งในภายหลัง"
+     }
+   },
+-  "POWERED_BY": "Powered by Chatwoot"
++  "POWERED_BY": "Powered by Chat Fleexa"
+ }
+diff --git a/app/javascript/survey/i18n/locale/tl.json b/app/javascript/survey/i18n/locale/tl.json
+index beee65a..aa5828a 100644
+--- a/app/javascript/survey/i18n/locale/tl.json
++++ b/app/javascript/survey/i18n/locale/tl.json
+@@ -15,5 +15,5 @@
+       "ERROR_MESSAGE": "Could not connect to Woot Server, Please try again later"
+     }
+   },
+-  "POWERED_BY": "Powered by Chatwoot"
++  "POWERED_BY": "Powered by Chat Fleexa"
+ }
+diff --git a/app/javascript/survey/i18n/locale/tr.json b/app/javascript/survey/i18n/locale/tr.json
+index 9de36bb..3513cbf 100644
+--- a/app/javascript/survey/i18n/locale/tr.json
++++ b/app/javascript/survey/i18n/locale/tr.json
+@@ -15,5 +15,5 @@
+       "ERROR_MESSAGE": "Woot Sunucusuna bağlanılamadı, Lütfen daha sonra tekrar deneyin"
+     }
+   },
+-  "POWERED_BY": "Chatwoot tarafından desteklenmektedir"
++  "POWERED_BY": "Chat Fleexa tarafından desteklenmektedir"
+ }
+diff --git a/app/javascript/survey/i18n/locale/uk.json b/app/javascript/survey/i18n/locale/uk.json
+index bf4aa04..3ecd3df 100644
+--- a/app/javascript/survey/i18n/locale/uk.json
++++ b/app/javascript/survey/i18n/locale/uk.json
+@@ -15,5 +15,5 @@
+       "ERROR_MESSAGE": "Не вдалося підключитися до Woot Server, спробуйте ще раз пізніше"
+     }
+   },
+-  "POWERED_BY": "Працює на Chatwoot"
++  "POWERED_BY": "Працює на Chat Fleexa"
+ }
+diff --git a/app/javascript/survey/i18n/locale/ur.json b/app/javascript/survey/i18n/locale/ur.json
+index 6ee5cbd..5718871 100644
+--- a/app/javascript/survey/i18n/locale/ur.json
++++ b/app/javascript/survey/i18n/locale/ur.json
+@@ -15,5 +15,5 @@
+       "ERROR_MESSAGE": "ووٹ سرور کے ساتھ رابطہ ممکن نہی ہوسکا ، براہ کرم کچھ دیر بعد کوشش کریں"
+     }
+   },
+-  "POWERED_BY": "Powered by Chatwoot"
++  "POWERED_BY": "Powered by Chat Fleexa"
+ }
+diff --git a/app/javascript/survey/i18n/locale/ur_IN.json b/app/javascript/survey/i18n/locale/ur_IN.json
+index beee65a..aa5828a 100644
+--- a/app/javascript/survey/i18n/locale/ur_IN.json
++++ b/app/javascript/survey/i18n/locale/ur_IN.json
+@@ -15,5 +15,5 @@
+       "ERROR_MESSAGE": "Could not connect to Woot Server, Please try again later"
+     }
+   },
+-  "POWERED_BY": "Powered by Chatwoot"
++  "POWERED_BY": "Powered by Chat Fleexa"
+ }
+diff --git a/app/javascript/survey/i18n/locale/vi.json b/app/javascript/survey/i18n/locale/vi.json
+index 9161d29..6ff47fc 100644
+--- a/app/javascript/survey/i18n/locale/vi.json
++++ b/app/javascript/survey/i18n/locale/vi.json
+@@ -15,5 +15,5 @@
+       "ERROR_MESSAGE": "Không thể kết nối với Máy chủ Woot, Vui lòng thử lại sau"
+     }
+   },
+-  "POWERED_BY": "Cung cấp bởi Chatwoot"
++  "POWERED_BY": "Cung cấp bởi Chat Fleexa"
+ }
+diff --git a/app/javascript/survey/i18n/locale/zh_CN.json b/app/javascript/survey/i18n/locale/zh_CN.json
+index 327aa46..4910033 100644
+--- a/app/javascript/survey/i18n/locale/zh_CN.json
++++ b/app/javascript/survey/i18n/locale/zh_CN.json
+@@ -15,5 +15,5 @@
+       "ERROR_MESSAGE": "无法连接服务器，请稍后再试"
+     }
+   },
+-  "POWERED_BY": "由 Chatwoot 支持"
++  "POWERED_BY": "由 Chat Fleexa 支持"
+ }
+diff --git a/app/javascript/survey/i18n/locale/zh_TW.json b/app/javascript/survey/i18n/locale/zh_TW.json
+index 0579713..47a84a2 100644
+--- a/app/javascript/survey/i18n/locale/zh_TW.json
++++ b/app/javascript/survey/i18n/locale/zh_TW.json
+@@ -15,5 +15,5 @@
+       "ERROR_MESSAGE": "無法連接伺服器，請稍後再試"
+     }
+   },
+-  "POWERED_BY": "由 Chatwoot 支援"
++  "POWERED_BY": "由 Chat Fleexa 支援"
+ }
+diff --git a/app/javascript/survey/views/Response.vue b/app/javascript/survey/views/Response.vue
+index ecd3725..22cf7b8 100644
+--- a/app/javascript/survey/views/Response.vue
++++ b/app/javascript/survey/views/Response.vue
+@@ -174,7 +174,7 @@ export default {
+       class="flex flex-col w-full h-full bg-n-solid-1 rounded-lg border border-solid border-n-weak shadow-md lg:w-2/5 lg:h-auto"
+     >
+       <div class="w-full px-12 pt-12 pb-6 m-auto my-0">
+-        <img v-if="logo" :src="logo" alt="Chatwoot logo" class="mb-6 logo" />
++        <img v-if="logo" :src="logo" alt="Chat Fleexa logo" class="mb-6 logo" />
+         <div
+           v-if="!isRatingSubmitted"
+           v-dompurify-html="formattedMessageContent"
+diff --git a/app/javascript/widget/i18n/locale/am.json b/app/javascript/widget/i18n/locale/am.json
+index c3d6ddf..b77acd3 100644
+--- a/app/javascript/widget/i18n/locale/am.json
++++ b/app/javascript/widget/i18n/locale/am.json
+@@ -57,7 +57,7 @@
+   "BUBBLE": {
+     "LABEL": "Chat with us"
+   },
+-  "POWERED_BY": "Powered by Chatwoot",
++  "POWERED_BY": "Powered by Chat Fleexa",
+   "EMAIL_PLACEHOLDER": "Please enter your email",
+   "CHAT_PLACEHOLDER": "Type your message",
+   "TODAY": "Today",
+diff --git a/app/javascript/widget/i18n/locale/ar.json b/app/javascript/widget/i18n/locale/ar.json
+index 1424b74..a7bd71e 100644
+--- a/app/javascript/widget/i18n/locale/ar.json
++++ b/app/javascript/widget/i18n/locale/ar.json
+@@ -57,7 +57,7 @@
+   "BUBBLE": {
+     "LABEL": "تحدث الينا"
+   },
+-  "POWERED_BY": "مدعوم بواسطة Chatwoot",
++  "POWERED_BY": "مدعوم بواسطة Chat Fleexa",
+   "EMAIL_PLACEHOLDER": "الرجاء إدخال بريدك الإلكتروني",
+   "CHAT_PLACEHOLDER": "أكتب رسالتك",
+   "TODAY": "اليوم",
+diff --git a/app/javascript/widget/i18n/locale/az.json b/app/javascript/widget/i18n/locale/az.json
+index c3d6ddf..b77acd3 100644
+--- a/app/javascript/widget/i18n/locale/az.json
++++ b/app/javascript/widget/i18n/locale/az.json
+@@ -57,7 +57,7 @@
+   "BUBBLE": {
+     "LABEL": "Chat with us"
+   },
+-  "POWERED_BY": "Powered by Chatwoot",
++  "POWERED_BY": "Powered by Chat Fleexa",
+   "EMAIL_PLACEHOLDER": "Please enter your email",
+   "CHAT_PLACEHOLDER": "Type your message",
+   "TODAY": "Today",
+diff --git a/app/javascript/widget/i18n/locale/bg.json b/app/javascript/widget/i18n/locale/bg.json
+index 369caa4..2878d33 100644
+--- a/app/javascript/widget/i18n/locale/bg.json
++++ b/app/javascript/widget/i18n/locale/bg.json
+@@ -57,7 +57,7 @@
+   "BUBBLE": {
+     "LABEL": "Чатете с нас"
+   },
+-  "POWERED_BY": "Осъществено от Chatwoot",
++  "POWERED_BY": "Осъществено от Chat Fleexa",
+   "EMAIL_PLACEHOLDER": "Моля, въведете имейл адреса си",
+   "CHAT_PLACEHOLDER": "Напишете вашето съобщение",
+   "TODAY": "Днес",
+diff --git a/app/javascript/widget/i18n/locale/bn.json b/app/javascript/widget/i18n/locale/bn.json
+index c3d6ddf..b77acd3 100644
+--- a/app/javascript/widget/i18n/locale/bn.json
++++ b/app/javascript/widget/i18n/locale/bn.json
+@@ -57,7 +57,7 @@
+   "BUBBLE": {
+     "LABEL": "Chat with us"
+   },
+-  "POWERED_BY": "Powered by Chatwoot",
++  "POWERED_BY": "Powered by Chat Fleexa",
+   "EMAIL_PLACEHOLDER": "Please enter your email",
+   "CHAT_PLACEHOLDER": "Type your message",
+   "TODAY": "Today",
+diff --git a/app/javascript/widget/i18n/locale/ca.json b/app/javascript/widget/i18n/locale/ca.json
+index ce3b99d..d319464 100644
+--- a/app/javascript/widget/i18n/locale/ca.json
++++ b/app/javascript/widget/i18n/locale/ca.json
+@@ -57,7 +57,7 @@
+   "BUBBLE": {
+     "LABEL": "Xateja amb nosaltres"
+   },
+-  "POWERED_BY": "Desenvolupat per Chatwoot",
++  "POWERED_BY": "Desenvolupat per Chat Fleexa",
+   "EMAIL_PLACEHOLDER": "Introduïu el correu electrònic",
+   "CHAT_PLACEHOLDER": "Escriu el missatge",
+   "TODAY": "Avui",
+diff --git a/app/javascript/widget/i18n/locale/cs.json b/app/javascript/widget/i18n/locale/cs.json
+index 61bebf7..70eeb9d 100644
+--- a/app/javascript/widget/i18n/locale/cs.json
++++ b/app/javascript/widget/i18n/locale/cs.json
+@@ -57,7 +57,7 @@
+   "BUBBLE": {
+     "LABEL": "Napiště nám"
+   },
+-  "POWERED_BY": "Powered by Chatwoot",
++  "POWERED_BY": "Powered by Chat Fleexa",
+   "EMAIL_PLACEHOLDER": "Prosím, zadejte svůj e-mail",
+   "CHAT_PLACEHOLDER": "Zde začněte psát",
+   "TODAY": "Dnes",
+diff --git a/app/javascript/widget/i18n/locale/da.json b/app/javascript/widget/i18n/locale/da.json
+index ef7adfc..25dcfa9 100644
+--- a/app/javascript/widget/i18n/locale/da.json
++++ b/app/javascript/widget/i18n/locale/da.json
+@@ -57,7 +57,7 @@
+   "BUBBLE": {
+     "LABEL": "Chat med os"
+   },
+-  "POWERED_BY": "Drevet af Chatwoot",
++  "POWERED_BY": "Drevet af Chat Fleexa",
+   "EMAIL_PLACEHOLDER": "Indtast venligst din e-mail",
+   "CHAT_PLACEHOLDER": "Skriv din besked",
+   "TODAY": "I dag",
+diff --git a/app/javascript/widget/i18n/locale/de.json b/app/javascript/widget/i18n/locale/de.json
+index fd6de1f..580dc67 100644
+--- a/app/javascript/widget/i18n/locale/de.json
++++ b/app/javascript/widget/i18n/locale/de.json
+@@ -57,7 +57,7 @@
+   "BUBBLE": {
+     "LABEL": "Chatten Sie mit uns"
+   },
+-  "POWERED_BY": "Unterstützt von Chatwoot",
++  "POWERED_BY": "Unterstützt von Chat Fleexa",
+   "EMAIL_PLACEHOLDER": "Bitte geben Sie Ihre E-Mail-Adresse ein",
+   "CHAT_PLACEHOLDER": "Schreiben Sie Ihre Nachricht",
+   "TODAY": "Heute",
+diff --git a/app/javascript/widget/i18n/locale/el.json b/app/javascript/widget/i18n/locale/el.json
+index 64bb71e..e117666 100644
+--- a/app/javascript/widget/i18n/locale/el.json
++++ b/app/javascript/widget/i18n/locale/el.json
+@@ -57,7 +57,7 @@
+   "BUBBLE": {
+     "LABEL": "Συνομιλήστε μαζί μας"
+   },
+-  "POWERED_BY": "με την δύναμη του Chatwoot",
++  "POWERED_BY": "με την δύναμη του Chat Fleexa",
+   "EMAIL_PLACEHOLDER": "Παρακαλώ εισάγετε το email σας",
+   "CHAT_PLACEHOLDER": "Πληκτρολογήστε το μήνυμά σας",
+   "TODAY": "Σήμερα",
+diff --git a/app/javascript/widget/i18n/locale/en.json b/app/javascript/widget/i18n/locale/en.json
+index c3d6ddf..b77acd3 100644
+--- a/app/javascript/widget/i18n/locale/en.json
++++ b/app/javascript/widget/i18n/locale/en.json
+@@ -57,7 +57,7 @@
+   "BUBBLE": {
+     "LABEL": "Chat with us"
+   },
+-  "POWERED_BY": "Powered by Chatwoot",
++  "POWERED_BY": "Powered by Chat Fleexa",
+   "EMAIL_PLACEHOLDER": "Please enter your email",
+   "CHAT_PLACEHOLDER": "Type your message",
+   "TODAY": "Today",
+diff --git a/app/javascript/widget/i18n/locale/es.json b/app/javascript/widget/i18n/locale/es.json
+index 3ced9ae..1f20f56 100644
+--- a/app/javascript/widget/i18n/locale/es.json
++++ b/app/javascript/widget/i18n/locale/es.json
+@@ -57,7 +57,7 @@
+   "BUBBLE": {
+     "LABEL": "Chatea con nosotros"
+   },
+-  "POWERED_BY": "Desarrollado por Chatwoot",
++  "POWERED_BY": "Desarrollado por Chat Fleexa",
+   "EMAIL_PLACEHOLDER": "Por favor ingrese su email",
+   "CHAT_PLACEHOLDER": "Escribe tu mensaje",
+   "TODAY": "Hoy",
+diff --git a/app/javascript/widget/i18n/locale/et.json b/app/javascript/widget/i18n/locale/et.json
+index e4a1f13..cdc73dd 100644
+--- a/app/javascript/widget/i18n/locale/et.json
++++ b/app/javascript/widget/i18n/locale/et.json
+@@ -57,7 +57,7 @@
+   "BUBBLE": {
+     "LABEL": "Vestle meiega"
+   },
+-  "POWERED_BY": "Toetab Chatwoot",
++  "POWERED_BY": "Toetab Chat Fleexa",
+   "EMAIL_PLACEHOLDER": "Palun sisesta oma e-post",
+   "CHAT_PLACEHOLDER": "Kirjuta oma sõnum",
+   "TODAY": "Täna",
+diff --git a/app/javascript/widget/i18n/locale/fi.json b/app/javascript/widget/i18n/locale/fi.json
+index b111700..59dcffb 100644
+--- a/app/javascript/widget/i18n/locale/fi.json
++++ b/app/javascript/widget/i18n/locale/fi.json
+@@ -57,7 +57,7 @@
+   "BUBBLE": {
+     "LABEL": "Keskustele kanssamme"
+   },
+-  "POWERED_BY": "Palvelun tarjoaa Chatwoot",
++  "POWERED_BY": "Palvelun tarjoaa Chat Fleexa",
+   "EMAIL_PLACEHOLDER": "Ole hyvä ja syötä sähköpostiosoitteesi",
+   "CHAT_PLACEHOLDER": "Kirjoita viestisi",
+   "TODAY": "Tänään",
+diff --git a/app/javascript/widget/i18n/locale/fr.json b/app/javascript/widget/i18n/locale/fr.json
+index 90275e0..2e9b432 100644
+--- a/app/javascript/widget/i18n/locale/fr.json
++++ b/app/javascript/widget/i18n/locale/fr.json
+@@ -57,7 +57,7 @@
+   "BUBBLE": {
+     "LABEL": "Discutez avec nous"
+   },
+-  "POWERED_BY": "Propulsé par Chatwoot",
++  "POWERED_BY": "Propulsé par Chat Fleexa",
+   "EMAIL_PLACEHOLDER": "Veuillez saisir votre adresse de courriel",
+   "CHAT_PLACEHOLDER": "Tapez votre message",
+   "TODAY": "Aujourd'hui",
+diff --git a/app/javascript/widget/i18n/locale/he.json b/app/javascript/widget/i18n/locale/he.json
+index 70ea66e..6fd66ac 100644
+--- a/app/javascript/widget/i18n/locale/he.json
++++ b/app/javascript/widget/i18n/locale/he.json
+@@ -57,7 +57,7 @@
+   "BUBBLE": {
+     "LABEL": "דבר איתנו"
+   },
+-  "POWERED_BY": "מופעל על ידי Chatwoot",
++  "POWERED_BY": "מופעל על ידי Chat Fleexa",
+   "EMAIL_PLACEHOLDER": "הזן בבקשה את האימייל שלך",
+   "CHAT_PLACEHOLDER": "הקלד הודעה",
+   "TODAY": "היום",
+diff --git a/app/javascript/widget/i18n/locale/hi.json b/app/javascript/widget/i18n/locale/hi.json
+index c3d6ddf..b77acd3 100644
+--- a/app/javascript/widget/i18n/locale/hi.json
++++ b/app/javascript/widget/i18n/locale/hi.json
+@@ -57,7 +57,7 @@
+   "BUBBLE": {
+     "LABEL": "Chat with us"
+   },
+-  "POWERED_BY": "Powered by Chatwoot",
++  "POWERED_BY": "Powered by Chat Fleexa",
+   "EMAIL_PLACEHOLDER": "Please enter your email",
+   "CHAT_PLACEHOLDER": "Type your message",
+   "TODAY": "Today",
+diff --git a/app/javascript/widget/i18n/locale/hr.json b/app/javascript/widget/i18n/locale/hr.json
+index 1ae76f1..c5c6844 100644
+--- a/app/javascript/widget/i18n/locale/hr.json
++++ b/app/javascript/widget/i18n/locale/hr.json
+@@ -57,7 +57,7 @@
+   "BUBBLE": {
+     "LABEL": "Čavrljajte s nama"
+   },
+-  "POWERED_BY": "Pokreće Chatwoot",
++  "POWERED_BY": "Pokreće Chat Fleexa",
+   "EMAIL_PLACEHOLDER": "Unesite svoju e-mail adresu",
+   "CHAT_PLACEHOLDER": "Unesite svoju poruku",
+   "TODAY": "Danas",
+diff --git a/app/javascript/widget/i18n/locale/hu.json b/app/javascript/widget/i18n/locale/hu.json
+index 5ea7c09..4611654 100644
+--- a/app/javascript/widget/i18n/locale/hu.json
++++ b/app/javascript/widget/i18n/locale/hu.json
+@@ -57,7 +57,7 @@
+   "BUBBLE": {
+     "LABEL": "Chatelj velünk"
+   },
+-  "POWERED_BY": "Chatwoot",
++  "POWERED_BY": "Chat Fleexa",
+   "EMAIL_PLACEHOLDER": "Add meg az e-mailed",
+   "CHAT_PLACEHOLDER": "Gépeld be üzeneted",
+   "TODAY": "Ma",
+diff --git a/app/javascript/widget/i18n/locale/hy.json b/app/javascript/widget/i18n/locale/hy.json
+index c3d6ddf..b77acd3 100644
+--- a/app/javascript/widget/i18n/locale/hy.json
++++ b/app/javascript/widget/i18n/locale/hy.json
+@@ -57,7 +57,7 @@
+   "BUBBLE": {
+     "LABEL": "Chat with us"
+   },
+-  "POWERED_BY": "Powered by Chatwoot",
++  "POWERED_BY": "Powered by Chat Fleexa",
+   "EMAIL_PLACEHOLDER": "Please enter your email",
+   "CHAT_PLACEHOLDER": "Type your message",
+   "TODAY": "Today",
+diff --git a/app/javascript/widget/i18n/locale/id.json b/app/javascript/widget/i18n/locale/id.json
+index 59f8695..59b44da 100644
+--- a/app/javascript/widget/i18n/locale/id.json
++++ b/app/javascript/widget/i18n/locale/id.json
+@@ -57,7 +57,7 @@
+   "BUBBLE": {
+     "LABEL": "Chat dengan kami"
+   },
+-  "POWERED_BY": "Powered by Chatwoot",
++  "POWERED_BY": "Powered by Chat Fleexa",
+   "EMAIL_PLACEHOLDER": "Masukkan email Anda",
+   "CHAT_PLACEHOLDER": "Ketik pesan Anda",
+   "TODAY": "Hari ini",
+diff --git a/app/javascript/widget/i18n/locale/is.json b/app/javascript/widget/i18n/locale/is.json
+index 0ab5311..2c0bb82 100644
+--- a/app/javascript/widget/i18n/locale/is.json
++++ b/app/javascript/widget/i18n/locale/is.json
+@@ -57,7 +57,7 @@
+   "BUBBLE": {
+     "LABEL": "Spjallaðu við okkur"
+   },
+-  "POWERED_BY": "Keyrt af Chatwoot",
++  "POWERED_BY": "Keyrt af Chat Fleexa",
+   "EMAIL_PLACEHOLDER": "Vinsamlegast sláðu inn netfangið þitt",
+   "CHAT_PLACEHOLDER": "Skrifaðu skilaboðin hér",
+   "TODAY": "Í dag",
+diff --git a/app/javascript/widget/i18n/locale/it.json b/app/javascript/widget/i18n/locale/it.json
+index d5ec381..56529ec 100644
+--- a/app/javascript/widget/i18n/locale/it.json
++++ b/app/javascript/widget/i18n/locale/it.json
+@@ -57,7 +57,7 @@
+   "BUBBLE": {
+     "LABEL": "Chatta con noi"
+   },
+-  "POWERED_BY": "Offerto da Chatwoot",
++  "POWERED_BY": "Offerto da Chat Fleexa",
+   "EMAIL_PLACEHOLDER": "Inserisci la tua email",
+   "CHAT_PLACEHOLDER": "Scrivi il tuo messaggio",
+   "TODAY": "Oggi",
+diff --git a/app/javascript/widget/i18n/locale/ja.json b/app/javascript/widget/i18n/locale/ja.json
+index b8300fb..0e13868 100644
+--- a/app/javascript/widget/i18n/locale/ja.json
++++ b/app/javascript/widget/i18n/locale/ja.json
+@@ -57,7 +57,7 @@
+   "BUBBLE": {
+     "LABEL": "チャットをする"
+   },
+-  "POWERED_BY": "提供：Chatwoot",
++  "POWERED_BY": "提供：Chat Fleexa",
+   "EMAIL_PLACEHOLDER": "メールアドレスを入力してください。",
+   "CHAT_PLACEHOLDER": "メッセージを入力してください。",
+   "TODAY": "今日",
+diff --git a/app/javascript/widget/i18n/locale/ka.json b/app/javascript/widget/i18n/locale/ka.json
+index ce5f10c..db2a895 100644
+--- a/app/javascript/widget/i18n/locale/ka.json
++++ b/app/javascript/widget/i18n/locale/ka.json
+@@ -57,7 +57,7 @@
+   "BUBBLE": {
+     "LABEL": "Chat with us"
+   },
+-  "POWERED_BY": "Powered by Chatwoot",
++  "POWERED_BY": "Powered by Chat Fleexa",
+   "EMAIL_PLACEHOLDER": "Please enter your email",
+   "CHAT_PLACEHOLDER": "Type your message",
+   "TODAY": "Today",
+diff --git a/app/javascript/widget/i18n/locale/ko.json b/app/javascript/widget/i18n/locale/ko.json
+index d9f213d..075aedb 100644
+--- a/app/javascript/widget/i18n/locale/ko.json
++++ b/app/javascript/widget/i18n/locale/ko.json
+@@ -57,7 +57,7 @@
+   "BUBBLE": {
+     "LABEL": "채팅하기"
+   },
+-  "POWERED_BY": "Chatwoot 작동중",
++  "POWERED_BY": "Chat Fleexa 작동중",
+   "EMAIL_PLACEHOLDER": "이메일을 입력해주세요.",
+   "CHAT_PLACEHOLDER": "메시지 입력",
+   "TODAY": "오늘",
+diff --git a/app/javascript/widget/i18n/locale/lt.json b/app/javascript/widget/i18n/locale/lt.json
+index a11db69..333f425 100644
+--- a/app/javascript/widget/i18n/locale/lt.json
++++ b/app/javascript/widget/i18n/locale/lt.json
+@@ -57,7 +57,7 @@
+   "BUBBLE": {
+     "LABEL": "Pabendraukite su mumis"
+   },
+-  "POWERED_BY": "Parengta pagal Chatwoot",
++  "POWERED_BY": "Parengta pagal Chat Fleexa",
+   "EMAIL_PLACEHOLDER": "Prašau įveskite jūsų el. paštą",
+   "CHAT_PLACEHOLDER": "Parašykite pranešimą",
+   "TODAY": "Šiandien",
+diff --git a/app/javascript/widget/i18n/locale/lv.json b/app/javascript/widget/i18n/locale/lv.json
+index 702fb04..e176978 100644
+--- a/app/javascript/widget/i18n/locale/lv.json
++++ b/app/javascript/widget/i18n/locale/lv.json
+@@ -57,7 +57,7 @@
+   "BUBBLE": {
+     "LABEL": "Tērzēt ar mums"
+   },
+-  "POWERED_BY": "Darbināts ar Chatwoot",
++  "POWERED_BY": "Darbināts ar Chat Fleexa",
+   "EMAIL_PLACEHOLDER": "Lūdzu, ievadiet savu e-pastu",
+   "CHAT_PLACEHOLDER": "Rakstiet savu ziņojumu",
+   "TODAY": "Šodien",
+diff --git a/app/javascript/widget/i18n/locale/ml.json b/app/javascript/widget/i18n/locale/ml.json
+index 96a650c..21ebb56 100644
+--- a/app/javascript/widget/i18n/locale/ml.json
++++ b/app/javascript/widget/i18n/locale/ml.json
+@@ -57,7 +57,7 @@
+   "BUBBLE": {
+     "LABEL": "ഞങ്ങളുമായി ചാറ്റുചെയ്യുക"
+   },
+-  "POWERED_BY": "പ്രായോജകർ Chatwoot",
++  "POWERED_BY": "പ്രായോജകർ Chat Fleexa",
+   "EMAIL_PLACEHOLDER": "ദയവായി നിങ്ങളുടെ ഇമെയിൽ നൽകുക",
+   "CHAT_PLACEHOLDER": "നിങ്ങളുടെ സന്ദേശം ടൈപ്പുചെയ്യുക",
+   "TODAY": "ഇന്ന്",
+diff --git a/app/javascript/widget/i18n/locale/ms.json b/app/javascript/widget/i18n/locale/ms.json
+index d813e4e..e42f165 100644
+--- a/app/javascript/widget/i18n/locale/ms.json
++++ b/app/javascript/widget/i18n/locale/ms.json
+@@ -57,7 +57,7 @@
+   "BUBBLE": {
+     "LABEL": "Chat with us"
+   },
+-  "POWERED_BY": "Powered by Chatwoot",
++  "POWERED_BY": "Powered by Chat Fleexa",
+   "EMAIL_PLACEHOLDER": "Please enter your email",
+   "CHAT_PLACEHOLDER": "Type your message",
+   "TODAY": "Today",
+diff --git a/app/javascript/widget/i18n/locale/ne.json b/app/javascript/widget/i18n/locale/ne.json
+index 20120af..5cd02c7 100644
+--- a/app/javascript/widget/i18n/locale/ne.json
++++ b/app/javascript/widget/i18n/locale/ne.json
+@@ -57,7 +57,7 @@
+   "BUBBLE": {
+     "LABEL": "हामीसँग कुराकानी गर्नुहोस्"
+   },
+-  "POWERED_BY": "Chatwoot द्वारा संचालित",
++  "POWERED_BY": "Chat Fleexa द्वारा संचालित",
+   "EMAIL_PLACEHOLDER": "कृपया तपाईंको ईमेल दिनुहोस्",
+   "CHAT_PLACEHOLDER": "तपाईंको सन्देश टाइप गर्नुहोस्",
+   "TODAY": "आज",
+diff --git a/app/javascript/widget/i18n/locale/nl.json b/app/javascript/widget/i18n/locale/nl.json
+index 2f123f8..118038a 100644
+--- a/app/javascript/widget/i18n/locale/nl.json
++++ b/app/javascript/widget/i18n/locale/nl.json
+@@ -57,7 +57,7 @@
+   "BUBBLE": {
+     "LABEL": "Chat met ons"
+   },
+-  "POWERED_BY": "Mogelijk gemaakt door Chatwoot",
++  "POWERED_BY": "Mogelijk gemaakt door Chat Fleexa",
+   "EMAIL_PLACEHOLDER": "Voer uw e-mailadres in",
+   "CHAT_PLACEHOLDER": "Typ uw bericht",
+   "TODAY": "Vandaag",
+diff --git a/app/javascript/widget/i18n/locale/no.json b/app/javascript/widget/i18n/locale/no.json
+index 9034df4..49753ea 100644
+--- a/app/javascript/widget/i18n/locale/no.json
++++ b/app/javascript/widget/i18n/locale/no.json
+@@ -57,7 +57,7 @@
+   "BUBBLE": {
+     "LABEL": "Chat med oss"
+   },
+-  "POWERED_BY": "Drevet av Chatwoot",
++  "POWERED_BY": "Drevet av Chat Fleexa",
+   "EMAIL_PLACEHOLDER": "Skriv inn din e-post",
+   "CHAT_PLACEHOLDER": "Skriv inn meldingen",
+   "TODAY": "I dag",
+diff --git a/app/javascript/widget/i18n/locale/pl.json b/app/javascript/widget/i18n/locale/pl.json
+index c209569..4fae20e 100644
+--- a/app/javascript/widget/i18n/locale/pl.json
++++ b/app/javascript/widget/i18n/locale/pl.json
+@@ -57,7 +57,7 @@
+   "BUBBLE": {
+     "LABEL": "Porozmawiaj z nami"
+   },
+-  "POWERED_BY": "Napędzany przez Chatwoot",
++  "POWERED_BY": "Napędzany przez Chat Fleexa",
+   "EMAIL_PLACEHOLDER": "Wprowadź swój adres e-mail",
+   "CHAT_PLACEHOLDER": "Wpisz treść wiadomości",
+   "TODAY": "Dzisiaj",
+diff --git a/app/javascript/widget/i18n/locale/pt.json b/app/javascript/widget/i18n/locale/pt.json
+index 300ffb5..3dbdd3b 100644
+--- a/app/javascript/widget/i18n/locale/pt.json
++++ b/app/javascript/widget/i18n/locale/pt.json
+@@ -57,7 +57,7 @@
+   "BUBBLE": {
+     "LABEL": "Fale connosco"
+   },
+-  "POWERED_BY": "Desenvolvido por Chatwoot",
++  "POWERED_BY": "Desenvolvido por Chat Fleexa",
+   "EMAIL_PLACEHOLDER": "Por favor, digite seu e-mail",
+   "CHAT_PLACEHOLDER": "Escreva a sua mensagem",
+   "TODAY": "Hoje",
+diff --git a/app/javascript/widget/i18n/locale/pt_BR.json b/app/javascript/widget/i18n/locale/pt_BR.json
+index c5c85a2..0be74e0 100644
+--- a/app/javascript/widget/i18n/locale/pt_BR.json
++++ b/app/javascript/widget/i18n/locale/pt_BR.json
+@@ -57,7 +57,7 @@
+   "BUBBLE": {
+     "LABEL": "Fale conosco no chat"
+   },
+-  "POWERED_BY": "Desenvolvido por Chatwoot",
++  "POWERED_BY": "Desenvolvido por Chat Fleexa",
+   "EMAIL_PLACEHOLDER": "Por favor, insira seu e-mail",
+   "CHAT_PLACEHOLDER": "Digite sua mensagem",
+   "TODAY": "Hoje",
+diff --git a/app/javascript/widget/i18n/locale/ro.json b/app/javascript/widget/i18n/locale/ro.json
+index cd77700..04868c1 100644
+--- a/app/javascript/widget/i18n/locale/ro.json
++++ b/app/javascript/widget/i18n/locale/ro.json
+@@ -57,7 +57,7 @@
+   "BUBBLE": {
+     "LABEL": "Discută cu noi"
+   },
+-  "POWERED_BY": "Oferit de Chatwoot",
++  "POWERED_BY": "Oferit de Chat Fleexa",
+   "EMAIL_PLACEHOLDER": "Te rugăm să introduci adresa de e-mail",
+   "CHAT_PLACEHOLDER": "Scrie mesajul tău",
+   "TODAY": "Astăzi",
+diff --git a/app/javascript/widget/i18n/locale/ru.json b/app/javascript/widget/i18n/locale/ru.json
+index a2d1005..015b10b 100644
+--- a/app/javascript/widget/i18n/locale/ru.json
++++ b/app/javascript/widget/i18n/locale/ru.json
+@@ -57,7 +57,7 @@
+   "BUBBLE": {
+     "LABEL": "Пообщайтесь с нами"
+   },
+-  "POWERED_BY": "Работает на Chatwoot",
++  "POWERED_BY": "Работает на Chat Fleexa",
+   "EMAIL_PLACEHOLDER": "Пожалуйста, введите ваш email",
+   "CHAT_PLACEHOLDER": "Введите сообщение",
+   "TODAY": "Сегодня",
+diff --git a/app/javascript/widget/i18n/locale/sh.json b/app/javascript/widget/i18n/locale/sh.json
+index c3d6ddf..b77acd3 100644
+--- a/app/javascript/widget/i18n/locale/sh.json
++++ b/app/javascript/widget/i18n/locale/sh.json
+@@ -57,7 +57,7 @@
+   "BUBBLE": {
+     "LABEL": "Chat with us"
+   },
+-  "POWERED_BY": "Powered by Chatwoot",
++  "POWERED_BY": "Powered by Chat Fleexa",
+   "EMAIL_PLACEHOLDER": "Please enter your email",
+   "CHAT_PLACEHOLDER": "Type your message",
+   "TODAY": "Today",
+diff --git a/app/javascript/widget/i18n/locale/sk.json b/app/javascript/widget/i18n/locale/sk.json
+index b7ac2a7..c055d2c 100644
+--- a/app/javascript/widget/i18n/locale/sk.json
++++ b/app/javascript/widget/i18n/locale/sk.json
+@@ -57,7 +57,7 @@
+   "BUBBLE": {
+     "LABEL": "Četujte s nami"
+   },
+-  "POWERED_BY": "Používame Chatwoot",
++  "POWERED_BY": "Používame Chat Fleexa",
+   "EMAIL_PLACEHOLDER": "Zadajte svoj e-mail",
+   "CHAT_PLACEHOLDER": "Zadajte svoju správu",
+   "TODAY": "Dnes",
+diff --git a/app/javascript/widget/i18n/locale/sl.json b/app/javascript/widget/i18n/locale/sl.json
+index 0c95f12..bc4d549 100644
+--- a/app/javascript/widget/i18n/locale/sl.json
++++ b/app/javascript/widget/i18n/locale/sl.json
+@@ -57,7 +57,7 @@
+   "BUBBLE": {
+     "LABEL": "Klepetajte z nami"
+   },
+-  "POWERED_BY": "Poganja Chatwoot",
++  "POWERED_BY": "Poganja Chat Fleexa",
+   "EMAIL_PLACEHOLDER": "Prosimo, vnesite svoj e-poštni naslov",
+   "CHAT_PLACEHOLDER": "Vnesite svoje sporočilo",
+   "TODAY": "Danes",
+diff --git a/app/javascript/widget/i18n/locale/sq.json b/app/javascript/widget/i18n/locale/sq.json
+index 3efbe54..3d93db9 100644
+--- a/app/javascript/widget/i18n/locale/sq.json
++++ b/app/javascript/widget/i18n/locale/sq.json
+@@ -57,7 +57,7 @@
+   "BUBBLE": {
+     "LABEL": "Chat with us"
+   },
+-  "POWERED_BY": "Powered by Chatwoot",
++  "POWERED_BY": "Powered by Chat Fleexa",
+   "EMAIL_PLACEHOLDER": "Please enter your email",
+   "CHAT_PLACEHOLDER": "Shkruani mesazhin tuaj",
+   "TODAY": "Sot",
+diff --git a/app/javascript/widget/i18n/locale/sr.json b/app/javascript/widget/i18n/locale/sr.json
+index c0eae2c..eb7bc39 100644
+--- a/app/javascript/widget/i18n/locale/sr.json
++++ b/app/javascript/widget/i18n/locale/sr.json
+@@ -57,7 +57,7 @@
+   "BUBBLE": {
+     "LABEL": "Razgovarajte sa nama"
+   },
+-  "POWERED_BY": "Pokreće Chatwoot",
++  "POWERED_BY": "Pokreće Chat Fleexa",
+   "EMAIL_PLACEHOLDER": "Molimo unesite vašu e-mail adresu",
+   "CHAT_PLACEHOLDER": "Napišite vašu poruku",
+   "TODAY": "Danas",
+diff --git a/app/javascript/widget/i18n/locale/sv.json b/app/javascript/widget/i18n/locale/sv.json
+index 4d6e172..3f3c5f0 100644
+--- a/app/javascript/widget/i18n/locale/sv.json
++++ b/app/javascript/widget/i18n/locale/sv.json
+@@ -57,7 +57,7 @@
+   "BUBBLE": {
+     "LABEL": "Chatta med oss"
+   },
+-  "POWERED_BY": "Drivs av Chatwoot",
++  "POWERED_BY": "Drivs av Chat Fleexa",
+   "EMAIL_PLACEHOLDER": "Ange din e-postadress",
+   "CHAT_PLACEHOLDER": "Skriv ditt meddelande",
+   "TODAY": "Idag",
+diff --git a/app/javascript/widget/i18n/locale/th.json b/app/javascript/widget/i18n/locale/th.json
+index fcfed1f..a3786d9 100644
+--- a/app/javascript/widget/i18n/locale/th.json
++++ b/app/javascript/widget/i18n/locale/th.json
+@@ -57,7 +57,7 @@
+   "BUBBLE": {
+     "LABEL": "คุยกับเรา"
+   },
+-  "POWERED_BY": "Powered by Chatwoot",
++  "POWERED_BY": "Powered by Chat Fleexa",
+   "EMAIL_PLACEHOLDER": "กรุณากรอกอีเมล์ของคุณ",
+   "CHAT_PLACEHOLDER": "พิมพ์ข้อความ",
+   "TODAY": "วันนี้",
+diff --git a/app/javascript/widget/i18n/locale/tl.json b/app/javascript/widget/i18n/locale/tl.json
+index c3d6ddf..b77acd3 100644
+--- a/app/javascript/widget/i18n/locale/tl.json
++++ b/app/javascript/widget/i18n/locale/tl.json
+@@ -57,7 +57,7 @@
+   "BUBBLE": {
+     "LABEL": "Chat with us"
+   },
+-  "POWERED_BY": "Powered by Chatwoot",
++  "POWERED_BY": "Powered by Chat Fleexa",
+   "EMAIL_PLACEHOLDER": "Please enter your email",
+   "CHAT_PLACEHOLDER": "Type your message",
+   "TODAY": "Today",
+diff --git a/app/javascript/widget/i18n/locale/tr.json b/app/javascript/widget/i18n/locale/tr.json
+index 7c552ea..f133c5c 100644
+--- a/app/javascript/widget/i18n/locale/tr.json
++++ b/app/javascript/widget/i18n/locale/tr.json
+@@ -57,7 +57,7 @@
+   "BUBBLE": {
+     "LABEL": "Sohbet et"
+   },
+-  "POWERED_BY": "Chatwoot tarafından desteklenmektedir",
++  "POWERED_BY": "Chat Fleexa tarafından desteklenmektedir",
+   "EMAIL_PLACEHOLDER": "Lütfen E-postanızı Girin",
+   "CHAT_PLACEHOLDER": "Mesajınız",
+   "TODAY": "Bugün",
+diff --git a/app/javascript/widget/i18n/locale/uk.json b/app/javascript/widget/i18n/locale/uk.json
+index d31df8a..2e63c8c 100644
+--- a/app/javascript/widget/i18n/locale/uk.json
++++ b/app/javascript/widget/i18n/locale/uk.json
+@@ -57,7 +57,7 @@
+   "BUBBLE": {
+     "LABEL": "Напишіть нам"
+   },
+-  "POWERED_BY": "Працює на Chatwoot",
++  "POWERED_BY": "Працює на Chat Fleexa",
+   "EMAIL_PLACEHOLDER": "Введіть адресу електронної пошти",
+   "CHAT_PLACEHOLDER": "Введіть Ваше повідомлення",
+   "TODAY": "Сьогодні",
+diff --git a/app/javascript/widget/i18n/locale/ur.json b/app/javascript/widget/i18n/locale/ur.json
+index 7b03483..0eede56 100644
+--- a/app/javascript/widget/i18n/locale/ur.json
++++ b/app/javascript/widget/i18n/locale/ur.json
+@@ -57,7 +57,7 @@
+   "BUBBLE": {
+     "LABEL": "Chat with us"
+   },
+-  "POWERED_BY": "Powered by Chatwoot",
++  "POWERED_BY": "Powered by Chat Fleexa",
+   "EMAIL_PLACEHOLDER": "Please enter your email",
+   "CHAT_PLACEHOLDER": "Type your message",
+   "TODAY": "Today",
+diff --git a/app/javascript/widget/i18n/locale/ur_IN.json b/app/javascript/widget/i18n/locale/ur_IN.json
+index c3d6ddf..b77acd3 100644
+--- a/app/javascript/widget/i18n/locale/ur_IN.json
++++ b/app/javascript/widget/i18n/locale/ur_IN.json
+@@ -57,7 +57,7 @@
+   "BUBBLE": {
+     "LABEL": "Chat with us"
+   },
+-  "POWERED_BY": "Powered by Chatwoot",
++  "POWERED_BY": "Powered by Chat Fleexa",
+   "EMAIL_PLACEHOLDER": "Please enter your email",
+   "CHAT_PLACEHOLDER": "Type your message",
+   "TODAY": "Today",
+diff --git a/app/javascript/widget/i18n/locale/vi.json b/app/javascript/widget/i18n/locale/vi.json
+index 3128833..eb68fc9 100644
+--- a/app/javascript/widget/i18n/locale/vi.json
++++ b/app/javascript/widget/i18n/locale/vi.json
+@@ -57,7 +57,7 @@
+   "BUBBLE": {
+     "LABEL": "Trò chuyện với chúng tôi"
+   },
+-  "POWERED_BY": "CC bởi Chatwoot",
++  "POWERED_BY": "CC bởi Chat Fleexa",
+   "EMAIL_PLACEHOLDER": "Vui lòng nhập email",
+   "CHAT_PLACEHOLDER": "Gõ tin nhắn của bạn",
+   "TODAY": "Hôm nay",
+diff --git a/app/javascript/widget/i18n/locale/zh.json b/app/javascript/widget/i18n/locale/zh.json
+index 3eb08c8..3f8a3fe 100644
+--- a/app/javascript/widget/i18n/locale/zh.json
++++ b/app/javascript/widget/i18n/locale/zh.json
+@@ -57,7 +57,7 @@
+   "BUBBLE": {
+     "LABEL": "联系我们"
+   },
+-  "POWERED_BY": "由 Chatwoot 支持",
++  "POWERED_BY": "由 Chat Fleexa 支持",
+   "EMAIL_PLACEHOLDER": "请输入您的电子邮件",
+   "CHAT_PLACEHOLDER": "输入您的消息",
+   "TODAY": "今天",
+diff --git a/app/javascript/widget/i18n/locale/zh_CN.json b/app/javascript/widget/i18n/locale/zh_CN.json
+index dc4a1ce..d561149 100644
+--- a/app/javascript/widget/i18n/locale/zh_CN.json
++++ b/app/javascript/widget/i18n/locale/zh_CN.json
+@@ -57,7 +57,7 @@
+   "BUBBLE": {
+     "LABEL": "联系我们"
+   },
+-  "POWERED_BY": "由 Chatwoot 支持",
++  "POWERED_BY": "由 Chat Fleexa 支持",
+   "EMAIL_PLACEHOLDER": "请输入您的电子邮件",
+   "CHAT_PLACEHOLDER": "输入您的消息",
+   "TODAY": "今天",
+diff --git a/app/javascript/widget/i18n/locale/zh_TW.json b/app/javascript/widget/i18n/locale/zh_TW.json
+index bd401a8..a4a747e 100644
+--- a/app/javascript/widget/i18n/locale/zh_TW.json
++++ b/app/javascript/widget/i18n/locale/zh_TW.json
+@@ -57,7 +57,7 @@
+   "BUBBLE": {
+     "LABEL": "與我們對話"
+   },
+-  "POWERED_BY": "由 Chatwoot 支援",
++  "POWERED_BY": "由 Chat Fleexa 支援",
+   "EMAIL_PLACEHOLDER": "請輸入您的電子信箱",
+   "CHAT_PLACEHOLDER": "輸入你的訊息",
+   "TODAY": "今天",
+diff --git a/app/models/portal.rb b/app/models/portal.rb
+index 9d2da69..2b77136 100644
+--- a/app/models/portal.rb
++++ b/app/models/portal.rb
+@@ -28,7 +28,7 @@ class Portal < ApplicationRecord
+   include Rails.application.routes.url_helpers
+   include PortalConfigSchema
+ 
+-  DEFAULT_COLOR = '#1f93ff'.freeze
++  DEFAULT_COLOR = '#0EA5A0'.freeze
+ 
+   belongs_to :account
+   has_many :categories, dependent: :destroy_async
+diff --git a/app/services/onboarding/web_widget_creation_service.rb b/app/services/onboarding/web_widget_creation_service.rb
+index 502b67e..847aa85 100644
+--- a/app/services/onboarding/web_widget_creation_service.rb
++++ b/app/services/onboarding/web_widget_creation_service.rb
+@@ -1,5 +1,5 @@
+ class Onboarding::WebWidgetCreationService
+-  DEFAULT_WIDGET_COLOR = '#1f93ff'.freeze
++  DEFAULT_WIDGET_COLOR = '#0EA5A0'.freeze
+   # context.dev descriptions and LLM completions are unbounded; bound the
+   # stored tagline so a long string doesn't render as a wall of text in the
+   # widget UI (and so backends that enforce varchar limits don't raise).
+diff --git a/app/views/devise/mailer/_confirmation_body.html.erb b/app/views/devise/mailer/_confirmation_body.html.erb
+index b256539..7d41120 100644
+--- a/app/views/devise/mailer/_confirmation_body.html.erb
++++ b/app/views/devise/mailer/_confirmation_body.html.erb
+@@ -1,6 +1,6 @@
+ <tr>
+   <td style="padding: 0 0 16px;">
+-    <span style="display: inline-block; padding: 6px 10px; border-radius: 999px; background-color: #EFF6FF; color: #1D4ED8; font-size: 12px; line-height: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;">
++    <span style="display: inline-block; padding: 6px 10px; border-radius: 999px; background-color: #E0F5F4; color: #0C8A86; font-size: 12px; line-height: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;">
+       <%= eyebrow %>
+     </span>
+   </td>
+@@ -28,7 +28,7 @@
+ <% if detail_rows.any? %>
+   <tr>
+     <td style="padding: 0 0 24px;">
+-      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="width: 100%; border: 1px solid #DCE7F5; border-radius: 16px; background-color: #F8FBFF;">
++      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="width: 100%; border: 1px solid #E0F5F4; border-radius: 16px; background-color: #F2FBFA;">
+         <% detail_rows.each_with_index do |(label, value), index| %>
+           <tr>
+             <td style="padding: 16px 18px;<%= ' border-top: 1px solid #E2E8F0;' unless index.zero? %>">
+@@ -48,7 +48,7 @@
+     <td style="padding: 0 0 24px;">
+       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="width: 100%; margin: 0;">
+         <tr>
+-          <td bgcolor="#2781F6" style="border-radius: 14px; background-color: #2781F6;">
++          <td bgcolor="#0EA5A0" style="border-radius: 14px; background-color: #0EA5A0;">
+             <%= link_to(
+               action_text,
+               action_url,
+@@ -66,7 +66,7 @@
+         <%= link_to(
+           'this secure link',
+           action_url,
+-          style: 'color:#2781F6; text-decoration:none; font-weight:600;'
++          style: 'color:#0EA5A0; text-decoration:none; font-weight:600;'
+         ) %>.
+       </p>
+     </td>
+@@ -74,7 +74,7 @@
+ <% elsif info_title.present? %>
+   <tr>
+     <td style="padding: 0 0 24px;">
+-      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="width: 100%; border: 1px solid #DBEAFE; border-radius: 16px; background-color: #EFF6FF;">
++      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="width: 100%; border: 1px solid #E0F5F4; border-radius: 16px; background-color: #F2FBFA;">
+         <tr>
+           <td style="padding: 18px;">
+             <p style="margin: 0 0 6px; font-size: 14px; line-height: 21px; font-weight: 700; color: #0F172A;">
+diff --git a/app/views/devise/mailer/confirmation_instructions.html.erb b/app/views/devise/mailer/confirmation_instructions.html.erb
+index 619c9f5..abf5739 100644
+--- a/app/views/devise/mailer/confirmation_instructions.html.erb
++++ b/app/views/devise/mailer/confirmation_instructions.html.erb
+@@ -1,5 +1,5 @@
+ <%
+-  brand_name = global_config['BRAND_NAME'] || 'Chatwoot'
++  brand_name = global_config['BRAND_NAME'] || 'Chat Fleexa'
+   recipient_name = @resource.name.presence || @resource.email
+   account_user = @resource&.account_users&.first
+   inviter = account_user&.inviter
+diff --git a/app/views/installation/onboarding/index.html.erb b/app/views/installation/onboarding/index.html.erb
+index 8b337d1..63538b5 100644
+--- a/app/views/installation/onboarding/index.html.erb
++++ b/app/views/installation/onboarding/index.html.erb
+@@ -1,7 +1,7 @@
+ <!DOCTYPE html>
+ <html>
+   <head>
+-    <title>SuperAdmin | Chatwoot</title>
++    <title>SuperAdmin | Chat Fleexa</title>
+     <%= vite_client_tag %>
+     <%= vite_javascript_tag 'superadmin' %>
+   </head>
+@@ -9,10 +9,10 @@
+     <div class="h-full w-full antialiased">
+       <main class="flex flex-col bg-woot-25 min-h-screen w-full py-20 sm:px-6 lg:px-8 dark:bg-slate-900">
+         <section class="max-w-5xl mx-auto">
+-          <img src="/brand-assets/logo.svg" alt="Chatwoot" class="mx-auto h-8 w-auto block dark:hidden">
+-          <img src="/brand-assets/logo_dark.svg" alt="Chatwoot" class="mx-auto h-8 w-auto hidden dark:block">
++          <img src="/brand-assets/logo.svg" alt="Chat Fleexa" class="mx-auto h-8 w-auto block dark:hidden">
++          <img src="/brand-assets/logo_dark.svg" alt="Chat Fleexa" class="mx-auto h-8 w-auto hidden dark:block">
+           <h2 class="mt-6 text-center text-3xl font-medium text-slate-900 dark:text-woot-50">
+-            Howdy, Welcome to Chatwoot 👋
++            Howdy, Welcome to Chat Fleexa
+           </h2>
+         </section>
+         <section class="bg-white shadow sm:mx-auto mt-11 sm:w-full sm:max-w-lg dark:bg-slate-800 p-11 sm:shadow-lg sm:rounded-lg mb-8 mt-15">
+diff --git a/app/views/layouts/mailer/base.liquid b/app/views/layouts/mailer/base.liquid
+index e6c70b3..45eec5d 100644
+--- a/app/views/layouts/mailer/base.liquid
++++ b/app/views/layouts/mailer/base.liquid
+@@ -17,7 +17,7 @@
+         width: 100% !important;
+         margin: 0;
+         padding: 0;
+-        background-color: #F4F7FB;
++        background-color: #F2F4F6;
+       }
+ 
+       table {
+@@ -27,7 +27,7 @@
+       }
+ 
+       a {
+-        color: #2781F6;
++        color: #0EA5A0;
+       }
+ 
+       .email-container {
+@@ -37,7 +37,7 @@
+ 
+       .main-card {
+         width: 100%;
+-        border: 1px solid #DCE7F5;
++        border: 1px solid #E0F5F4;
+         border-radius: 24px;
+         background-color: #FFFFFF;
+         box-shadow: 0 12px 32px rgba(15, 23, 42, 0.06);
+@@ -46,7 +46,7 @@
+ 
+       .accent-bar {
+         height: 6px;
+-        background-color: #2781F6;
++        background-color: #0EA5A0;
+         font-size: 0;
+         line-height: 0;
+       }
+@@ -64,7 +64,7 @@
+       }
+ 
+       .footer a {
+-        color: #2781F6;
++        color: #0EA5A0;
+         font-weight: 600;
+         text-decoration: none;
+       }
+@@ -91,21 +91,21 @@
+   </head>
+ 
+   {% assign brand_name = global_config['BRAND_NAME'] %}
+-  {% if brand_name == nil %}
+-    {% assign brand_name = 'Chatwoot' %}
++  {% if brand_name == nil or brand_name == 'Chatwoot' %}
++    {% assign brand_name = 'Chat Fleexa' %}
+   {% endif %}
+   {% assign brand_url = global_config['BRAND_URL'] %}
+ 
+-  <body itemscope itemtype="http://schema.org/EmailMessage" style="font-size: 14px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,Helvetica,Arial,sans-serif; box-sizing: border-box; -webkit-font-smoothing: antialiased; -webkit-text-size-adjust: none; width: 100% !important; line-height: 21px; background-color: #F4F7FB; margin: 0; padding: 0;" bgcolor="#F4F7FB">
+-    <table class="body-wrap" role="presentation" width="100%" cellpadding="0" cellspacing="0" style="width: 100%; background-color: #F4F7FB; margin: 0;" bgcolor="#F4F7FB">
++  <body itemscope itemtype="http://schema.org/EmailMessage" style="font-size: 14px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,Helvetica,Arial,sans-serif; box-sizing: border-box; -webkit-font-smoothing: antialiased; -webkit-text-size-adjust: none; width: 100% !important; line-height: 21px; background-color: #F2F4F6; margin: 0; padding: 0;" bgcolor="#F2F4F6">
++    <table class="body-wrap" role="presentation" width="100%" cellpadding="0" cellspacing="0" style="width: 100%; background-color: #F2F4F6; margin: 0;" bgcolor="#F2F4F6">
+       <tr style="margin: 0;">
+         <td align="center" class="page-wrap" style="padding: 32px 16px 40px;" valign="top">
+           <table class="email-container" role="presentation" width="100%" cellpadding="0" cellspacing="0" style="width: 100%; max-width: 640px; margin: 0 auto;">
+             <tr style="margin: 0;">
+               <td style="margin: 0;">
+-                <table class="main-card" role="presentation" width="100%" cellpadding="0" cellspacing="0" itemprop="action" itemscope itemtype="http://schema.org/ConfirmAction" style="width: 100%; border: 1px solid #DCE7F5; border-radius: 24px; background-color: #FFFFFF; box-shadow: 0 12px 32px rgba(15, 23, 42, 0.06); overflow: hidden;" bgcolor="#FFFFFF">
++                <table class="main-card" role="presentation" width="100%" cellpadding="0" cellspacing="0" itemprop="action" itemscope itemtype="http://schema.org/ConfirmAction" style="width: 100%; border: 1px solid #E0F5F4; border-radius: 24px; background-color: #FFFFFF; box-shadow: 0 12px 32px rgba(15, 23, 42, 0.06); overflow: hidden;" bgcolor="#FFFFFF">
+                   <tr style="margin: 0;">
+-                    <td class="accent-bar" style="height: 6px; background-color: #2781F6; font-size: 0; line-height: 0;">&nbsp;</td>
++                    <td class="accent-bar" style="height: 6px; background-color: #0EA5A0; font-size: 0; line-height: 0;">&nbsp;</td>
+                   </tr>
+                   <tr style="margin: 0;">
+                     <td class="content-wrap" style="vertical-align: top; margin: 0; padding: 40px 36px 20px; font-family: -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;" valign="top">
+@@ -122,7 +122,7 @@
+                 <td class="footer" style="padding: 20px 8px 0; text-align: center; color: #64748B; font-size: 13px; line-height: 21px;">
+                   This email was sent by
+                   {% if brand_url != nil and brand_url != '' %}
+-                    <a href="{{ brand_url }}" style="color: #2781F6; font-weight: 600; text-decoration: none;">{{ brand_name }}</a>.
++                    <a href="{{ brand_url }}" style="color: #0EA5A0; font-weight: 600; text-decoration: none;">{{ brand_name }}</a>.
+                   {% else %}
+                     <span style="color: #0F172A; font-weight: 600;">{{ brand_name }}</span>.
+                   {% endif %}
+diff --git a/app/views/layouts/vueapp.html.erb b/app/views/layouts/vueapp.html.erb
+index 954be9c..06c097c 100644
+--- a/app/views/layouts/vueapp.html.erb
++++ b/app/views/layouts/vueapp.html.erb
+@@ -1,15 +1,21 @@
++<%
++  fleexa_visible_config = @global_config.merge(
++    'INSTALLATION_NAME' => 'Chat Fleexa',
++    'BRAND_NAME' => 'Chat Fleexa'
++  )
++%>
+ <!DOCTYPE html>
+ <html>
+   <head>
+     <title>
+-      <%= @global_config['INSTALLATION_NAME'] %>
++      <%= fleexa_visible_config['INSTALLATION_NAME'] %>
+     </title>
+     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no, user-scalable=0"/>
+-    <% if @global_config['DISPLAY_MANIFEST'] %>
+-      <meta name="msapplication-TileColor" content="#1f93ff">
++    <% if fleexa_visible_config['DISPLAY_MANIFEST'] %>
++      <meta name="msapplication-TileColor" content="#0EA5A0">
+       <meta name="msapplication-TileImage" content="/ms-icon-144x144.png">
+-      <meta name="theme-color" content="#1f93ff">
+-      <meta name="description" content="<%= @global_config['INSTALLATION_NAME'] %> is a customer support solution that helps companies engage customers over Messenger, Twitter, Telegram, WeChat, Whatsapp. Simply connect your channels and converse with your customers from a single place. Easily add new agents to your system and have them own and resolve conversations with customers. <%= @global_config['INSTALLATION_NAME'] %> also gives you real-time reports to measure your team's performance, canned responses to easily respond to frequently asked questions and private notes for agents to collaborate among themselves.">
++      <meta name="theme-color" content="#0EA5A0">
++      <meta name="description" content="<%= fleexa_visible_config['INSTALLATION_NAME'] %> is a customer support solution that helps companies engage customers over Messenger, Twitter, Telegram, WeChat, Whatsapp. Simply connect your channels and converse with your customers from a single place. Easily add new agents to your system and have them own and resolve conversations with customers. <%= fleexa_visible_config['INSTALLATION_NAME'] %> also gives you real-time reports to measure your team's performance, canned responses to easily respond to frequently asked questions and private notes for agents to collaborate among themselves.">
+       <% if ENV['IOS_APP_IDENTIFIER'].present? %>
+         <meta name="apple-itunes-app" content='app-id=<%= ENV['IOS_APP_IDENTIFIER'] %>'>
+       <% end %>
+@@ -28,46 +34,46 @@
+       <link class="favicon" rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">
+       <link rel="manifest" href="/manifest.json">
+     <% end %>
+-    <link rel="icon" type="image/png" sizes="512x512" href="<%= @global_config['LOGO_THUMBNAIL'] %>">
++    <link rel="icon" type="image/png" sizes="512x512" href="<%= fleexa_visible_config['LOGO_THUMBNAIL'] %>">
+     <%= csrf_meta_tags %>
+     <script>
+       window.chatwootConfig = {
+         hostURL: '<%= ENV.fetch('FRONTEND_URL', '') %>',
+         helpCenterURL: '<%= ENV.fetch('HELPCENTER_URL', '') %>',
+-        fbAppId: '<%= @global_config['FB_APP_ID'] %>',
+-        instagramAppId: '<%= @global_config['INSTAGRAM_APP_ID'] %>',
+-        tiktokAppId: '<%= @global_config['TIKTOK_APP_ID'] %>',
++        fbAppId: '<%= fleexa_visible_config['FB_APP_ID'] %>',
++        instagramAppId: '<%= fleexa_visible_config['INSTAGRAM_APP_ID'] %>',
++        tiktokAppId: '<%= fleexa_visible_config['TIKTOK_APP_ID'] %>',
+         googleOAuthClientId: '<%= ENV.fetch('GOOGLE_OAUTH_CLIENT_ID', nil) %>',
+         googleOAuthCallbackUrl: '<%= ENV.fetch('GOOGLE_OAUTH_CALLBACK_URL', nil) %>',
+-        allowedLoginMethods: <%= @global_config['ALLOWED_LOGIN_METHODS'].to_json.html_safe %>,
+-        fbApiVersion: '<%= @global_config['FACEBOOK_API_VERSION'] %>',
+-        whatsappAppId: '<%= @global_config['WHATSAPP_APP_ID'] %>',
+-        whatsappConfigurationId: '<%= @global_config['WHATSAPP_CONFIGURATION_ID'] %>',
+-        whatsappApiVersion: '<%= @global_config['WHATSAPP_API_VERSION'] %>',
+-        signupEnabled: '<%= @global_config['ENABLE_ACCOUNT_SIGNUP'] %>',
+-        isEnterprise: '<%= @global_config['IS_ENTERPRISE'] %>',
++        allowedLoginMethods: <%= fleexa_visible_config['ALLOWED_LOGIN_METHODS'].to_json.html_safe %>,
++        fbApiVersion: '<%= fleexa_visible_config['FACEBOOK_API_VERSION'] %>',
++        whatsappAppId: '<%= fleexa_visible_config['WHATSAPP_APP_ID'] %>',
++        whatsappConfigurationId: '<%= fleexa_visible_config['WHATSAPP_CONFIGURATION_ID'] %>',
++        whatsappApiVersion: '<%= fleexa_visible_config['WHATSAPP_API_VERSION'] %>',
++        signupEnabled: '<%= fleexa_visible_config['ENABLE_ACCOUNT_SIGNUP'] %>',
++        isEnterprise: '<%= fleexa_visible_config['IS_ENTERPRISE'] %>',
+         isMfaEnabled: '<%= Chatwoot.mfa_enabled? %>',
+-        <% if @global_config['IS_ENTERPRISE'] %>
+-        enterprisePlanName: '<%= @global_config['INSTALLATION_PRICING_PLAN'] %>',
++        <% if fleexa_visible_config['IS_ENTERPRISE'] %>
++        enterprisePlanName: '<%= fleexa_visible_config['INSTALLATION_PRICING_PLAN'] %>',
+         <% end %>
+-        <% if @global_config['VAPID_PUBLIC_KEY'] %>
+-        vapidPublicKey: new Uint8Array(<%= Base64.urlsafe_decode64(@global_config['VAPID_PUBLIC_KEY']).bytes %>),
++        <% if fleexa_visible_config['VAPID_PUBLIC_KEY'] %>
++        vapidPublicKey: new Uint8Array(<%= Base64.urlsafe_decode64(fleexa_visible_config['VAPID_PUBLIC_KEY']).bytes %>),
+         <% end %>
+         enabledLanguages: <%= available_locales_with_name.to_json.html_safe %>,
+         helpUrls: <%= feature_help_urls.to_json.html_safe %>,
+         inboxEventsEnabled: '<%= ENV['ENABLE_INBOX_EVENTS'].present? %>',
+         selectedLocale: '<%= I18n.locale %>'
+       }
+-      window.globalConfig = <%= raw @global_config.to_json %>
++      window.globalConfig = <%= raw fleexa_visible_config.to_json %>
+       window.browserConfig = {
+         browser_name: '<%= browser.name %>',
+       }
+       window.errorLoggingConfig = '<%= ENV.fetch('SENTRY_FRONTEND_DSN', '') || ENV.fetch('SENTRY_DSN', '') %>'
+     </script>
+-    <% if @global_config['CLOUD_ANALYTICS_TOKEN'].present? %>
++    <% if fleexa_visible_config['CLOUD_ANALYTICS_TOKEN'].present? %>
+     <script>
+       window.analyticsConfig = {
+-        token: '<%= @global_config['CLOUD_ANALYTICS_TOKEN'] %>',
++        token: '<%= fleexa_visible_config['CLOUD_ANALYTICS_TOKEN'] %>',
+       }
+     </script>
+     <% end %>
+diff --git a/app/views/mailers/administrator_notifications/account_compliance_mailer/account_deleted.liquid b/app/views/mailers/administrator_notifications/account_compliance_mailer/account_deleted.liquid
+index 2e49a78..a26ace2 100644
+--- a/app/views/mailers/administrator_notifications/account_compliance_mailer/account_deleted.liquid
++++ b/app/views/mailers/administrator_notifications/account_compliance_mailer/account_deleted.liquid
+@@ -1,9 +1,9 @@
+ <p>Hello,</p>
+ 
+-<p>This is a notification to inform you that an account has been permanently deleted from your Chatwoot instance.</p>
++<p>This is a notification to inform you that an account has been permanently deleted from your Chat Fleexa instance.</p>
+ 
+ <p>
+-  <strong>Chatwoot Installation:</strong> {{ meta.instance_url }}<br>
++  <strong>Chat Fleexa Installation:</strong> {{ meta.instance_url }}<br>
+   <strong>Account ID:</strong> {{ meta.account_id }}<br>
+   <strong>Account Name:</strong> {{ meta.account_name }}<br>
+   <strong>Deletion due at:</strong> {{ meta.marked_for_deletion_at }}<br>
+@@ -27,4 +27,4 @@
+ <p>This email serves as a record for compliance purposes.</p>
+ 
+ <p>Thank you,<br>
+-Chatwoot System</p>
+\ No newline at end of file
++Chat Fleexa System</p>
+diff --git a/app/views/mailers/administrator_notifications/account_notification_mailer/account_deletion_for_inactivity.liquid b/app/views/mailers/administrator_notifications/account_notification_mailer/account_deletion_for_inactivity.liquid
+index 273eca1..de2291c 100644
+--- a/app/views/mailers/administrator_notifications/account_notification_mailer/account_deletion_for_inactivity.liquid
++++ b/app/views/mailers/administrator_notifications/account_notification_mailer/account_deletion_for_inactivity.liquid
+@@ -1,10 +1,10 @@
+ <p>Hello there,</p>
+ 
+-<p>We've noticed that your Chatwoot account <strong>{{ meta.account_name }}</strong> has been inactive for some time. Because of this, it's scheduled for deletion on <strong>{{ meta.deletion_date }}</strong>.</p>
++<p>We've noticed that your Chat Fleexa account <strong>{{ meta.account_name }}</strong> has been inactive for some time. Because of this, it's scheduled for deletion on <strong>{{ meta.deletion_date }}</strong>.</p>
+ 
+ <p><strong>How do I keep my account?</strong></p>
+ 
+-<p>Log in to your Chatwoot account before <strong>{{ meta.deletion_date }}</strong>. From your account settings, you can <a href="{{ action_url }}">cancel the deletion</a> and continue using your account.</p>
++<p>Log in to your Chat Fleexa account before <strong>{{ meta.deletion_date }}</strong>. From your account settings, you can <a href="{{ action_url }}">cancel the deletion</a> and continue using your account.</p>
+ 
+ <p><strong>What happens if I don't cancel?</strong></p>
+ 
+@@ -16,6 +16,5 @@
+ 
+ <p>If you have any questions, feel free to reach us at <a href="mailto:hello@chatwoot.com">hello@chatwoot.com</a>.</p>
+ 
+-<p>— The Chatwoot Team</p>
+-
++<p>- The Chat Fleexa Team</p>
+ 
+diff --git a/app/views/mailers/administrator_notifications/account_notification_mailer/account_deletion_user_initiated.liquid b/app/views/mailers/administrator_notifications/account_notification_mailer/account_deletion_user_initiated.liquid
+index 2039a93..a7bb8f9 100644
+--- a/app/views/mailers/administrator_notifications/account_notification_mailer/account_deletion_user_initiated.liquid
++++ b/app/views/mailers/administrator_notifications/account_notification_mailer/account_deletion_user_initiated.liquid
+@@ -1,6 +1,6 @@
+ <p>Hello there,</p>
+ 
+-<p>An account administrator has requested deletion of the Chatwoot account <strong>{{ meta.account_name }}</strong>. The account is scheduled for deletion on <strong>{{ meta.deletion_date }}</strong>.</p>
++<p>An account administrator has requested deletion of the Chat Fleexa account <strong>{{ meta.account_name }}</strong>. The account is scheduled for deletion on <strong>{{ meta.deletion_date }}</strong>.</p>
+ 
+ <p><strong>What happens next?</strong></p>
+ 
+@@ -11,6 +11,5 @@
+ 
+ <p>If you change your mind before the deletion date, you can <a href="{{ action_url }}">cancel this request</a> by visiting your account settings.</p>
+ 
+-<p>— The Chatwoot Team</p>
+-
++<p>- The Chat Fleexa Team</p>
+ 
+diff --git a/app/views/super_admin/application/_navigation.html.erb b/app/views/super_admin/application/_navigation.html.erb
+index e3c1ebf..f963fc3 100644
+--- a/app/views/super_admin/application/_navigation.html.erb
++++ b/app/views/super_admin/application/_navigation.html.erb
+@@ -23,9 +23,9 @@ as defined by the routes in the `admin/` namespace
+ <div class="border-slate-100 border-r w-56 flex-shrink-0 justify-between h-full flex flex-col" role="navigation">
+   <div>
+     <div class="flex mx-4 mb-4 border-slate-100 border-b py-6">
+-      <%= link_to image_tag('/brand-assets/logo_thumbnail.svg', alt: 'Chatwoot Admin Dashboard', class: 'h-10'), super_admin_root_url %>
++      <%= link_to image_tag('/brand-assets/logo_thumbnail.svg', alt: 'Chat Fleexa Admin Dashboard', class: 'h-10'), super_admin_root_url %>
+       <div class="flex flex-col ml-3">
+-        <div class="text-sm">Chatwoot <%= Chatwoot.config[:version] %></div>
++        <div class="text-sm">Chat Fleexa <%= Chatwoot.config[:version] %></div>
+         <div class="text-xs text-slate-700 mt-0.5">Super Admin Console</div>
+       </div>
+     </div>
+diff --git a/app/views/super_admin/devise/sessions/new.html.erb b/app/views/super_admin/devise/sessions/new.html.erb
+index 6b79fbc..5bc9fdd 100644
+--- a/app/views/super_admin/devise/sessions/new.html.erb
++++ b/app/views/super_admin/devise/sessions/new.html.erb
+@@ -1,7 +1,7 @@
+ <!DOCTYPE html>
+ <html>
+   <head>
+-    <title>SuperAdmin | Chatwoot</title>
++    <title>SuperAdmin | Chat Fleexa</title>
+     <%= vite_client_tag %>
+     <%= vite_javascript_tag 'superadmin' %>
+   </head>
+@@ -9,8 +9,8 @@
+     <div class="h-full w-full antialiased">
+       <main class="flex flex-col bg-woot-25 min-h-screen w-full py-20 sm:px-6 lg:px-8 dark:bg-slate-900">
+         <section class="max-w-5xl mx-auto">
+-          <img src="/brand-assets/logo.svg" alt="Chatwoot" class="mx-auto h-8 w-auto block dark:hidden">
+-          <img src="/brand-assets/logo_dark.svg" alt="Chatwoot" class="mx-auto h-8 w-auto hidden dark:block">
++          <img src="/brand-assets/logo.svg" alt="Chat Fleexa" class="mx-auto h-8 w-auto block dark:hidden">
++          <img src="/brand-assets/logo_dark.svg" alt="Chat Fleexa" class="mx-auto h-8 w-auto hidden dark:block">
+           <h2 class="mt-6 text-center text-3xl font-medium text-slate-900 dark:text-woot-50">
+             Howdy, admin 👋
+           </h2>
+diff --git a/app/views/super_admin/settings/show.html.erb b/app/views/super_admin/settings/show.html.erb
+index fd424ed..af8dd18 100644
+--- a/app/views/super_admin/settings/show.html.erb
++++ b/app/views/super_admin/settings/show.html.erb
+@@ -16,7 +16,7 @@
+   <% if Redis::Alfred.get(Redis::Alfred::CHATWOOT_INSTALLATION_CONFIG_RESET_WARNING) %>
+     <div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mb-5" role="alert">
+     <strong class="font-bold">Alert!</strong>
+-    <span class="block sm:inline">Unauthorized premium changes detected in Chatwoot. To keep using them, please upgrade your plan.
++    <span class="block sm:inline">Unauthorized premium changes detected in Chat Fleexa. To keep using them, please upgrade your plan.
+       Contact for help :</span><span class="inline rounded-full bg-red-200 px-2  text-white  ml-2">sales@chatwoot.com</span>
+     </div>
+   <% end %>
+diff --git a/config/locales/en.yml b/config/locales/en.yml
+index 8b8202f..dc07575 100644
+--- a/config/locales/en.yml
++++ b/config/locales/en.yml
+@@ -347,16 +347,16 @@ en:
+       description: 'Dashboard Apps allow you to create and embed applications that display user information, orders, or payment history, providing more context to your customer support agents.'
+     dyte:
+       name: 'Dyte'
+-      short_description: 'Start video/voice calls with customers directly from Chatwoot.'
+-      description: 'Dyte is a product that integrates audio and video functionalities into your application. With this integration, your agents can start video/voice calls with your customers directly from Chatwoot.'
++      short_description: 'Start video/voice calls with customers directly from Chat Fleexa.'
++      description: 'Dyte is a product that integrates audio and video functionalities into your application. With this integration, your agents can start video/voice calls with your customers directly from Chat Fleexa.'
+       meeting_name: '%{agent_name} has started a meeting'
+     slack:
+       name: 'Slack'
+       short_description: 'Receive notifications and respond to conversations directly in Slack.'
+-      description: "Integrate Chatwoot with Slack to keep your team in sync. This integration allows you to receive notifications for new conversations and respond to them directly within Slack's interface."
++      description: "Integrate Chat Fleexa with Slack to keep your team in sync. This integration allows you to receive notifications for new conversations and respond to them directly within Slack's interface."
+     webhooks:
+       name: 'Webhooks'
+-      description: 'Webhook events provide real-time updates about activities in your Chatwoot account. You can subscribe to your preferred events, and Chatwoot will send you HTTP callbacks with the updates.'
++      description: 'Webhook events provide real-time updates about activities in your Chat Fleexa account. You can subscribe to your preferred events, and Chat Fleexa will send you HTTP callbacks with the updates.'
+     dialogflow:
+       name: 'Dialogflow'
+       short_description: 'Build chatbots to handle initial queries before transferring to agents.'
+diff --git a/config/locales/ru.yml b/config/locales/ru.yml
+index ff7ac79..a5873f6 100644
+--- a/config/locales/ru.yml
++++ b/config/locales/ru.yml
+@@ -330,16 +330,16 @@ ru:
+       description: 'Панель приложений позволяет вам создавать и вставлять приложения, отображающие информацию о пользователе, заказы или историю платежей, обеспечивая больший контекст для агентов поддержки.'
+     dyte:
+       name: 'Dyte'
+-      short_description: 'Начните видео/голосовые звонки с клиентов прямо из Chatwoot.'
+-      description: 'Dyte - это продукт, который интегрирует функции аудио и видео в ваше приложение. С помощью этой интеграции ваши агенты могут начать видео/голосовые звонки с вашими клиентами прямо из Chatwoot.'
++      short_description: 'Начните видео/голосовые звонки с клиентов прямо из Chat Fleexa.'
++      description: 'Dyte - это продукт, который интегрирует функции аудио и видео в ваше приложение. С помощью этой интеграции ваши агенты могут начать видео/голосовые звонки с вашими клиентами прямо из Chat Fleexa.'
+       meeting_name: '%{agent_name} приступил к встрече'
+     slack:
+       name: 'Slack'
+       short_description: 'Получать уведомления и отвечать на разговоры прямо в Slack.'
+-      description: "Интегрируйте Chatwoot с Slack для синхронизации команды. Эта интеграция позволяет получать уведомления о новых разговорах и отвечать на них непосредственно в интерфейсе Slack."
++      description: "Интегрируйте Chat Fleexa с Slack для синхронизации команды. Эта интеграция позволяет получать уведомления о новых разговорах и отвечать на них непосредственно в интерфейсе Slack."
+     webhooks:
+       name: 'Webhooks'
+-      description: 'События Webhook предоставляют обновления об активности в вашем аккаунте Chatwoot в режиме реального времени. Вы можете подписаться на ваши предпочтительные события, и Chatwoot будет отправлять вам HTTP-ответы с обновлениями.'
++      description: 'События Webhook предоставляют обновления об активности в вашем аккаунте Chat Fleexa в режиме реального времени. Вы можете подписаться на ваши предпочтительные события, и Chat Fleexa будет отправлять вам HTTP-ответы с обновлениями.'
+     dialogflow:
+       name: 'Диалог'
+       short_description: 'Постройте чат ботов для обработки начальных запросов перед передачей агентам.'
+diff --git a/public/brand-assets/logo.svg b/public/brand-assets/logo.svg
+index 63adcde..1836302 100644
+--- a/public/brand-assets/logo.svg
++++ b/public/brand-assets/logo.svg
+@@ -1,5 +1,5 @@
+ <svg width="2559" height="581" viewBox="0 0 2559 581" fill="none" xmlns="http://www.w3.org/2000/svg">
+-<path d="M256 546C397.385 546 512 431.385 512 290C512 148.615 397.385 34 256 34C114.615 34 0 148.615 0 290C0 431.385 114.615 546 256 546Z" fill="#2781F6"/>
++<path d="M256 546C397.385 546 512 431.385 512 290C512 148.615 397.385 34 256 34C114.615 34 0 148.615 0 290C0 431.385 114.615 546 256 546Z" fill="#0EA5A0"/>
+ <path d="M367 410H247.99C182.388 410 129 356.608 129 290.989C129 225.392 182.388 172 247.992 172C313.612 172 367 225.392 367 290.989V410Z" fill="white" stroke="white" stroke-width="6"/>
+ <path d="M707.875 470.625C683.5 470.625 662.016 465.156 643.422 454.219C624.984 443.281 610.609 428.125 600.297 408.75C590.141 389.375 585.062 366.953 585.062 341.484C585.062 316.016 590.141 293.516 600.297 273.984C610.609 254.453 624.984 239.219 643.422 228.281C662.016 217.344 683.5 211.875 707.875 211.875C723.812 211.875 738.5 214.297 751.938 219.141C765.531 223.828 777.328 230.469 787.328 239.062C797.484 247.656 805.609 257.812 811.703 269.531C817.797 281.25 821.469 294.219 822.719 308.438H759.438C758.5 301.875 756.625 296.016 753.812 290.859C751.156 285.547 747.641 281.016 743.266 277.266C739.047 273.359 734.047 270.391 728.266 268.359C722.641 266.172 716.156 265.078 708.812 265.078C696.781 265.078 686.391 268.203 677.641 274.453C668.891 280.703 662.172 289.531 657.484 300.938C652.953 312.344 650.688 325.859 650.688 341.484C650.688 356.953 652.953 370.391 657.484 381.797C662.172 393.203 668.812 402.031 677.406 408.281C686.156 414.375 696.625 417.422 708.812 417.422C716.156 417.422 722.641 416.406 728.266 414.375C733.891 412.344 738.734 409.453 742.797 405.703C747.016 401.797 750.453 397.188 753.109 391.875C755.766 386.406 757.719 380.312 758.969 373.594H822.719C821.781 387.656 818.266 400.625 812.172 412.5C806.234 424.219 798.188 434.453 788.031 443.203C777.875 451.797 766 458.516 752.406 463.359C738.812 468.203 723.969 470.625 707.875 470.625ZM911.209 326.484V465H846.053V115.781H911.209V281.25H898.319C906.288 259.375 917.459 242.422 931.834 230.391C946.366 218.359 964.725 212.344 986.913 212.344C1004.41 212.344 1019.65 216.172 1032.62 223.828C1045.74 231.328 1055.98 242.344 1063.32 256.875C1070.66 271.406 1074.33 289.141 1074.33 310.078V465H1009.18V321.562C1009.18 304.219 1005.04 291.094 996.756 282.188C988.631 273.281 977.069 268.828 962.069 268.828C952.069 268.828 943.241 270.859 935.584 274.922C927.928 278.984 921.913 285.234 917.538 293.672C913.319 302.109 911.209 313.047 911.209 326.484ZM1185.79 468.984C1169.39 468.984 1154.78 466.25 1141.97 460.781C1129.15 455.312 1119 447.109 1111.5 436.172C1104.15 425.234 1100.48 411.562 1100.48 395.156C1100.48 381.094 1103.06 369.453 1108.22 360.234C1113.53 350.859 1120.64 343.438 1129.54 337.969C1138.61 332.344 1149 328.125 1160.72 325.312C1172.43 322.344 1184.62 320.156 1197.28 318.75C1212.59 317.188 1224.7 315.781 1233.61 314.531C1242.51 313.125 1248.92 311.094 1252.83 308.438C1256.73 305.781 1258.68 301.719 1258.68 296.25V294.609C1258.68 288.047 1256.97 282.344 1253.53 277.5C1250.09 272.5 1245.25 268.594 1239 265.781C1232.75 262.969 1225.17 261.562 1216.26 261.562C1207.36 261.562 1199.47 262.969 1192.59 265.781C1185.87 268.594 1180.48 272.578 1176.42 277.734C1172.51 282.734 1170.25 288.594 1169.62 295.312H1107.98C1109.08 278.438 1114.08 263.828 1122.98 251.484C1132.04 239.141 1144.54 229.531 1160.48 222.656C1176.58 215.781 1195.72 212.344 1217.9 212.344C1234.47 212.344 1249.23 214.297 1262.2 218.203C1275.33 222.109 1286.34 227.734 1295.25 235.078C1304.31 242.422 1311.18 251.328 1315.87 261.797C1320.56 272.109 1322.9 283.75 1322.9 296.719V465H1259.39V430.078H1258.45C1254.23 437.891 1248.92 444.766 1242.51 450.703C1236.26 456.484 1228.45 461.016 1219.08 464.297C1209.86 467.422 1198.76 468.984 1185.79 468.984ZM1203.14 422.812C1214.86 422.812 1224.86 420.703 1233.14 416.484C1241.58 412.109 1247.98 406.25 1252.36 398.906C1256.89 391.562 1259.15 383.281 1259.15 374.062V348.281C1257.12 349.531 1254.39 350.703 1250.95 351.797C1247.67 352.734 1243.68 353.672 1239 354.609C1234.47 355.547 1229.47 356.484 1224 357.422C1218.68 358.359 1213.14 359.219 1207.36 360C1199.23 361.25 1191.81 363.203 1185.09 365.859C1178.37 368.516 1172.98 372.109 1168.92 376.641C1165.01 381.016 1163.06 386.719 1163.06 393.75C1163.06 399.688 1164.7 404.922 1167.98 409.453C1171.42 413.828 1176.11 417.188 1182.04 419.531C1187.98 421.719 1195.01 422.812 1203.14 422.812ZM1496.24 217.5V269.062H1337.57V217.5H1496.24ZM1380.69 150H1445.61V390.703C1445.61 399.297 1447.33 405.234 1450.77 408.516C1454.21 411.797 1460.69 413.438 1470.22 413.438C1474.13 413.438 1478.66 413.438 1483.82 413.438C1489.13 413.438 1493.27 413.438 1496.24 413.438V465C1492.02 465 1486.32 465 1479.13 465C1472.1 465 1464.99 465 1457.8 465C1431.39 465 1411.94 459.766 1399.44 449.297C1386.94 438.828 1380.69 422.656 1380.69 400.781V150ZM1584.03 465L1507.62 217.5H1575.82L1599.73 307.031C1604.26 324.688 1608.63 342.891 1612.85 361.641C1617.07 380.391 1621.29 398.828 1625.51 416.953H1616.6C1621.13 398.828 1625.67 380.391 1630.2 361.641C1634.88 342.891 1639.57 324.688 1644.26 307.031L1669.1 217.5H1728.17L1752.54 307.031C1757.38 324.688 1762.07 342.891 1766.6 361.641C1771.13 380.391 1775.67 398.828 1780.2 416.953H1771.06C1775.43 398.828 1779.65 380.391 1783.71 361.641C1787.93 342.891 1792.23 324.688 1796.6 307.031L1820.51 217.5H1889.42L1813.01 465H1745.74L1716.45 364.688C1713.63 354.844 1710.9 344.844 1708.24 334.688C1705.59 324.375 1702.93 314.062 1700.28 303.75C1697.78 293.281 1695.12 282.969 1692.31 272.812H1704.96C1702.31 282.969 1699.57 293.281 1696.76 303.75C1694.1 314.062 1691.45 324.375 1688.79 334.688C1686.29 344.844 1683.56 354.844 1680.59 364.688L1650.82 465H1584.03ZM2009.78 470.625C1985.09 470.625 1963.38 465.234 1944.62 454.453C1926.03 443.672 1911.5 428.594 1901.03 409.219C1890.72 389.844 1885.56 367.266 1885.56 341.484C1885.56 315.703 1890.72 293.125 1901.03 273.75C1911.5 254.219 1926.03 239.062 1944.62 228.281C1963.38 217.344 1985.09 211.875 2009.78 211.875C2034.62 211.875 2056.34 217.344 2074.94 228.281C2093.53 239.062 2107.98 254.219 2118.3 273.75C2128.77 293.125 2134 315.703 2134 341.484C2134 367.266 2128.77 389.844 2118.3 409.219C2107.98 428.594 2093.53 443.672 2074.94 454.453C2056.34 465.234 2034.62 470.625 2009.78 470.625ZM2009.78 417.188C2021.66 417.188 2031.97 414.219 2040.72 408.281C2049.47 402.188 2056.27 393.438 2061.11 382.031C2065.95 370.625 2068.38 357.109 2068.38 341.484C2068.38 325.547 2065.95 311.953 2061.11 300.703C2056.27 289.297 2049.47 280.547 2040.72 274.453C2031.97 268.359 2021.66 265.312 2009.78 265.312C1998.06 265.312 1987.75 268.359 1978.84 274.453C1970.09 280.547 1963.3 289.297 1958.45 300.703C1953.61 311.953 1951.19 325.547 1951.19 341.484C1951.19 357.266 1953.61 370.859 1958.45 382.266C1963.3 393.516 1970.09 402.188 1978.84 408.281C1987.75 414.219 1998.06 417.188 2009.78 417.188ZM2271.94 470.625C2247.26 470.625 2225.54 465.234 2206.79 454.453C2188.19 443.672 2173.66 428.594 2163.19 409.219C2152.88 389.844 2147.72 367.266 2147.72 341.484C2147.72 315.703 2152.88 293.125 2163.19 273.75C2173.66 254.219 2188.19 239.062 2206.79 228.281C2225.54 217.344 2247.26 211.875 2271.94 211.875C2296.79 211.875 2318.51 217.344 2337.1 228.281C2355.69 239.062 2370.15 254.219 2380.46 273.75C2390.93 293.125 2396.16 315.703 2396.16 341.484C2396.16 367.266 2390.93 389.844 2380.46 409.219C2370.15 428.594 2355.69 443.672 2337.1 454.453C2318.51 465.234 2296.79 470.625 2271.94 470.625ZM2271.94 417.188C2283.82 417.188 2294.13 414.219 2302.88 408.281C2311.63 402.188 2318.43 393.438 2323.27 382.031C2328.12 370.625 2330.54 357.109 2330.54 341.484C2330.54 325.547 2328.12 311.953 2323.27 300.703C2318.43 289.297 2311.63 280.547 2302.88 274.453C2294.13 268.359 2283.82 265.312 2271.94 265.312C2260.22 265.312 2249.91 268.359 2241.01 274.453C2232.26 280.547 2225.46 289.297 2220.62 300.703C2215.77 311.953 2213.35 325.547 2213.35 341.484C2213.35 357.266 2215.77 370.859 2220.62 382.266C2225.46 393.516 2232.26 402.188 2241.01 408.281C2249.91 414.219 2260.22 417.188 2271.94 417.188ZM2558.48 217.5V269.062H2399.81V217.5H2558.48ZM2442.93 150H2507.86V390.703C2507.86 399.297 2509.57 405.234 2513.01 408.516C2516.45 411.797 2522.93 413.438 2532.47 413.438C2536.37 413.438 2540.9 413.438 2546.06 413.438C2551.37 413.438 2555.51 413.438 2558.48 413.438V465C2554.26 465 2548.56 465 2541.37 465C2534.34 465 2527.23 465 2520.04 465C2493.64 465 2474.18 459.766 2461.68 449.297C2449.18 438.828 2442.93 422.656 2442.93 400.781V150Z" fill="#040101"/>
+ </svg>
+diff --git a/public/brand-assets/logo_dark.svg b/public/brand-assets/logo_dark.svg
+index 679ae46..bc6c9d3 100644
+--- a/public/brand-assets/logo_dark.svg
++++ b/public/brand-assets/logo_dark.svg
+@@ -1,5 +1,5 @@
+ <svg width="2559" height="581" viewBox="0 0 2559 581" fill="none" xmlns="http://www.w3.org/2000/svg">
+-<path d="M256 546C397.385 546 512 431.385 512 290C512 148.615 397.385 34 256 34C114.615 34 0 148.615 0 290C0 431.385 114.615 546 256 546Z" fill="#2781F6"/>
++<path d="M256 546C397.385 546 512 431.385 512 290C512 148.615 397.385 34 256 34C114.615 34 0 148.615 0 290C0 431.385 114.615 546 256 546Z" fill="#0EA5A0"/>
+ <path d="M367 410H247.99C182.388 410 129 356.608 129 290.989C129 225.392 182.388 172 247.992 172C313.612 172 367 225.392 367 290.989V410Z" fill="white" stroke="white" stroke-width="6"/>
+ <path d="M707.875 470.625C683.5 470.625 662.016 465.156 643.422 454.219C624.984 443.281 610.609 428.125 600.297 408.75C590.141 389.375 585.062 366.953 585.062 341.484C585.062 316.016 590.141 293.516 600.297 273.984C610.609 254.453 624.984 239.219 643.422 228.281C662.016 217.344 683.5 211.875 707.875 211.875C723.812 211.875 738.5 214.297 751.938 219.141C765.531 223.828 777.328 230.469 787.328 239.062C797.484 247.656 805.609 257.812 811.703 269.531C817.797 281.25 821.469 294.219 822.719 308.438H759.438C758.5 301.875 756.625 296.016 753.812 290.859C751.156 285.547 747.641 281.016 743.266 277.266C739.047 273.359 734.047 270.391 728.266 268.359C722.641 266.172 716.156 265.078 708.812 265.078C696.781 265.078 686.391 268.203 677.641 274.453C668.891 280.703 662.172 289.531 657.484 300.938C652.953 312.344 650.688 325.859 650.688 341.484C650.688 356.953 652.953 370.391 657.484 381.797C662.172 393.203 668.812 402.031 677.406 408.281C686.156 414.375 696.625 417.422 708.812 417.422C716.156 417.422 722.641 416.406 728.266 414.375C733.891 412.344 738.734 409.453 742.797 405.703C747.016 401.797 750.453 397.188 753.109 391.875C755.766 386.406 757.719 380.312 758.969 373.594H822.719C821.781 387.656 818.266 400.625 812.172 412.5C806.234 424.219 798.188 434.453 788.031 443.203C777.875 451.797 766 458.516 752.406 463.359C738.812 468.203 723.969 470.625 707.875 470.625ZM911.209 326.484V465H846.053V115.781H911.209V281.25H898.319C906.288 259.375 917.459 242.422 931.834 230.391C946.366 218.359 964.725 212.344 986.913 212.344C1004.41 212.344 1019.65 216.172 1032.62 223.828C1045.74 231.328 1055.98 242.344 1063.32 256.875C1070.66 271.406 1074.33 289.141 1074.33 310.078V465H1009.18V321.562C1009.18 304.219 1005.04 291.094 996.756 282.188C988.631 273.281 977.069 268.828 962.069 268.828C952.069 268.828 943.241 270.859 935.584 274.922C927.928 278.984 921.913 285.234 917.538 293.672C913.319 302.109 911.209 313.047 911.209 326.484ZM1185.79 468.984C1169.39 468.984 1154.78 466.25 1141.97 460.781C1129.15 455.312 1119 447.109 1111.5 436.172C1104.15 425.234 1100.48 411.562 1100.48 395.156C1100.48 381.094 1103.06 369.453 1108.22 360.234C1113.53 350.859 1120.64 343.438 1129.54 337.969C1138.61 332.344 1149 328.125 1160.72 325.312C1172.43 322.344 1184.62 320.156 1197.28 318.75C1212.59 317.188 1224.7 315.781 1233.61 314.531C1242.51 313.125 1248.92 311.094 1252.83 308.438C1256.73 305.781 1258.68 301.719 1258.68 296.25V294.609C1258.68 288.047 1256.97 282.344 1253.53 277.5C1250.09 272.5 1245.25 268.594 1239 265.781C1232.75 262.969 1225.17 261.562 1216.26 261.562C1207.36 261.562 1199.47 262.969 1192.59 265.781C1185.87 268.594 1180.48 272.578 1176.42 277.734C1172.51 282.734 1170.25 288.594 1169.62 295.312H1107.98C1109.08 278.438 1114.08 263.828 1122.98 251.484C1132.04 239.141 1144.54 229.531 1160.48 222.656C1176.58 215.781 1195.72 212.344 1217.9 212.344C1234.47 212.344 1249.23 214.297 1262.2 218.203C1275.33 222.109 1286.34 227.734 1295.25 235.078C1304.31 242.422 1311.18 251.328 1315.87 261.797C1320.56 272.109 1322.9 283.75 1322.9 296.719V465H1259.39V430.078H1258.45C1254.23 437.891 1248.92 444.766 1242.51 450.703C1236.26 456.484 1228.45 461.016 1219.08 464.297C1209.86 467.422 1198.76 468.984 1185.79 468.984ZM1203.14 422.812C1214.86 422.812 1224.86 420.703 1233.14 416.484C1241.58 412.109 1247.98 406.25 1252.36 398.906C1256.89 391.562 1259.15 383.281 1259.15 374.062V348.281C1257.12 349.531 1254.39 350.703 1250.95 351.797C1247.67 352.734 1243.68 353.672 1239 354.609C1234.47 355.547 1229.47 356.484 1224 357.422C1218.68 358.359 1213.14 359.219 1207.36 360C1199.23 361.25 1191.81 363.203 1185.09 365.859C1178.37 368.516 1172.98 372.109 1168.92 376.641C1165.01 381.016 1163.06 386.719 1163.06 393.75C1163.06 399.688 1164.7 404.922 1167.98 409.453C1171.42 413.828 1176.11 417.188 1182.04 419.531C1187.98 421.719 1195.01 422.812 1203.14 422.812ZM1496.24 217.5V269.062H1337.57V217.5H1496.24ZM1380.69 150H1445.61V390.703C1445.61 399.297 1447.33 405.234 1450.77 408.516C1454.21 411.797 1460.69 413.438 1470.22 413.438C1474.13 413.438 1478.66 413.438 1483.82 413.438C1489.13 413.438 1493.27 413.438 1496.24 413.438V465C1492.02 465 1486.32 465 1479.13 465C1472.1 465 1464.99 465 1457.8 465C1431.39 465 1411.94 459.766 1399.44 449.297C1386.94 438.828 1380.69 422.656 1380.69 400.781V150ZM1584.03 465L1507.62 217.5H1575.82L1599.73 307.031C1604.26 324.688 1608.63 342.891 1612.85 361.641C1617.07 380.391 1621.29 398.828 1625.51 416.953H1616.6C1621.13 398.828 1625.67 380.391 1630.2 361.641C1634.88 342.891 1639.57 324.688 1644.26 307.031L1669.1 217.5H1728.17L1752.54 307.031C1757.38 324.688 1762.07 342.891 1766.6 361.641C1771.13 380.391 1775.67 398.828 1780.2 416.953H1771.06C1775.43 398.828 1779.65 380.391 1783.71 361.641C1787.93 342.891 1792.23 324.688 1796.6 307.031L1820.51 217.5H1889.42L1813.01 465H1745.74L1716.45 364.688C1713.63 354.844 1710.9 344.844 1708.24 334.688C1705.59 324.375 1702.93 314.062 1700.28 303.75C1697.78 293.281 1695.12 282.969 1692.31 272.812H1704.96C1702.31 282.969 1699.57 293.281 1696.76 303.75C1694.1 314.062 1691.45 324.375 1688.79 334.688C1686.29 344.844 1683.56 354.844 1680.59 364.688L1650.82 465H1584.03ZM2009.78 470.625C1985.09 470.625 1963.38 465.234 1944.62 454.453C1926.03 443.672 1911.5 428.594 1901.03 409.219C1890.72 389.844 1885.56 367.266 1885.56 341.484C1885.56 315.703 1890.72 293.125 1901.03 273.75C1911.5 254.219 1926.03 239.062 1944.62 228.281C1963.38 217.344 1985.09 211.875 2009.78 211.875C2034.62 211.875 2056.34 217.344 2074.94 228.281C2093.53 239.062 2107.98 254.219 2118.3 273.75C2128.77 293.125 2134 315.703 2134 341.484C2134 367.266 2128.77 389.844 2118.3 409.219C2107.98 428.594 2093.53 443.672 2074.94 454.453C2056.34 465.234 2034.62 470.625 2009.78 470.625ZM2009.78 417.188C2021.66 417.188 2031.97 414.219 2040.72 408.281C2049.47 402.188 2056.27 393.438 2061.11 382.031C2065.95 370.625 2068.38 357.109 2068.38 341.484C2068.38 325.547 2065.95 311.953 2061.11 300.703C2056.27 289.297 2049.47 280.547 2040.72 274.453C2031.97 268.359 2021.66 265.312 2009.78 265.312C1998.06 265.312 1987.75 268.359 1978.84 274.453C1970.09 280.547 1963.3 289.297 1958.45 300.703C1953.61 311.953 1951.19 325.547 1951.19 341.484C1951.19 357.266 1953.61 370.859 1958.45 382.266C1963.3 393.516 1970.09 402.188 1978.84 408.281C1987.75 414.219 1998.06 417.188 2009.78 417.188ZM2271.94 470.625C2247.26 470.625 2225.54 465.234 2206.79 454.453C2188.19 443.672 2173.66 428.594 2163.19 409.219C2152.88 389.844 2147.72 367.266 2147.72 341.484C2147.72 315.703 2152.88 293.125 2163.19 273.75C2173.66 254.219 2188.19 239.062 2206.79 228.281C2225.54 217.344 2247.26 211.875 2271.94 211.875C2296.79 211.875 2318.51 217.344 2337.1 228.281C2355.69 239.062 2370.15 254.219 2380.46 273.75C2390.93 293.125 2396.16 315.703 2396.16 341.484C2396.16 367.266 2390.93 389.844 2380.46 409.219C2370.15 428.594 2355.69 443.672 2337.1 454.453C2318.51 465.234 2296.79 470.625 2271.94 470.625ZM2271.94 417.188C2283.82 417.188 2294.13 414.219 2302.88 408.281C2311.63 402.188 2318.43 393.438 2323.27 382.031C2328.12 370.625 2330.54 357.109 2330.54 341.484C2330.54 325.547 2328.12 311.953 2323.27 300.703C2318.43 289.297 2311.63 280.547 2302.88 274.453C2294.13 268.359 2283.82 265.312 2271.94 265.312C2260.22 265.312 2249.91 268.359 2241.01 274.453C2232.26 280.547 2225.46 289.297 2220.62 300.703C2215.77 311.953 2213.35 325.547 2213.35 341.484C2213.35 357.266 2215.77 370.859 2220.62 382.266C2225.46 393.516 2232.26 402.188 2241.01 408.281C2249.91 414.219 2260.22 417.188 2271.94 417.188ZM2558.48 217.5V269.062H2399.81V217.5H2558.48ZM2442.93 150H2507.86V390.703C2507.86 399.297 2509.57 405.234 2513.01 408.516C2516.45 411.797 2522.93 413.438 2532.47 413.438C2536.37 413.438 2540.9 413.438 2546.06 413.438C2551.37 413.438 2555.51 413.438 2558.48 413.438V465C2554.26 465 2548.56 465 2541.37 465C2534.34 465 2527.23 465 2520.04 465C2493.64 465 2474.18 459.766 2461.68 449.297C2449.18 438.828 2442.93 422.656 2442.93 400.781V150Z" fill="white"/>
+ </svg>
+diff --git a/public/brand-assets/logo_thumbnail.svg b/public/brand-assets/logo_thumbnail.svg
+index d8715e7..c68ad9d 100644
+--- a/public/brand-assets/logo_thumbnail.svg
++++ b/public/brand-assets/logo_thumbnail.svg
+@@ -8,7 +8,7 @@
+   <g clip-path="url(#woot-logo-clip-2342424e23u32098)">
+     <path
+       d="M8 16C12.4183 16 16 12.4183 16 8C16 3.58172 12.4183 0 8 0C3.58172 0 0 3.58172 0 8C0 12.4183 3.58172 16 8 16Z"
+-      fill="#2781F6"
++      fill="#0EA5A0"
+     />
+     <path
+       d="M11.4172 11.4172H7.70831C5.66383 11.4172 4 9.75328 4 7.70828C4 5.66394 5.66383 4 7.70835 4C9.75339 4 11.4172 5.66394 11.4172 7.70828V11.4172Z"
+diff --git a/public/manifest.json b/public/manifest.json
+index 78fcc47..8d68aaa 100644
+--- a/public/manifest.json
++++ b/public/manifest.json
+@@ -1,6 +1,6 @@
+ {
+-  "name": "Chatwoot",
+-  "short_name": "Chatwoot",
++  "name": "Chat Fleexa",
++  "short_name": "Chat Fleexa",
+   "icons": [{
+     "src": "\/android-icon-36x36.png",
+     "sizes": "36x36",
+@@ -39,6 +39,6 @@
+    }],
+   "start_url": "/",
+   "display": "standalone",
+-  "background_color": "#1f93ff",
+-  "theme_color": "#1f93ff"
++  "background_color": "#0EA5A0",
++  "theme_color": "#0EA5A0"
+ }
+diff --git a/public/packs/brand-assets/logo.svg b/public/packs/brand-assets/logo.svg
+index 63adcde..1836302 100644
+--- a/public/packs/brand-assets/logo.svg
++++ b/public/packs/brand-assets/logo.svg
+@@ -1,5 +1,5 @@
+ <svg width="2559" height="581" viewBox="0 0 2559 581" fill="none" xmlns="http://www.w3.org/2000/svg">
+-<path d="M256 546C397.385 546 512 431.385 512 290C512 148.615 397.385 34 256 34C114.615 34 0 148.615 0 290C0 431.385 114.615 546 256 546Z" fill="#2781F6"/>
++<path d="M256 546C397.385 546 512 431.385 512 290C512 148.615 397.385 34 256 34C114.615 34 0 148.615 0 290C0 431.385 114.615 546 256 546Z" fill="#0EA5A0"/>
+ <path d="M367 410H247.99C182.388 410 129 356.608 129 290.989C129 225.392 182.388 172 247.992 172C313.612 172 367 225.392 367 290.989V410Z" fill="white" stroke="white" stroke-width="6"/>
+ <path d="M707.875 470.625C683.5 470.625 662.016 465.156 643.422 454.219C624.984 443.281 610.609 428.125 600.297 408.75C590.141 389.375 585.062 366.953 585.062 341.484C585.062 316.016 590.141 293.516 600.297 273.984C610.609 254.453 624.984 239.219 643.422 228.281C662.016 217.344 683.5 211.875 707.875 211.875C723.812 211.875 738.5 214.297 751.938 219.141C765.531 223.828 777.328 230.469 787.328 239.062C797.484 247.656 805.609 257.812 811.703 269.531C817.797 281.25 821.469 294.219 822.719 308.438H759.438C758.5 301.875 756.625 296.016 753.812 290.859C751.156 285.547 747.641 281.016 743.266 277.266C739.047 273.359 734.047 270.391 728.266 268.359C722.641 266.172 716.156 265.078 708.812 265.078C696.781 265.078 686.391 268.203 677.641 274.453C668.891 280.703 662.172 289.531 657.484 300.938C652.953 312.344 650.688 325.859 650.688 341.484C650.688 356.953 652.953 370.391 657.484 381.797C662.172 393.203 668.812 402.031 677.406 408.281C686.156 414.375 696.625 417.422 708.812 417.422C716.156 417.422 722.641 416.406 728.266 414.375C733.891 412.344 738.734 409.453 742.797 405.703C747.016 401.797 750.453 397.188 753.109 391.875C755.766 386.406 757.719 380.312 758.969 373.594H822.719C821.781 387.656 818.266 400.625 812.172 412.5C806.234 424.219 798.188 434.453 788.031 443.203C777.875 451.797 766 458.516 752.406 463.359C738.812 468.203 723.969 470.625 707.875 470.625ZM911.209 326.484V465H846.053V115.781H911.209V281.25H898.319C906.288 259.375 917.459 242.422 931.834 230.391C946.366 218.359 964.725 212.344 986.913 212.344C1004.41 212.344 1019.65 216.172 1032.62 223.828C1045.74 231.328 1055.98 242.344 1063.32 256.875C1070.66 271.406 1074.33 289.141 1074.33 310.078V465H1009.18V321.562C1009.18 304.219 1005.04 291.094 996.756 282.188C988.631 273.281 977.069 268.828 962.069 268.828C952.069 268.828 943.241 270.859 935.584 274.922C927.928 278.984 921.913 285.234 917.538 293.672C913.319 302.109 911.209 313.047 911.209 326.484ZM1185.79 468.984C1169.39 468.984 1154.78 466.25 1141.97 460.781C1129.15 455.312 1119 447.109 1111.5 436.172C1104.15 425.234 1100.48 411.562 1100.48 395.156C1100.48 381.094 1103.06 369.453 1108.22 360.234C1113.53 350.859 1120.64 343.438 1129.54 337.969C1138.61 332.344 1149 328.125 1160.72 325.312C1172.43 322.344 1184.62 320.156 1197.28 318.75C1212.59 317.188 1224.7 315.781 1233.61 314.531C1242.51 313.125 1248.92 311.094 1252.83 308.438C1256.73 305.781 1258.68 301.719 1258.68 296.25V294.609C1258.68 288.047 1256.97 282.344 1253.53 277.5C1250.09 272.5 1245.25 268.594 1239 265.781C1232.75 262.969 1225.17 261.562 1216.26 261.562C1207.36 261.562 1199.47 262.969 1192.59 265.781C1185.87 268.594 1180.48 272.578 1176.42 277.734C1172.51 282.734 1170.25 288.594 1169.62 295.312H1107.98C1109.08 278.438 1114.08 263.828 1122.98 251.484C1132.04 239.141 1144.54 229.531 1160.48 222.656C1176.58 215.781 1195.72 212.344 1217.9 212.344C1234.47 212.344 1249.23 214.297 1262.2 218.203C1275.33 222.109 1286.34 227.734 1295.25 235.078C1304.31 242.422 1311.18 251.328 1315.87 261.797C1320.56 272.109 1322.9 283.75 1322.9 296.719V465H1259.39V430.078H1258.45C1254.23 437.891 1248.92 444.766 1242.51 450.703C1236.26 456.484 1228.45 461.016 1219.08 464.297C1209.86 467.422 1198.76 468.984 1185.79 468.984ZM1203.14 422.812C1214.86 422.812 1224.86 420.703 1233.14 416.484C1241.58 412.109 1247.98 406.25 1252.36 398.906C1256.89 391.562 1259.15 383.281 1259.15 374.062V348.281C1257.12 349.531 1254.39 350.703 1250.95 351.797C1247.67 352.734 1243.68 353.672 1239 354.609C1234.47 355.547 1229.47 356.484 1224 357.422C1218.68 358.359 1213.14 359.219 1207.36 360C1199.23 361.25 1191.81 363.203 1185.09 365.859C1178.37 368.516 1172.98 372.109 1168.92 376.641C1165.01 381.016 1163.06 386.719 1163.06 393.75C1163.06 399.688 1164.7 404.922 1167.98 409.453C1171.42 413.828 1176.11 417.188 1182.04 419.531C1187.98 421.719 1195.01 422.812 1203.14 422.812ZM1496.24 217.5V269.062H1337.57V217.5H1496.24ZM1380.69 150H1445.61V390.703C1445.61 399.297 1447.33 405.234 1450.77 408.516C1454.21 411.797 1460.69 413.438 1470.22 413.438C1474.13 413.438 1478.66 413.438 1483.82 413.438C1489.13 413.438 1493.27 413.438 1496.24 413.438V465C1492.02 465 1486.32 465 1479.13 465C1472.1 465 1464.99 465 1457.8 465C1431.39 465 1411.94 459.766 1399.44 449.297C1386.94 438.828 1380.69 422.656 1380.69 400.781V150ZM1584.03 465L1507.62 217.5H1575.82L1599.73 307.031C1604.26 324.688 1608.63 342.891 1612.85 361.641C1617.07 380.391 1621.29 398.828 1625.51 416.953H1616.6C1621.13 398.828 1625.67 380.391 1630.2 361.641C1634.88 342.891 1639.57 324.688 1644.26 307.031L1669.1 217.5H1728.17L1752.54 307.031C1757.38 324.688 1762.07 342.891 1766.6 361.641C1771.13 380.391 1775.67 398.828 1780.2 416.953H1771.06C1775.43 398.828 1779.65 380.391 1783.71 361.641C1787.93 342.891 1792.23 324.688 1796.6 307.031L1820.51 217.5H1889.42L1813.01 465H1745.74L1716.45 364.688C1713.63 354.844 1710.9 344.844 1708.24 334.688C1705.59 324.375 1702.93 314.062 1700.28 303.75C1697.78 293.281 1695.12 282.969 1692.31 272.812H1704.96C1702.31 282.969 1699.57 293.281 1696.76 303.75C1694.1 314.062 1691.45 324.375 1688.79 334.688C1686.29 344.844 1683.56 354.844 1680.59 364.688L1650.82 465H1584.03ZM2009.78 470.625C1985.09 470.625 1963.38 465.234 1944.62 454.453C1926.03 443.672 1911.5 428.594 1901.03 409.219C1890.72 389.844 1885.56 367.266 1885.56 341.484C1885.56 315.703 1890.72 293.125 1901.03 273.75C1911.5 254.219 1926.03 239.062 1944.62 228.281C1963.38 217.344 1985.09 211.875 2009.78 211.875C2034.62 211.875 2056.34 217.344 2074.94 228.281C2093.53 239.062 2107.98 254.219 2118.3 273.75C2128.77 293.125 2134 315.703 2134 341.484C2134 367.266 2128.77 389.844 2118.3 409.219C2107.98 428.594 2093.53 443.672 2074.94 454.453C2056.34 465.234 2034.62 470.625 2009.78 470.625ZM2009.78 417.188C2021.66 417.188 2031.97 414.219 2040.72 408.281C2049.47 402.188 2056.27 393.438 2061.11 382.031C2065.95 370.625 2068.38 357.109 2068.38 341.484C2068.38 325.547 2065.95 311.953 2061.11 300.703C2056.27 289.297 2049.47 280.547 2040.72 274.453C2031.97 268.359 2021.66 265.312 2009.78 265.312C1998.06 265.312 1987.75 268.359 1978.84 274.453C1970.09 280.547 1963.3 289.297 1958.45 300.703C1953.61 311.953 1951.19 325.547 1951.19 341.484C1951.19 357.266 1953.61 370.859 1958.45 382.266C1963.3 393.516 1970.09 402.188 1978.84 408.281C1987.75 414.219 1998.06 417.188 2009.78 417.188ZM2271.94 470.625C2247.26 470.625 2225.54 465.234 2206.79 454.453C2188.19 443.672 2173.66 428.594 2163.19 409.219C2152.88 389.844 2147.72 367.266 2147.72 341.484C2147.72 315.703 2152.88 293.125 2163.19 273.75C2173.66 254.219 2188.19 239.062 2206.79 228.281C2225.54 217.344 2247.26 211.875 2271.94 211.875C2296.79 211.875 2318.51 217.344 2337.1 228.281C2355.69 239.062 2370.15 254.219 2380.46 273.75C2390.93 293.125 2396.16 315.703 2396.16 341.484C2396.16 367.266 2390.93 389.844 2380.46 409.219C2370.15 428.594 2355.69 443.672 2337.1 454.453C2318.51 465.234 2296.79 470.625 2271.94 470.625ZM2271.94 417.188C2283.82 417.188 2294.13 414.219 2302.88 408.281C2311.63 402.188 2318.43 393.438 2323.27 382.031C2328.12 370.625 2330.54 357.109 2330.54 341.484C2330.54 325.547 2328.12 311.953 2323.27 300.703C2318.43 289.297 2311.63 280.547 2302.88 274.453C2294.13 268.359 2283.82 265.312 2271.94 265.312C2260.22 265.312 2249.91 268.359 2241.01 274.453C2232.26 280.547 2225.46 289.297 2220.62 300.703C2215.77 311.953 2213.35 325.547 2213.35 341.484C2213.35 357.266 2215.77 370.859 2220.62 382.266C2225.46 393.516 2232.26 402.188 2241.01 408.281C2249.91 414.219 2260.22 417.188 2271.94 417.188ZM2558.48 217.5V269.062H2399.81V217.5H2558.48ZM2442.93 150H2507.86V390.703C2507.86 399.297 2509.57 405.234 2513.01 408.516C2516.45 411.797 2522.93 413.438 2532.47 413.438C2536.37 413.438 2540.9 413.438 2546.06 413.438C2551.37 413.438 2555.51 413.438 2558.48 413.438V465C2554.26 465 2548.56 465 2541.37 465C2534.34 465 2527.23 465 2520.04 465C2493.64 465 2474.18 459.766 2461.68 449.297C2449.18 438.828 2442.93 422.656 2442.93 400.781V150Z" fill="#040101"/>
+ </svg>
+diff --git a/public/packs/brand-assets/logo_dark.svg b/public/packs/brand-assets/logo_dark.svg
+index 679ae46..bc6c9d3 100644
+--- a/public/packs/brand-assets/logo_dark.svg
++++ b/public/packs/brand-assets/logo_dark.svg
+@@ -1,5 +1,5 @@
+ <svg width="2559" height="581" viewBox="0 0 2559 581" fill="none" xmlns="http://www.w3.org/2000/svg">
+-<path d="M256 546C397.385 546 512 431.385 512 290C512 148.615 397.385 34 256 34C114.615 34 0 148.615 0 290C0 431.385 114.615 546 256 546Z" fill="#2781F6"/>
++<path d="M256 546C397.385 546 512 431.385 512 290C512 148.615 397.385 34 256 34C114.615 34 0 148.615 0 290C0 431.385 114.615 546 256 546Z" fill="#0EA5A0"/>
+ <path d="M367 410H247.99C182.388 410 129 356.608 129 290.989C129 225.392 182.388 172 247.992 172C313.612 172 367 225.392 367 290.989V410Z" fill="white" stroke="white" stroke-width="6"/>
+ <path d="M707.875 470.625C683.5 470.625 662.016 465.156 643.422 454.219C624.984 443.281 610.609 428.125 600.297 408.75C590.141 389.375 585.062 366.953 585.062 341.484C585.062 316.016 590.141 293.516 600.297 273.984C610.609 254.453 624.984 239.219 643.422 228.281C662.016 217.344 683.5 211.875 707.875 211.875C723.812 211.875 738.5 214.297 751.938 219.141C765.531 223.828 777.328 230.469 787.328 239.062C797.484 247.656 805.609 257.812 811.703 269.531C817.797 281.25 821.469 294.219 822.719 308.438H759.438C758.5 301.875 756.625 296.016 753.812 290.859C751.156 285.547 747.641 281.016 743.266 277.266C739.047 273.359 734.047 270.391 728.266 268.359C722.641 266.172 716.156 265.078 708.812 265.078C696.781 265.078 686.391 268.203 677.641 274.453C668.891 280.703 662.172 289.531 657.484 300.938C652.953 312.344 650.688 325.859 650.688 341.484C650.688 356.953 652.953 370.391 657.484 381.797C662.172 393.203 668.812 402.031 677.406 408.281C686.156 414.375 696.625 417.422 708.812 417.422C716.156 417.422 722.641 416.406 728.266 414.375C733.891 412.344 738.734 409.453 742.797 405.703C747.016 401.797 750.453 397.188 753.109 391.875C755.766 386.406 757.719 380.312 758.969 373.594H822.719C821.781 387.656 818.266 400.625 812.172 412.5C806.234 424.219 798.188 434.453 788.031 443.203C777.875 451.797 766 458.516 752.406 463.359C738.812 468.203 723.969 470.625 707.875 470.625ZM911.209 326.484V465H846.053V115.781H911.209V281.25H898.319C906.288 259.375 917.459 242.422 931.834 230.391C946.366 218.359 964.725 212.344 986.913 212.344C1004.41 212.344 1019.65 216.172 1032.62 223.828C1045.74 231.328 1055.98 242.344 1063.32 256.875C1070.66 271.406 1074.33 289.141 1074.33 310.078V465H1009.18V321.562C1009.18 304.219 1005.04 291.094 996.756 282.188C988.631 273.281 977.069 268.828 962.069 268.828C952.069 268.828 943.241 270.859 935.584 274.922C927.928 278.984 921.913 285.234 917.538 293.672C913.319 302.109 911.209 313.047 911.209 326.484ZM1185.79 468.984C1169.39 468.984 1154.78 466.25 1141.97 460.781C1129.15 455.312 1119 447.109 1111.5 436.172C1104.15 425.234 1100.48 411.562 1100.48 395.156C1100.48 381.094 1103.06 369.453 1108.22 360.234C1113.53 350.859 1120.64 343.438 1129.54 337.969C1138.61 332.344 1149 328.125 1160.72 325.312C1172.43 322.344 1184.62 320.156 1197.28 318.75C1212.59 317.188 1224.7 315.781 1233.61 314.531C1242.51 313.125 1248.92 311.094 1252.83 308.438C1256.73 305.781 1258.68 301.719 1258.68 296.25V294.609C1258.68 288.047 1256.97 282.344 1253.53 277.5C1250.09 272.5 1245.25 268.594 1239 265.781C1232.75 262.969 1225.17 261.562 1216.26 261.562C1207.36 261.562 1199.47 262.969 1192.59 265.781C1185.87 268.594 1180.48 272.578 1176.42 277.734C1172.51 282.734 1170.25 288.594 1169.62 295.312H1107.98C1109.08 278.438 1114.08 263.828 1122.98 251.484C1132.04 239.141 1144.54 229.531 1160.48 222.656C1176.58 215.781 1195.72 212.344 1217.9 212.344C1234.47 212.344 1249.23 214.297 1262.2 218.203C1275.33 222.109 1286.34 227.734 1295.25 235.078C1304.31 242.422 1311.18 251.328 1315.87 261.797C1320.56 272.109 1322.9 283.75 1322.9 296.719V465H1259.39V430.078H1258.45C1254.23 437.891 1248.92 444.766 1242.51 450.703C1236.26 456.484 1228.45 461.016 1219.08 464.297C1209.86 467.422 1198.76 468.984 1185.79 468.984ZM1203.14 422.812C1214.86 422.812 1224.86 420.703 1233.14 416.484C1241.58 412.109 1247.98 406.25 1252.36 398.906C1256.89 391.562 1259.15 383.281 1259.15 374.062V348.281C1257.12 349.531 1254.39 350.703 1250.95 351.797C1247.67 352.734 1243.68 353.672 1239 354.609C1234.47 355.547 1229.47 356.484 1224 357.422C1218.68 358.359 1213.14 359.219 1207.36 360C1199.23 361.25 1191.81 363.203 1185.09 365.859C1178.37 368.516 1172.98 372.109 1168.92 376.641C1165.01 381.016 1163.06 386.719 1163.06 393.75C1163.06 399.688 1164.7 404.922 1167.98 409.453C1171.42 413.828 1176.11 417.188 1182.04 419.531C1187.98 421.719 1195.01 422.812 1203.14 422.812ZM1496.24 217.5V269.062H1337.57V217.5H1496.24ZM1380.69 150H1445.61V390.703C1445.61 399.297 1447.33 405.234 1450.77 408.516C1454.21 411.797 1460.69 413.438 1470.22 413.438C1474.13 413.438 1478.66 413.438 1483.82 413.438C1489.13 413.438 1493.27 413.438 1496.24 413.438V465C1492.02 465 1486.32 465 1479.13 465C1472.1 465 1464.99 465 1457.8 465C1431.39 465 1411.94 459.766 1399.44 449.297C1386.94 438.828 1380.69 422.656 1380.69 400.781V150ZM1584.03 465L1507.62 217.5H1575.82L1599.73 307.031C1604.26 324.688 1608.63 342.891 1612.85 361.641C1617.07 380.391 1621.29 398.828 1625.51 416.953H1616.6C1621.13 398.828 1625.67 380.391 1630.2 361.641C1634.88 342.891 1639.57 324.688 1644.26 307.031L1669.1 217.5H1728.17L1752.54 307.031C1757.38 324.688 1762.07 342.891 1766.6 361.641C1771.13 380.391 1775.67 398.828 1780.2 416.953H1771.06C1775.43 398.828 1779.65 380.391 1783.71 361.641C1787.93 342.891 1792.23 324.688 1796.6 307.031L1820.51 217.5H1889.42L1813.01 465H1745.74L1716.45 364.688C1713.63 354.844 1710.9 344.844 1708.24 334.688C1705.59 324.375 1702.93 314.062 1700.28 303.75C1697.78 293.281 1695.12 282.969 1692.31 272.812H1704.96C1702.31 282.969 1699.57 293.281 1696.76 303.75C1694.1 314.062 1691.45 324.375 1688.79 334.688C1686.29 344.844 1683.56 354.844 1680.59 364.688L1650.82 465H1584.03ZM2009.78 470.625C1985.09 470.625 1963.38 465.234 1944.62 454.453C1926.03 443.672 1911.5 428.594 1901.03 409.219C1890.72 389.844 1885.56 367.266 1885.56 341.484C1885.56 315.703 1890.72 293.125 1901.03 273.75C1911.5 254.219 1926.03 239.062 1944.62 228.281C1963.38 217.344 1985.09 211.875 2009.78 211.875C2034.62 211.875 2056.34 217.344 2074.94 228.281C2093.53 239.062 2107.98 254.219 2118.3 273.75C2128.77 293.125 2134 315.703 2134 341.484C2134 367.266 2128.77 389.844 2118.3 409.219C2107.98 428.594 2093.53 443.672 2074.94 454.453C2056.34 465.234 2034.62 470.625 2009.78 470.625ZM2009.78 417.188C2021.66 417.188 2031.97 414.219 2040.72 408.281C2049.47 402.188 2056.27 393.438 2061.11 382.031C2065.95 370.625 2068.38 357.109 2068.38 341.484C2068.38 325.547 2065.95 311.953 2061.11 300.703C2056.27 289.297 2049.47 280.547 2040.72 274.453C2031.97 268.359 2021.66 265.312 2009.78 265.312C1998.06 265.312 1987.75 268.359 1978.84 274.453C1970.09 280.547 1963.3 289.297 1958.45 300.703C1953.61 311.953 1951.19 325.547 1951.19 341.484C1951.19 357.266 1953.61 370.859 1958.45 382.266C1963.3 393.516 1970.09 402.188 1978.84 408.281C1987.75 414.219 1998.06 417.188 2009.78 417.188ZM2271.94 470.625C2247.26 470.625 2225.54 465.234 2206.79 454.453C2188.19 443.672 2173.66 428.594 2163.19 409.219C2152.88 389.844 2147.72 367.266 2147.72 341.484C2147.72 315.703 2152.88 293.125 2163.19 273.75C2173.66 254.219 2188.19 239.062 2206.79 228.281C2225.54 217.344 2247.26 211.875 2271.94 211.875C2296.79 211.875 2318.51 217.344 2337.1 228.281C2355.69 239.062 2370.15 254.219 2380.46 273.75C2390.93 293.125 2396.16 315.703 2396.16 341.484C2396.16 367.266 2390.93 389.844 2380.46 409.219C2370.15 428.594 2355.69 443.672 2337.1 454.453C2318.51 465.234 2296.79 470.625 2271.94 470.625ZM2271.94 417.188C2283.82 417.188 2294.13 414.219 2302.88 408.281C2311.63 402.188 2318.43 393.438 2323.27 382.031C2328.12 370.625 2330.54 357.109 2330.54 341.484C2330.54 325.547 2328.12 311.953 2323.27 300.703C2318.43 289.297 2311.63 280.547 2302.88 274.453C2294.13 268.359 2283.82 265.312 2271.94 265.312C2260.22 265.312 2249.91 268.359 2241.01 274.453C2232.26 280.547 2225.46 289.297 2220.62 300.703C2215.77 311.953 2213.35 325.547 2213.35 341.484C2213.35 357.266 2215.77 370.859 2220.62 382.266C2225.46 393.516 2232.26 402.188 2241.01 408.281C2249.91 414.219 2260.22 417.188 2271.94 417.188ZM2558.48 217.5V269.062H2399.81V217.5H2558.48ZM2442.93 150H2507.86V390.703C2507.86 399.297 2509.57 405.234 2513.01 408.516C2516.45 411.797 2522.93 413.438 2532.47 413.438C2536.37 413.438 2540.9 413.438 2546.06 413.438C2551.37 413.438 2555.51 413.438 2558.48 413.438V465C2554.26 465 2548.56 465 2541.37 465C2534.34 465 2527.23 465 2520.04 465C2493.64 465 2474.18 459.766 2461.68 449.297C2449.18 438.828 2442.93 422.656 2442.93 400.781V150Z" fill="white"/>
+ </svg>
+diff --git a/public/packs/brand-assets/logo_thumbnail.svg b/public/packs/brand-assets/logo_thumbnail.svg
+index d8715e7..c68ad9d 100644
+--- a/public/packs/brand-assets/logo_thumbnail.svg
++++ b/public/packs/brand-assets/logo_thumbnail.svg
+@@ -8,7 +8,7 @@
+   <g clip-path="url(#woot-logo-clip-2342424e23u32098)">
+     <path
+       d="M8 16C12.4183 16 16 12.4183 16 8C16 3.58172 12.4183 0 8 0C3.58172 0 0 3.58172 0 8C0 12.4183 3.58172 16 8 16Z"
+-      fill="#2781F6"
++      fill="#0EA5A0"
+     />
+     <path
+       d="M11.4172 11.4172H7.70831C5.66383 11.4172 4 9.75328 4 7.70828C4 5.66394 5.66383 4 7.70835 4C9.75339 4 11.4172 5.66394 11.4172 7.70828V11.4172Z"
+diff --git a/public/packs/js/sdk.js b/public/packs/js/sdk.js
+index 8e88b96..eaf1af4 100644
+--- a/public/packs/js/sdk.js
++++ b/public/packs/js/sdk.js
+@@ -39,7 +39,7 @@
+ }
+ 
+ .woot-widget-bubble {
+-  background: #1f93ff;
++  background: #0EA5A0;
+   border-radius: 100px;
+   border-width: 0px;
+   bottom: 20px;
+@@ -129,7 +129,7 @@
+ }
+ 
+ .woot-widget-bubble:hover {
+-  background: #1f93ff;
++  background: #0EA5A0;
+   box-shadow: 0 8px 32px rgba(0, 0, 0, .4) !important;
+ }
+ 
+diff --git a/public/packs/manifest.json b/public/packs/manifest.json
+index 78fcc47..8d68aaa 100644
+--- a/public/packs/manifest.json
++++ b/public/packs/manifest.json
+@@ -1,6 +1,6 @@
+ {
+-  "name": "Chatwoot",
+-  "short_name": "Chatwoot",
++  "name": "Chat Fleexa",
++  "short_name": "Chat Fleexa",
+   "icons": [{
+     "src": "\/android-icon-36x36.png",
+     "sizes": "36x36",
+@@ -39,6 +39,6 @@
+    }],
+   "start_url": "/",
+   "display": "standalone",
+-  "background_color": "#1f93ff",
+-  "theme_color": "#1f93ff"
++  "background_color": "#0EA5A0",
++  "theme_color": "#0EA5A0"
+ }
+diff --git a/theme/colors.js b/theme/colors.js
+index b24967e..0662ac3 100644
+--- a/theme/colors.js
++++ b/theme/colors.js
+@@ -15,18 +15,18 @@ const {
+ 
+ export const colors = {
+   woot: {
+-    25: blue.blue2,
+-    50: blue.blue3,
+-    75: blue.blue4,
+-    100: blue.blue5,
+-    200: blue.blue7,
+-    300: blue.blue8,
+-    400: blueDark.blue11,
+-    500: blueDark.blue10,
+-    600: blueDark.blue9,
+-    700: blueDark.blue8,
+-    800: blueDark.blue6,
+-    900: blueDark.blue2,
++    25: '#F2FBFA',
++    50: '#E0F5F4',
++    75: '#C7EFED',
++    100: '#ADE8E4',
++    200: '#5BCAC6',
++    300: '#30BAB5',
++    400: '#14B8B2',
++    500: '#0EA5A0',
++    600: '#0C8A86',
++    700: '#08706D',
++    800: '#074F4D',
++    900: '#0A0F1E',
+   },
+   green: {
+     50: greenDark.green12,
+@@ -226,7 +226,7 @@ const colors = {
+     },
+ 
+     black: '#000000',
+-    brand: '#2781F6',
++    brand: '#0EA5A0',
+     portal: 'var(--dynamic-portal-color)',
+     'portal-soft': 'var(--dynamic-portal-color-soft)',
+     'portal-faint': 'var(--dynamic-portal-color-faint)',

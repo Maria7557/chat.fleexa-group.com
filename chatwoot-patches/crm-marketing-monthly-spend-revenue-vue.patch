@@ -1,0 +1,567 @@
+diff --git a/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue b/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue
+index 52eff47..7b0b7e7 100644
+--- a/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue
++++ b/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue
+@@ -15,6 +15,10 @@ const AED_FORMATTER = new Intl.NumberFormat('en-AE', {
+   currency: 'AED',
+   maximumFractionDigits: 2,
+ });
++const COMPACT_AED_FORMATTER = new Intl.NumberFormat('en-AE', {
++  notation: 'compact',
++  maximumFractionDigits: 1,
++});
+ 
+ const rangeOptions = [
+   { value: '', label: 'All' },
+@@ -56,12 +60,26 @@ const TREND_CHART_INNER_WIDTH =
+ const TREND_CHART_INNER_HEIGHT =
+   TREND_CHART_HEIGHT - TREND_CHART_PADDING.top - TREND_CHART_PADDING.bottom;
+ const TREND_SERIES = [
+-  { key: 'all', label: 'All Leads', color: '#0EA5A0', mutedColor: '#6B8E8B' },
++  { key: 'all', label: 'All Sources', color: '#0EA5A0', mutedColor: '#6B8E8B' },
+   { key: 'google', label: 'Google', color: '#0C8A86', mutedColor: '#8FA8A6' },
+   { key: 'meta', label: 'Meta', color: '#2E6F95', mutedColor: '#8EA6B4' },
+   { key: 'tiktok', label: 'TikTok', color: '#875B7B', mutedColor: '#B6A0AF' },
+ ];
+ const PAID_SOURCE_KEYS = ['google', 'meta', 'tiktok'];
++const MONTHLY_CHART_WIDTH = 720;
++const MONTHLY_CHART_HEIGHT = 260;
++const MONTHLY_CHART_PADDING = {
++  top: 18,
++  right: 24,
++  bottom: 34,
++  left: 58,
++};
++const MONTHLY_CHART_INNER_WIDTH =
++  MONTHLY_CHART_WIDTH - MONTHLY_CHART_PADDING.left - MONTHLY_CHART_PADDING.right;
++const MONTHLY_CHART_INNER_HEIGHT =
++  MONTHLY_CHART_HEIGHT - MONTHLY_CHART_PADDING.top - MONTHLY_CHART_PADDING.bottom;
++const MONTHLY_SPEND_COLOR = '#0EA5A0';
++const MONTHLY_REVENUE_COLOR = '#0F1923';
+ 
+ const stages = ref([]);
+ const deals = ref([]);
+@@ -85,6 +103,8 @@ const manualSpendError = ref('');
+ const editingManualSpendEntry = ref(null);
+ const selectedTrendSeriesKey = ref('all');
+ const activeTrendIndex = ref(null);
++const selectedMonthlySourceKey = ref('all');
++const activeMonthlyIndex = ref(null);
+ 
+ const defaultManualSpendForm = () => ({
+   source_label: '',
+@@ -108,6 +128,8 @@ const amountValue = value => {
+ 
+ const formatAmount = value => AED_FORMATTER.format(amountValue(value));
+ 
++const formatCompactAmount = value => `AED ${COMPACT_AED_FORMATTER.format(amountValue(value))}`;
++
+ const formatNumber = value => new Intl.NumberFormat('en-US').format(value || 0);
+ 
+ const formatDate = value => {
+@@ -229,7 +251,16 @@ const stageType = stage => {
+ 
+   if (slug === 'reserved' || name === 'бронь') return 'reserved';
+   if (slug === 'rental' || name === 'в аренде') return 'rental';
+-  if (slug === 'closed_won' || name === 'завершено') return 'closed_won';
++  if (
++    slug === 'closed_won' ||
++    slug === 'done' ||
++    slug === 'completed' ||
++    name === 'завершено' ||
++    name === 'done' ||
++    name === 'completed'
++  ) {
++    return 'closed_won';
++  }
+   if (stageIsLost(stage)) return 'closed_lost';
+   return '';
+ };
+@@ -481,6 +512,22 @@ const classifyTrafficSource = deal => {
+   return 'unknown';
+ };
+ 
++const classifySpendSource = row => {
++  const values = [
++    row?.source_system,
++    row?.source_key,
++    row?.source_label,
++    row?.platform,
++  ];
++
++  for (const value of values) {
++    const sourceKey = paidSourceKeyFromText(value);
++    if (PAID_SOURCE_KEYS.includes(sourceKey)) return sourceKey;
++  }
++
++  return 'unknown';
++};
++
+ const normalizeWidgetVisible = value => {
+   if (typeof value === 'boolean') return value;
+   if (value === 'true') return true;
+@@ -600,23 +647,167 @@ const kpiCards = computed(() => visibleWidgetKeys.value.map(key => metricRegistr
+ 
+ const allMetrics = computed(() => KPI_WIDGET_KEYS.map(key => metricRegistry.value[key]).filter(Boolean));
+ 
+-const maxMonthlySpend = computed(() => {
+-  return monthlySpendRows.value.reduce((max, row) => Math.max(max, amountValue(row.spend_aed)), 0);
++const monthKeyFromValue = value => {
++  const dateKey = trendDateKeyFromValue(value);
++  return dateKey ? dateKey.slice(0, 7) : '';
++};
++
++const monthlySourceMatches = (sourceKey, selectedKey = selectedMonthlySourceKey.value) => {
++  return selectedKey === 'all' || sourceKey === selectedKey;
++};
++
++const monthlyChartRows = computed(() => {
++  const rowsByMonth = {};
++  const ensureMonth = month => {
++    if (!month) return null;
++    if (!rowsByMonth[month]) {
++      rowsByMonth[month] = {
++        month,
++        label: formatMonth(month),
++        spend: 0,
++        revenue: 0,
++      };
++    }
++    return rowsByMonth[month];
++  };
++
++  monthlySpendRows.value.forEach(row => {
++    const sourceKey = classifySpendSource(row);
++    if (!monthlySourceMatches(sourceKey)) return;
++
++    const monthlyRow = ensureMonth(row.month);
++    if (monthlyRow) monthlyRow.spend += amountValue(row.spend_aed);
++  });
++
++  deals.value.forEach(deal => {
++    if (!SUCCESSFUL_STAGE_TYPES.includes(dealStageType(deal))) return;
++
++    const sourceKey = classifyTrafficSource(deal);
++    if (!monthlySourceMatches(sourceKey)) return;
++
++    const monthlyRow = ensureMonth(monthKeyFromValue(deal.created_at));
++    if (monthlyRow) monthlyRow.revenue += amountValue(deal.amount);
++  });
++
++  return Object.values(rowsByMonth)
++    .filter(row => row.spend > 0 || row.revenue > 0)
++    .sort((first, second) => first.month.localeCompare(second.month));
++});
++
++const maxMonthlyChartValue = computed(() => {
++  const maxValue = monthlyChartRows.value.reduce((max, row) => {
++    return Math.max(max, row.spend, row.revenue);
++  }, 0);
++
++  return Math.max(maxValue, 1);
++});
++
++const totalMonthlySpend = computed(() => {
++  return monthlyChartRows.value.reduce((sum, row) => sum + row.spend, 0);
++});
++
++const totalMonthlyRevenue = computed(() => {
++  return monthlyChartRows.value.reduce((sum, row) => sum + row.revenue, 0);
++});
++
++const selectedMonthlySource = computed(() => {
++  return (
++    TREND_SERIES.find(series => series.key === selectedMonthlySourceKey.value) ||
++    TREND_SERIES[0]
++  );
+ });
+ 
+-const monthlySpendSummary = computed(() => {
+-  return monthlySpendRows.value.map(row => {
+-    const spend = amountValue(row.spend_aed);
+-    const share = maxMonthlySpend.value ? (spend / maxMonthlySpend.value) * 100 : 0;
++const selectedMonthlySourceLabel = computed(() => selectedMonthlySource.value?.label || 'All Sources');
++
++const monthlyPointY = value => {
++  return MONTHLY_CHART_PADDING.top +
++    MONTHLY_CHART_INNER_HEIGHT -
++    (MONTHLY_CHART_INNER_HEIGHT * Number(value || 0)) / maxMonthlyChartValue.value;
++};
++
++const monthlyBarMetrics = computed(() => {
++  const rowCount = monthlyChartRows.value.length;
++  if (!rowCount) return [];
++
++  const bandWidth = MONTHLY_CHART_INNER_WIDTH / rowCount;
++  const barWidth = Math.max(5, Math.min(18, bandWidth * 0.22));
++  const gap = Math.max(4, Math.min(8, bandWidth * 0.08));
++  const baselineY = MONTHLY_CHART_HEIGHT - MONTHLY_CHART_PADDING.bottom;
++
++  return monthlyChartRows.value.map((row, index) => {
++    const centerX = MONTHLY_CHART_PADDING.left + bandWidth * (index + 0.5);
++    const spendY = monthlyPointY(row.spend);
++    const revenueY = monthlyPointY(row.revenue);
+ 
+     return {
+       ...row,
+-      spend,
+-      barWidth: Math.max(share, spend > 0 ? 4 : 0),
++      index,
++      centerX,
++      spendX: centerX - gap / 2 - barWidth,
++      revenueX: centerX + gap / 2,
++      spendY,
++      revenueY,
++      spendHeight: Math.max(0, baselineY - spendY),
++      revenueHeight: Math.max(0, baselineY - revenueY),
++      barWidth,
++      baselineY,
+     };
+   });
+ });
+ 
++const monthlyGridLines = computed(() => {
++  return [1, 0.5, 0].map(ratio => {
++    const value = maxMonthlyChartValue.value * ratio;
++    return {
++      key: ratio,
++      y: monthlyPointY(value),
++      label: formatCompactAmount(value),
++    };
++  });
++});
++
++const monthlyXAxisLabels = computed(() => {
++  const bars = monthlyBarMetrics.value;
++  if (!bars.length) return [];
++  if (bars.length <= 6) {
++    return bars.map(row => ({
++      key: row.month,
++      label: row.label,
++      x: row.centerX,
++    }));
++  }
++
++  const lastIndex = bars.length - 1;
++  const indexes = [...new Set([0, Math.floor(lastIndex / 2), lastIndex])];
++  return indexes.map(index => ({
++    key: bars[index].month,
++    label: bars[index].label,
++    x: bars[index].centerX,
++  }));
++});
++
++const activeMonthlyRow = computed(() => {
++  if (activeMonthlyIndex.value === null) return null;
++  return monthlyBarMetrics.value[activeMonthlyIndex.value] || null;
++});
++
++const monthlyTooltipStyle = computed(() => {
++  const x = activeMonthlyRow.value?.centerX || MONTHLY_CHART_WIDTH / 2;
++  const anchor = x > MONTHLY_CHART_WIDTH * 0.72 ? '-100%' : '-50%';
++
++  return {
++    left: `${(x / MONTHLY_CHART_WIDTH) * 100}%`,
++    transform: `translateX(${anchor})`,
++  };
++});
++
++const isMonthlySourceSelected = key => selectedMonthlySourceKey.value === key;
++
++const selectMonthlySource = key => {
++  selectedMonthlySourceKey.value = key;
++  activeMonthlyIndex.value = null;
++};
++
+ const draftHiddenMetrics = computed(() => {
+   return allMetrics.value.filter(metric => !draftWidgetKeys.value.includes(metric.key));
+ });
+@@ -964,7 +1155,7 @@ const selectedTrendSeries = computed(() => {
+   );
+ });
+ 
+-const selectedTrendSeriesLabel = computed(() => selectedTrendSeries.value?.label || 'All Leads');
++const selectedTrendSeriesLabel = computed(() => selectedTrendSeries.value?.label || 'All Sources');
+ const selectedTrendSeriesColor = computed(() => selectedTrendSeries.value?.color || '#0EA5A0');
+ const selectedTrendAreaPath = computed(() => selectedTrendSeries.value?.areaPath || '');
+ 
+@@ -1194,6 +1385,25 @@ const clearActiveTrendPoint = () => {
+   activeTrendIndex.value = null;
+ };
+ 
++const setActiveMonthlyPoint = event => {
++  if (!monthlyBarMetrics.value.length) return;
++
++  const bounds = event.currentTarget.getBoundingClientRect();
++  const relativeX = ((event.clientX - bounds.left) / bounds.width) * MONTHLY_CHART_WIDTH;
++  const clampedX = Math.min(
++    Math.max(relativeX, MONTHLY_CHART_PADDING.left),
++    MONTHLY_CHART_WIDTH - MONTHLY_CHART_PADDING.right
++  );
++  const ratio = (clampedX - MONTHLY_CHART_PADDING.left) / MONTHLY_CHART_INNER_WIDTH;
++  const index = Math.floor(ratio * monthlyBarMetrics.value.length);
++
++  activeMonthlyIndex.value = Math.min(Math.max(index, 0), monthlyBarMetrics.value.length - 1);
++};
++
++const clearActiveMonthlyPoint = () => {
++  activeMonthlyIndex.value = null;
++};
++
+ onMounted(() => {
+   fetchDashboardConfig();
+   refreshMarketingAnalytics();
+@@ -1340,48 +1550,227 @@ onMounted(() => {
+           </button>
+         </div>
+ 
+-        <section class="grid gap-4 rounded-lg border border-n-weak bg-n-solid-1 p-5">
+-          <div class="flex items-center justify-between gap-3">
++        <section class="grid gap-4 rounded-lg border border-n-weak bg-n-solid-1 p-5 shadow-[0_12px_32px_rgba(15,25,35,0.05)]">
++          <div class="grid gap-4 xl:grid-cols-[1fr_auto] xl:items-start">
+             <div>
+-              <h2 class="text-sm font-semibold text-n-slate-12">
+-                Spend by Month
+-              </h2>
++              <div class="flex flex-wrap items-center gap-2">
++                <h2 class="text-sm font-semibold text-n-slate-12">
++                  Spend & Revenue by Month
++                </h2>
++                <span class="rounded-full bg-[#E0F5F4] px-2 py-0.5 text-[10px] font-semibold text-[#0C8A86]">
++                  {{ selectedMonthlySourceLabel }}
++                </span>
++              </div>
+               <div class="mt-1 text-xs text-n-slate-10">
+-                Normalized daily spend grouped by month
++                Monthly AED spend and successful deal revenue
++              </div>
++              <div class="mt-3 grid gap-2 sm:grid-cols-2">
++                <div class="rounded-lg border border-[#D8EEEC] bg-[#F8FBFA] px-3 py-2">
++                  <div class="text-[10px] font-semibold uppercase text-[#0C8A86]">
++                    Spend
++                  </div>
++                  <div class="mt-1 text-sm font-semibold text-n-slate-12">
++                    {{ formatAmount(totalMonthlySpend) }}
++                  </div>
++                </div>
++                <div class="rounded-lg border border-n-weak bg-n-background px-3 py-2">
++                  <div class="text-[10px] font-semibold uppercase text-n-slate-10">
++                    Revenue
++                  </div>
++                  <div class="mt-1 text-sm font-semibold text-n-slate-12">
++                    {{ formatAmount(totalMonthlyRevenue) }}
++                  </div>
++                </div>
+               </div>
+             </div>
+-            <span class="text-xs text-n-slate-10">
+-              {{ monthlySpendSummary.length }} months
+-            </span>
++
++            <div class="flex flex-wrap gap-2 xl:justify-end">
++              <button
++                v-for="series in TREND_SERIES"
++                :key="series.key"
++                type="button"
++                class="inline-flex h-8 items-center gap-2 rounded-full border px-3 text-xs font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B7EDEA] focus-visible:ring-offset-1"
++                :class="isMonthlySourceSelected(series.key)
++                  ? 'border-[#0EA5A0] bg-[#E0F5F4] text-[#0F1923] shadow-sm'
++                  : 'border-n-weak bg-n-alpha-1 text-n-slate-10 hover:border-[#C7EFED] hover:bg-[#F2FBFA] hover:text-n-slate-12'"
++                :aria-pressed="isMonthlySourceSelected(series.key)"
++                @click="selectMonthlySource(series.key)"
++              >
++                <span
++                  class="h-2 w-2 rounded-full"
++                  :style="{ backgroundColor: isMonthlySourceSelected(series.key) ? series.color : series.mutedColor }"
++                />
++                {{ series.label }}
++              </button>
++            </div>
+           </div>
+ 
+-          <div v-if="monthlySpendSummary.length" class="grid gap-3">
++          <div
++            v-if="monthlyBarMetrics.length"
++            class="relative min-h-[280px] overflow-hidden rounded-xl border border-[#D8EEEC] bg-gradient-to-b from-white to-[#F8FBFA] p-4 shadow-inner"
++          >
++            <div class="mb-2 flex flex-wrap items-center gap-4 text-[11px] font-medium text-n-slate-10">
++              <span class="inline-flex items-center gap-2">
++                <span
++                  class="h-2 w-2 rounded-sm"
++                  :style="{ backgroundColor: MONTHLY_SPEND_COLOR }"
++                />
++                Spend
++              </span>
++              <span class="inline-flex items-center gap-2">
++                <span
++                  class="h-2 w-2 rounded-sm"
++                  :style="{ backgroundColor: MONTHLY_REVENUE_COLOR }"
++                />
++                Revenue
++              </span>
++            </div>
++
+             <div
+-              v-for="row in monthlySpendSummary"
+-              :key="row.month"
+-              class="grid gap-3 rounded-lg border border-n-weak bg-n-background p-3 md:grid-cols-[160px_1fr_140px]"
++              v-if="activeMonthlyRow"
++              class="pointer-events-none absolute top-12 z-10 hidden min-w-[210px] rounded-lg border border-[#D8EEEC] bg-white/95 px-3 py-2 text-xs shadow-[0_16px_36px_rgba(15,25,35,0.14)] backdrop-blur sm:block"
++              :style="monthlyTooltipStyle"
+             >
+-              <div class="text-sm font-medium text-n-slate-12">
+-                {{ formatMonth(row.month) }}
++              <div class="mb-2 flex items-center justify-between gap-4">
++                <span class="font-semibold text-n-slate-12">
++                  {{ activeMonthlyRow.label }}
++                </span>
++                <span class="rounded-full bg-[#E0F5F4] px-2 py-0.5 text-[10px] font-semibold text-[#0C8A86]">
++                  {{ selectedMonthlySourceLabel }}
++                </span>
+               </div>
+-              <div class="flex min-w-0 items-center">
+-                <div class="h-2 min-w-0 flex-1 overflow-hidden rounded-full bg-n-alpha-2">
+-                  <div
+-                    class="h-full rounded-full bg-n-brand"
+-                    :style="{ width: `${row.barWidth}%` }"
+-                  />
++              <div class="grid gap-1">
++                <div class="flex items-center justify-between gap-4 text-n-slate-11">
++                  <span class="inline-flex items-center gap-2">
++                    <span
++                      class="h-2 w-2 rounded-sm"
++                      :style="{ backgroundColor: MONTHLY_SPEND_COLOR }"
++                    />
++                    Spend
++                  </span>
++                  <span class="font-semibold text-n-slate-12">
++                    {{ formatAmount(activeMonthlyRow.spend) }}
++                  </span>
++                </div>
++                <div class="flex items-center justify-between gap-4 text-n-slate-11">
++                  <span class="inline-flex items-center gap-2">
++                    <span
++                      class="h-2 w-2 rounded-sm"
++                      :style="{ backgroundColor: MONTHLY_REVENUE_COLOR }"
++                    />
++                    Revenue
++                  </span>
++                  <span class="font-semibold text-n-slate-12">
++                    {{ formatAmount(activeMonthlyRow.revenue) }}
++                  </span>
+                 </div>
+-              </div>
+-              <div class="text-left text-sm font-semibold text-n-slate-12 md:text-right">
+-                {{ formatAmount(row.spend) }}
+               </div>
+             </div>
++
++            <svg
++              class="h-[260px] w-full overflow-visible"
++              role="img"
++              aria-label="Monthly spend and revenue by source"
++              :viewBox="`0 0 ${MONTHLY_CHART_WIDTH} ${MONTHLY_CHART_HEIGHT}`"
++              preserveAspectRatio="none"
++              @mousemove="setActiveMonthlyPoint"
++              @mouseleave="clearActiveMonthlyPoint"
++            >
++              <g>
++                <line
++                  v-for="line in monthlyGridLines"
++                  :key="line.key"
++                  :x1="MONTHLY_CHART_PADDING.left"
++                  :x2="MONTHLY_CHART_WIDTH - MONTHLY_CHART_PADDING.right"
++                  :y1="line.y"
++                  :y2="line.y"
++                  stroke="#DDEBEA"
++                  stroke-width="1"
++                />
++                <text
++                  v-for="line in monthlyGridLines"
++                  :key="`${line.key}-label`"
++                  :x="MONTHLY_CHART_PADDING.left - 10"
++                  :y="line.y + 4"
++                  class="fill-n-slate-9 text-[9px] font-medium"
++                  text-anchor="end"
++                >
++                  {{ line.label }}
++                </text>
++              </g>
++
++              <g>
++                <text
++                  v-for="label in monthlyXAxisLabels"
++                  :key="label.key"
++                  :x="label.x"
++                  :y="MONTHLY_CHART_HEIGHT - 9"
++                  class="fill-n-slate-9 text-[9px] font-medium"
++                  text-anchor="middle"
++                >
++                  {{ label.label }}
++                </text>
++              </g>
++
++              <g>
++                <rect
++                  v-for="row in monthlyBarMetrics"
++                  :key="`${row.month}-spend`"
++                  :x="row.spendX"
++                  :y="row.spendY"
++                  :width="row.barWidth"
++                  :height="row.spendHeight"
++                  rx="4"
++                  :fill="MONTHLY_SPEND_COLOR"
++                  fill-opacity="0.88"
++                />
++                <rect
++                  v-for="row in monthlyBarMetrics"
++                  :key="`${row.month}-revenue`"
++                  :x="row.revenueX"
++                  :y="row.revenueY"
++                  :width="row.barWidth"
++                  :height="row.revenueHeight"
++                  rx="4"
++                  :fill="MONTHLY_REVENUE_COLOR"
++                  fill-opacity="0.86"
++                />
++              </g>
++
++              <g v-if="activeMonthlyRow">
++                <rect
++                  :x="activeMonthlyRow.centerX - activeMonthlyRow.barWidth - 10"
++                  :y="MONTHLY_CHART_PADDING.top"
++                  :width="activeMonthlyRow.barWidth * 2 + 20"
++                  :height="MONTHLY_CHART_INNER_HEIGHT"
++                  rx="10"
++                  fill="#E0F5F4"
++                  fill-opacity="0.28"
++                />
++                <rect
++                  :x="activeMonthlyRow.spendX"
++                  :y="activeMonthlyRow.spendY"
++                  :width="activeMonthlyRow.barWidth"
++                  :height="activeMonthlyRow.spendHeight"
++                  rx="4"
++                  :fill="MONTHLY_SPEND_COLOR"
++                />
++                <rect
++                  :x="activeMonthlyRow.revenueX"
++                  :y="activeMonthlyRow.revenueY"
++                  :width="activeMonthlyRow.barWidth"
++                  :height="activeMonthlyRow.revenueHeight"
++                  rx="4"
++                  :fill="MONTHLY_REVENUE_COLOR"
++                />
++              </g>
++            </svg>
+           </div>
+ 
+           <div
+             v-else
+-            class="grid min-h-[96px] place-items-center rounded-lg border border-dashed border-n-weak bg-n-background px-4 text-center text-sm text-n-slate-10"
++            class="grid min-h-[280px] place-items-center rounded-lg border border-dashed border-n-weak bg-n-background px-4 text-center text-sm text-n-slate-10"
+           >
+-            No spend in selected period
++            No spend or successful revenue in selected period
+           </div>
+         </section>

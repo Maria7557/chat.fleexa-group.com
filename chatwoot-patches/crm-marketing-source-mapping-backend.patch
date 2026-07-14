@@ -1,0 +1,258 @@
+diff --git a/app/models/marketing_source_mapping.rb b/app/models/marketing_source_mapping.rb
+new file mode 100644
+index 0000000..2a302d1
+--- /dev/null
++++ b/app/models/marketing_source_mapping.rb
+@@ -0,0 +1,26 @@
++class MarketingSourceMapping < ApplicationRecord
++  self.table_name = 'marketing_source_mappings'
++
++  belongs_to :account
++
++  scope :active, -> { where(is_active: true) }
++  scope :for_account, ->(account_id) { where(account_id: account_id) }
++  scope :for_platform, ->(platform) { where(platform: platform) }
++
++  before_validation :normalize_fields
++
++  validates :platform, :source_key, :source_label, presence: true
++  validates :is_active, inclusion: { in: [true, false] }
++
++  private
++
++  def normalize_fields
++    self.platform = platform.to_s.strip.presence
++    self.ad_account_id = ad_account_id.to_s.strip.presence
++    self.campaign_id = campaign_id.to_s.strip.presence
++    self.source_key = source_key.to_s.strip.presence
++    self.source_label = source_label.to_s.strip.presence
++    self.entry_point_key = entry_point_key.to_s.strip.presence
++    self.is_active = true if is_active.nil?
++  end
++end
+diff --git a/app/services/crm/marketing_spend/google_ads_airbyte_normalizer.rb b/app/services/crm/marketing_spend/google_ads_airbyte_normalizer.rb
+index 9a952a4..aeeb342 100644
+--- a/app/services/crm/marketing_spend/google_ads_airbyte_normalizer.rb
++++ b/app/services/crm/marketing_spend/google_ads_airbyte_normalizer.rb
+@@ -89,14 +89,15 @@ module Crm
+ 
+       def normalized_attributes(row)
+         row_is_aed = aed?(row.currency)
++        mapping = source_mapping(row)
+ 
+         {
+           account_id: account_id,
+           spend_date: row.spend_date,
+           import_type: MarketingSpendDaily::IMPORT_TYPE_AIRBYTE,
+           source_system: MarketingSpendDaily::SOURCE_SYSTEM_GOOGLE_ADS,
+-          source_key: SOURCE_KEY,
+-          source_label: SOURCE_LABEL,
++          source_key: mapping.source_key,
++          source_label: mapping.source_label,
+           platform: MarketingSpendDaily::SOURCE_SYSTEM_GOOGLE_ADS,
+           vendor_name: SOURCE_LABEL,
+           ad_account_id: row.ad_account_id,
+@@ -116,6 +117,15 @@ module Crm
+       def aed?(currency)
+         currency.to_s.casecmp('AED').zero?
+       end
++
++      def source_mapping(row)
++        Crm::MarketingSpend::SourceMappingResolver.resolve(
++          account_id: account_id,
++          platform: MarketingSpendDaily::SOURCE_SYSTEM_GOOGLE_ADS,
++          ad_account_id: row.ad_account_id,
++          campaign_id: row.campaign_id
++        )
++      end
+     end
+   end
+ end
+diff --git a/app/services/crm/marketing_spend/meta_ads_airbyte_normalizer.rb b/app/services/crm/marketing_spend/meta_ads_airbyte_normalizer.rb
+index 88460f8..f71c479 100644
+--- a/app/services/crm/marketing_spend/meta_ads_airbyte_normalizer.rb
++++ b/app/services/crm/marketing_spend/meta_ads_airbyte_normalizer.rb
+@@ -89,14 +89,15 @@ module Crm
+ 
+       def normalized_attributes(row)
+         row_is_aed = aed?(row.currency)
++        mapping = source_mapping(row)
+ 
+         {
+           account_id: account_id,
+           spend_date: row.spend_date,
+           import_type: MarketingSpendDaily::IMPORT_TYPE_AIRBYTE,
+           source_system: MarketingSpendDaily::SOURCE_SYSTEM_META_ADS,
+-          source_key: SOURCE_KEY,
+-          source_label: SOURCE_LABEL,
++          source_key: mapping.source_key,
++          source_label: mapping.source_label,
+           platform: MarketingSpendDaily::SOURCE_SYSTEM_META_ADS,
+           vendor_name: SOURCE_LABEL,
+           ad_account_id: row.ad_account_id,
+@@ -116,6 +117,15 @@ module Crm
+       def aed?(currency)
+         currency.to_s.casecmp('AED').zero?
+       end
++
++      def source_mapping(row)
++        Crm::MarketingSpend::SourceMappingResolver.resolve(
++          account_id: account_id,
++          platform: MarketingSpendDaily::SOURCE_SYSTEM_META_ADS,
++          ad_account_id: row.ad_account_id,
++          campaign_id: row.campaign_id
++        )
++      end
+     end
+   end
+ end
+diff --git a/app/services/crm/marketing_spend/source_mapping_resolver.rb b/app/services/crm/marketing_spend/source_mapping_resolver.rb
+new file mode 100644
+index 0000000..2961cf4
+--- /dev/null
++++ b/app/services/crm/marketing_spend/source_mapping_resolver.rb
+@@ -0,0 +1,92 @@
++module Crm
++  module MarketingSpend
++    class SourceMappingResolver
++      DEFAULTS = {
++        MarketingSpendDaily::SOURCE_SYSTEM_GOOGLE_ADS => {
++          source_key: MarketingSpendDaily::SOURCE_SYSTEM_GOOGLE_ADS,
++          source_label: 'Google Ads'
++        },
++        MarketingSpendDaily::SOURCE_SYSTEM_META_ADS => {
++          source_key: MarketingSpendDaily::SOURCE_SYSTEM_META_ADS,
++          source_label: 'Meta Ads'
++        }
++      }.freeze
++
++      Result = Struct.new(:source_key, :source_label, :entry_point_key, keyword_init: true)
++
++      def self.resolve(account_id:, platform:, ad_account_id:, campaign_id:)
++        new(
++          account_id: account_id,
++          platform: platform,
++          ad_account_id: ad_account_id,
++          campaign_id: campaign_id
++        ).resolve
++      end
++
++      def initialize(account_id:, platform:, ad_account_id:, campaign_id:)
++        @account_id = account_id
++        @platform = platform.to_s
++        @ad_account_id = ad_account_id.to_s.presence
++        @campaign_id = campaign_id.to_s.presence
++      end
++
++      def resolve
++        mapping = campaign_mapping || ad_account_mapping || platform_mapping
++        return result_for_mapping(mapping) if mapping.present?
++
++        default_result
++      end
++
++      private
++
++      attr_reader :account_id, :platform, :ad_account_id, :campaign_id
++
++      def mapping_scope
++        return MarketingSourceMapping.none unless MarketingSourceMapping.table_exists?
++
++        MarketingSourceMapping.active
++                              .for_account(account_id)
++                              .for_platform(platform)
++                              .order(id: :desc)
++      end
++
++      def campaign_mapping
++        return if campaign_id.blank?
++
++        if ad_account_id.present?
++          exact_mapping = mapping_scope.where(ad_account_id: ad_account_id, campaign_id: campaign_id).first
++          return exact_mapping if exact_mapping.present?
++        end
++
++        mapping_scope.where(ad_account_id: nil, campaign_id: campaign_id).first
++      end
++
++      def ad_account_mapping
++        return if ad_account_id.blank?
++
++        mapping_scope.where(ad_account_id: ad_account_id, campaign_id: nil).first
++      end
++
++      def platform_mapping
++        mapping_scope.where(ad_account_id: nil, campaign_id: nil).first
++      end
++
++      def result_for_mapping(mapping)
++        Result.new(
++          source_key: mapping.source_key,
++          source_label: mapping.source_label,
++          entry_point_key: mapping.entry_point_key
++        )
++      end
++
++      def default_result
++        default = DEFAULTS.fetch(platform, { source_key: platform, source_label: platform.presence || 'Unknown' })
++        Result.new(
++          source_key: default[:source_key],
++          source_label: default[:source_label],
++          entry_point_key: nil
++        )
++      end
++    end
++  end
++end
+diff --git a/lib/tasks/crm_marketing_spend.rake b/lib/tasks/crm_marketing_spend.rake
+index b58682b..9dd6460 100644
+--- a/lib/tasks/crm_marketing_spend.rake
++++ b/lib/tasks/crm_marketing_spend.rake
+@@ -247,6 +247,47 @@ namespace :crm do
+       puts "normalized_rows=#{result.normalized_rows}"
+     end
+ 
++    desc 'Seed Stage 2C source mappings for local verification'
++    task :seed_source_mappings, [:account_id] => :environment do |_task, args|
++      account_id = args[:account_id].presence || ENV.fetch('ACCOUNT_ID', nil)
++      abort 'Usage: ACCOUNT_ID=1 rake crm:marketing_spend:seed_source_mappings' if account_id.blank?
++
++      rows = [
++        {
++          platform: MarketingSpendDaily::SOURCE_SYSTEM_GOOGLE_ADS,
++          ad_account_id: 'ga-act-1',
++          campaign_id: 'ga-campaign-search',
++          source_key: 'google_search_leads',
++          source_label: 'Google Search Leads',
++          entry_point_key: 'search'
++        },
++        {
++          platform: MarketingSpendDaily::SOURCE_SYSTEM_META_ADS,
++          ad_account_id: 'meta-act-1',
++          campaign_id: nil,
++          source_key: 'meta_paid_social',
++          source_label: 'Meta Paid Social',
++          entry_point_key: 'lead_forms'
++        }
++      ]
++
++      rows.each do |attributes|
++        mapping = MarketingSourceMapping.where(
++          account_id: account_id,
++          platform: attributes[:platform],
++          ad_account_id: attributes[:ad_account_id],
++          campaign_id: attributes[:campaign_id]
++        ).first_or_initialize
++        mapping.assign_attributes(attributes.merge(account_id: account_id, is_active: true))
++        mapping.save!
++      end
++
++      scope = MarketingSourceMapping.active.for_account(account_id)
++      puts "active_mappings=#{scope.count}"
++      puts "google_mappings=#{scope.for_platform(MarketingSpendDaily::SOURCE_SYSTEM_GOOGLE_ADS).count}"
++      puts "meta_mappings=#{scope.for_platform(MarketingSpendDaily::SOURCE_SYSTEM_META_ADS).count}"
++    end
++
+     def duplicate_google_ads_grains(scope)
+       duplicate_airbyte_grains(scope)
+     end

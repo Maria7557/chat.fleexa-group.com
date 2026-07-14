@@ -1,0 +1,457 @@
+diff --git a/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue b/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue
+index 9c3a064..52eff47 100644
+--- a/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue
++++ b/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue
+@@ -44,22 +44,22 @@ const KPI_WIDGET_POSITION = KPI_WIDGET_KEYS.reduce((memo, key, index) => {
+ }, {});
+ 
+ const TREND_CHART_WIDTH = 720;
+-const TREND_CHART_HEIGHT = 260;
++const TREND_CHART_HEIGHT = 240;
+ const TREND_CHART_PADDING = {
+   top: 18,
+-  right: 18,
+-  bottom: 34,
+-  left: 42,
++  right: 24,
++  bottom: 30,
++  left: 36,
+ };
+ const TREND_CHART_INNER_WIDTH =
+   TREND_CHART_WIDTH - TREND_CHART_PADDING.left - TREND_CHART_PADDING.right;
+ const TREND_CHART_INNER_HEIGHT =
+   TREND_CHART_HEIGHT - TREND_CHART_PADDING.top - TREND_CHART_PADDING.bottom;
+ const TREND_SERIES = [
+-  { key: 'all', label: 'All Leads', color: '#6B7280', width: 3 },
+-  { key: 'google', label: 'Google', color: '#2563EB', width: 2 },
+-  { key: 'meta', label: 'Meta', color: '#0EA5E9', width: 2 },
+-  { key: 'tiktok', label: 'TikTok', color: '#DB2777', width: 2 },
++  { key: 'all', label: 'All Leads', color: '#0EA5A0', mutedColor: '#6B8E8B' },
++  { key: 'google', label: 'Google', color: '#0C8A86', mutedColor: '#8FA8A6' },
++  { key: 'meta', label: 'Meta', color: '#2E6F95', mutedColor: '#8EA6B4' },
++  { key: 'tiktok', label: 'TikTok', color: '#875B7B', mutedColor: '#B6A0AF' },
+ ];
+ const PAID_SOURCE_KEYS = ['google', 'meta', 'tiktok'];
+ 
+@@ -83,12 +83,7 @@ const isManualSpendDrawerOpen = ref(false);
+ const isSavingManualSpend = ref(false);
+ const manualSpendError = ref('');
+ const editingManualSpendEntry = ref(null);
+-const visibleTrendSeries = ref({
+-  all: true,
+-  google: true,
+-  meta: true,
+-  tiktok: true,
+-});
++const selectedTrendSeriesKey = ref('all');
+ const activeTrendIndex = ref(null);
+ 
+ const defaultManualSpendForm = () => ({
+@@ -862,16 +857,21 @@ const leadTrendRows = computed(() => {
+ });
+ 
+ const maxTrendValue = computed(() => {
+-  const visibleKeys = TREND_SERIES
+-    .filter(series => visibleTrendSeries.value[series.key] !== false)
+-    .map(series => series.key);
+   const maxValue = leadTrendRows.value.reduce((max, row) => {
+-    return Math.max(max, ...visibleKeys.map(key => row[key] || 0));
++    return Math.max(max, ...TREND_SERIES.map(series => row[series.key] || 0));
+   }, 0);
+ 
+   return Math.max(maxValue, 1);
+ });
+ 
++const totalLeadTrendCount = computed(() => {
++  return leadTrendRows.value.reduce((sum, row) => sum + (row.all || 0), 0);
++});
++
++const peakLeadTrendCount = computed(() => {
++  return leadTrendRows.value.reduce((peak, row) => Math.max(peak, row.all || 0), 0);
++});
++
+ const trendPointX = (index, total) => {
+   if (total <= 1) {
+     return TREND_CHART_PADDING.left + TREND_CHART_INNER_WIDTH / 2;
+@@ -887,9 +887,54 @@ const trendPointY = value => {
+ };
+ 
+ const linePathFromPoints = points => {
+-  return points
+-    .map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x.toFixed(2)} ${point.y.toFixed(2)}`)
+-    .join(' ');
++  if (!points.length) return '';
++  if (points.length === 1) {
++    const point = points[0];
++    return `M ${point.x.toFixed(2)} ${point.y.toFixed(2)}`;
++  }
++
++  const [firstPoint, ...remainingPoints] = points;
++  const path = [`M ${firstPoint.x.toFixed(2)} ${firstPoint.y.toFixed(2)}`];
++
++  remainingPoints.forEach((point, index) => {
++    const previous = points[index];
++    const midX = (previous.x + point.x) / 2;
++    path.push(
++      `C ${midX.toFixed(2)} ${previous.y.toFixed(2)} ${midX.toFixed(2)} ${point.y.toFixed(2)} ${point.x.toFixed(2)} ${point.y.toFixed(2)}`
++    );
++  });
++
++  return path.join(' ');
++};
++
++const areaPathFromPoints = points => {
++  if (!points.length) return '';
++
++  const baselineY = TREND_CHART_HEIGHT - TREND_CHART_PADDING.bottom;
++
++  if (points.length === 1) {
++    const point = points[0];
++    const leftX = Math.max(TREND_CHART_PADDING.left, point.x - 14);
++    const rightX = Math.min(TREND_CHART_WIDTH - TREND_CHART_PADDING.right, point.x + 14);
++
++    return [
++      `M ${leftX.toFixed(2)} ${baselineY.toFixed(2)}`,
++      `L ${leftX.toFixed(2)} ${point.y.toFixed(2)}`,
++      `L ${rightX.toFixed(2)} ${point.y.toFixed(2)}`,
++      `L ${rightX.toFixed(2)} ${baselineY.toFixed(2)}`,
++      'Z',
++    ].join(' ');
++  }
++
++  const firstPoint = points[0];
++  const lastPoint = points[points.length - 1];
++
++  return [
++    linePathFromPoints(points),
++    `L ${lastPoint.x.toFixed(2)} ${baselineY.toFixed(2)}`,
++    `L ${firstPoint.x.toFixed(2)} ${baselineY.toFixed(2)}`,
++    'Z',
++  ].join(' ');
+ };
+ 
+ const leadTrendSeries = computed(() => {
+@@ -907,10 +952,31 @@ const leadTrendSeries = computed(() => {
+       ...series,
+       points,
+       path: points.length ? linePathFromPoints(points) : '',
++      areaPath: points.length ? areaPathFromPoints(points) : '',
+     };
+   });
+ });
+ 
++const selectedTrendSeries = computed(() => {
++  return (
++    leadTrendSeries.value.find(series => series.key === selectedTrendSeriesKey.value) ||
++    leadTrendSeries.value[0]
++  );
++});
++
++const selectedTrendSeriesLabel = computed(() => selectedTrendSeries.value?.label || 'All Leads');
++const selectedTrendSeriesColor = computed(() => selectedTrendSeries.value?.color || '#0EA5A0');
++const selectedTrendAreaPath = computed(() => selectedTrendSeries.value?.areaPath || '');
++
++const leadTrendLayeredSeries = computed(() => {
++  return [...leadTrendSeries.value].sort((first, second) => {
++    const firstSelected = first.key === selectedTrendSeriesKey.value;
++    const secondSelected = second.key === selectedTrendSeriesKey.value;
++    if (firstSelected === secondSelected) return 0;
++    return firstSelected ? 1 : -1;
++  });
++});
++
+ const trendGridLines = computed(() => {
+   return [1, 0.5, 0].map(ratio => {
+     const value = Math.round(maxTrendValue.value * ratio);
+@@ -945,12 +1011,17 @@ const activeTrendSeriesPoints = computed(() => {
+   if (activeTrendIndex.value === null) return [];
+ 
+   return leadTrendSeries.value
+-    .filter(series => visibleTrendSeries.value[series.key] !== false)
+     .map(series => ({
+       ...series,
+       point: series.points[activeTrendIndex.value],
+     }))
+-    .filter(series => series.point);
++    .filter(series => series.point)
++    .sort((first, second) => {
++      const firstSelected = first.key === selectedTrendSeriesKey.value;
++      const secondSelected = second.key === selectedTrendSeriesKey.value;
++      if (firstSelected === secondSelected) return 0;
++      return firstSelected ? -1 : 1;
++    });
+ });
+ 
+ const activeTrendGuideX = computed(() => {
+@@ -967,13 +1038,26 @@ const trendTooltipStyle = computed(() => {
+   };
+ });
+ 
+-const isTrendSeriesVisible = key => visibleTrendSeries.value[key] !== false;
++const isTrendSeriesSelected = key => selectedTrendSeriesKey.value === key;
++
++const trendSeriesStroke = series => {
++  return isTrendSeriesSelected(series.key) ? series.color : series.mutedColor;
++};
++
++const trendSeriesOpacity = series => {
++  if (isTrendSeriesSelected(series.key)) return 0.96;
++  if (series.key === 'all') return selectedTrendSeriesKey.value === 'all' ? 0.96 : 0.46;
++  return 0.32;
++};
++
++const trendSeriesWidth = series => {
++  if (isTrendSeriesSelected(series.key)) return series.key === 'all' ? 4 : 3.25;
++  if (series.key === 'all') return 2.5;
++  return 1.75;
++};
+ 
+ const toggleTrendSeries = key => {
+-  visibleTrendSeries.value = {
+-    ...visibleTrendSeries.value,
+-    [key]: !isTrendSeriesVisible(key),
+-  };
++  selectedTrendSeriesKey.value = key;
+ };
+ 
+ const requestParams = page => {
+@@ -1411,32 +1495,55 @@ onMounted(() => {
+           </div>
+         </section>
+ 
+-        <section class="grid gap-4 rounded-lg border border-n-weak bg-n-solid-1 p-5">
+-          <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+-            <div>
+-              <h2 class="text-sm font-semibold text-n-slate-12">
+-                Lead Trend
+-              </h2>
++        <section class="grid gap-4 rounded-lg border border-n-weak bg-n-solid-1 p-5 shadow-[0_12px_32px_rgba(15,25,35,0.05)]">
++          <div class="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
++            <div class="min-w-0">
++              <div class="flex flex-wrap items-center gap-3">
++                <h2 class="text-sm font-semibold text-n-slate-12">
++                  Lead Trend
++                </h2>
++                <span class="rounded-full bg-[#E0F5F4] px-2 py-0.5 text-[11px] font-semibold text-[#0C8A86]">
++                  {{ selectedTrendSeriesLabel }}
++                </span>
++              </div>
+               <div class="mt-1 text-xs text-n-slate-10">
+                 New leads by source over time
+               </div>
++              <div class="mt-3 flex flex-wrap gap-2">
++                <div class="rounded-md border border-[#C7EFED] bg-[#F2FBFA] px-3 py-2">
++                  <div class="text-[10px] font-semibold uppercase text-[#0C8A86]">
++                    Total
++                  </div>
++                  <div class="text-sm font-semibold text-n-slate-12">
++                    {{ formatNumber(totalLeadTrendCount) }}
++                  </div>
++                </div>
++                <div class="rounded-md border border-n-weak bg-n-alpha-1 px-3 py-2">
++                  <div class="text-[10px] font-semibold uppercase text-n-slate-10">
++                    Peak day
++                  </div>
++                  <div class="text-sm font-semibold text-n-slate-12">
++                    {{ formatNumber(peakLeadTrendCount) }}
++                  </div>
++                </div>
++              </div>
+             </div>
+ 
+-            <div class="flex flex-wrap gap-2">
++            <div class="flex flex-wrap gap-2 xl:justify-end">
+               <button
+                 v-for="series in TREND_SERIES"
+                 :key="series.key"
+                 type="button"
+-                class="inline-flex h-8 items-center gap-2 rounded-md border px-2.5 text-xs font-medium transition"
+-                :class="isTrendSeriesVisible(series.key)
+-                  ? 'border-n-weak bg-n-background text-n-slate-12'
+-                  : 'border-n-weak bg-n-alpha-2 text-n-slate-9'"
+-                :aria-pressed="isTrendSeriesVisible(series.key)"
++                class="inline-flex h-8 items-center gap-2 rounded-full border px-3 text-xs font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B7EDEA] focus-visible:ring-offset-1"
++                :class="isTrendSeriesSelected(series.key)
++                  ? 'border-[#0EA5A0] bg-[#E0F5F4] text-[#0F1923] shadow-sm'
++                  : 'border-n-weak bg-n-alpha-1 text-n-slate-10 hover:border-[#C7EFED] hover:bg-[#F2FBFA] hover:text-n-slate-12'"
++                :aria-pressed="isTrendSeriesSelected(series.key)"
+                 @click="toggleTrendSeries(series.key)"
+               >
+                 <span
+-                  class="h-2.5 w-2.5 rounded-full"
+-                  :style="{ backgroundColor: series.color }"
++                  class="h-2 w-2 rounded-full"
++                  :style="{ backgroundColor: isTrendSeriesSelected(series.key) ? series.color : series.mutedColor }"
+                 />
+                 {{ series.label }}
+               </button>
+@@ -1445,36 +1552,42 @@ onMounted(() => {
+ 
+           <div
+             v-if="leadTrendRows.length"
+-            class="relative min-h-[280px] overflow-hidden rounded-lg border border-n-weak bg-n-background p-3"
++            class="relative min-h-[260px] overflow-hidden rounded-xl border border-[#D8EEEC] bg-gradient-to-b from-white to-[#F8FBFA] p-4 shadow-inner"
+           >
+             <div
+               v-if="activeTrendRow"
+-              class="pointer-events-none absolute top-3 z-10 hidden min-w-[180px] rounded-md border border-n-weak bg-n-solid-1 px-3 py-2 text-xs shadow-lg sm:block"
++              class="pointer-events-none absolute top-4 z-10 hidden min-w-[190px] rounded-lg border border-[#D8EEEC] bg-white/95 px-3 py-2 text-xs shadow-[0_16px_36px_rgba(15,25,35,0.14)] backdrop-blur sm:block"
+               :style="trendTooltipStyle"
+             >
+-              <div class="mb-1 font-semibold text-n-slate-12">
+-                {{ activeTrendRow.label }}
++              <div class="mb-2 flex items-center justify-between gap-4">
++                <span class="font-semibold text-n-slate-12">
++                  {{ activeTrendRow.label }}
++                </span>
++                <span class="rounded-full bg-[#E0F5F4] px-2 py-0.5 text-[10px] font-semibold text-[#0C8A86]">
++                  leads
++                </span>
+               </div>
+               <div
+-                v-for="series in TREND_SERIES"
++                v-for="series in activeTrendSeriesPoints"
+                 :key="series.key"
+-                class="flex items-center justify-between gap-4 text-n-slate-10"
++                class="flex items-center justify-between gap-4 py-0.5"
++                :class="isTrendSeriesSelected(series.key) ? 'text-n-slate-12' : 'text-n-slate-10'"
+               >
+                 <span class="inline-flex items-center gap-2">
+                   <span
+                     class="h-2 w-2 rounded-full"
+-                    :style="{ backgroundColor: series.color }"
++                    :style="{ backgroundColor: trendSeriesStroke(series) }"
+                   />
+                   {{ series.label }}
+                 </span>
+-                <span class="font-medium text-n-slate-12">
+-                  {{ formatNumber(activeTrendRow[series.key]) }}
++                <span class="font-semibold">
++                  {{ formatNumber(series.point.value) }}
+                 </span>
+               </div>
+             </div>
+ 
+             <svg
+-              class="h-[280px] w-full overflow-visible"
++              class="h-[260px] w-full overflow-visible"
+               role="img"
+               aria-label="Lead trend by source over time"
+               :viewBox="`0 0 ${TREND_CHART_WIDTH} ${TREND_CHART_HEIGHT}`"
+@@ -1482,6 +1595,21 @@ onMounted(() => {
+               @mousemove="setActiveTrendPoint"
+               @mouseleave="clearActiveTrendPoint"
+             >
++              <defs>
++                <linearGradient id="leadTrendAreaGradient" x1="0" x2="0" y1="0" y2="1">
++                  <stop
++                    offset="0%"
++                    :stop-color="selectedTrendSeriesColor"
++                    stop-opacity="0.22"
++                  />
++                  <stop
++                    offset="100%"
++                    :stop-color="selectedTrendSeriesColor"
++                    stop-opacity="0.02"
++                  />
++                </linearGradient>
++              </defs>
++
+               <g>
+                 <line
+                   v-for="line in trendGridLines"
+@@ -1490,7 +1618,7 @@ onMounted(() => {
+                   :x2="TREND_CHART_WIDTH - TREND_CHART_PADDING.right"
+                   :y1="line.y"
+                   :y2="line.y"
+-                  class="stroke-n-alpha-2"
++                  stroke="#DDEBEA"
+                   stroke-width="1"
+                 />
+                 <text
+@@ -1498,7 +1626,7 @@ onMounted(() => {
+                   :key="`${line.key}-label`"
+                   :x="TREND_CHART_PADDING.left - 10"
+                   :y="line.y + 4"
+-                  class="fill-n-slate-9 text-[10px]"
++                  class="fill-n-slate-9 text-[9px] font-medium"
+                   text-anchor="end"
+                 >
+                   {{ line.label }}
+@@ -1511,7 +1639,7 @@ onMounted(() => {
+                   :key="label.key"
+                   :x="label.x"
+                   :y="TREND_CHART_HEIGHT - 8"
+-                  class="fill-n-slate-9 text-[10px]"
++                  class="fill-n-slate-9 text-[9px] font-medium"
+                   text-anchor="middle"
+                 >
+                   {{ label.label }}
+@@ -1520,15 +1648,20 @@ onMounted(() => {
+ 
+               <g>
+                 <path
+-                  v-for="series in leadTrendSeries"
+-                  v-show="isTrendSeriesVisible(series.key)"
++                  v-if="selectedTrendAreaPath"
++                  :d="selectedTrendAreaPath"
++                  fill="url(#leadTrendAreaGradient)"
++                />
++                <path
++                  v-for="series in leadTrendLayeredSeries"
+                   :key="series.key"
+                   :d="series.path"
+                   fill="none"
+                   stroke-linecap="round"
+                   stroke-linejoin="round"
+-                  :stroke="series.color"
+-                  :stroke-width="series.width"
++                  :stroke="trendSeriesStroke(series)"
++                  :stroke-opacity="trendSeriesOpacity(series)"
++                  :stroke-width="trendSeriesWidth(series)"
+                   vector-effect="non-scaling-stroke"
+                 />
+               </g>
+@@ -1536,12 +1669,12 @@ onMounted(() => {
+               <g v-if="leadTrendRows.length === 1">
+                 <circle
+                   v-for="series in leadTrendSeries"
+-                  v-show="isTrendSeriesVisible(series.key)"
+                   :key="`${series.key}-single-point`"
+                   :cx="series.points[0].x"
+                   :cy="series.points[0].y"
+-                  r="4"
+-                  :fill="series.color"
++                  :r="isTrendSeriesSelected(series.key) ? 4.5 : 3"
++                  :fill="trendSeriesStroke(series)"
++                  :opacity="trendSeriesOpacity(series)"
+                   vector-effect="non-scaling-stroke"
+                 />
+               </g>
+@@ -1552,8 +1685,8 @@ onMounted(() => {
+                   :x2="activeTrendGuideX"
+                   :y1="TREND_CHART_PADDING.top"
+                   :y2="TREND_CHART_HEIGHT - TREND_CHART_PADDING.bottom"
+-                  class="stroke-n-slate-8"
+-                  stroke-dasharray="4 4"
++                  stroke="#BBDCD9"
++                  stroke-dasharray="3 5"
+                   stroke-width="1"
+                   vector-effect="non-scaling-stroke"
+                 />
+@@ -1562,10 +1695,11 @@ onMounted(() => {
+                   :key="series.key"
+                   :cx="series.point.x"
+                   :cy="series.point.y"
+-                  r="4"
+-                  class="fill-n-background"
+-                  :stroke="series.color"
+-                  stroke-width="2"
++                  :r="isTrendSeriesSelected(series.key) ? 5 : 3.5"
++                  fill="#FFFFFF"
++                  :stroke="trendSeriesStroke(series)"
++                  :stroke-opacity="isTrendSeriesSelected(series.key) ? 1 : 0.7"
++                  :stroke-width="isTrendSeriesSelected(series.key) ? 2.5 : 1.75"
+                   vector-effect="non-scaling-stroke"
+                 />
+               </g>

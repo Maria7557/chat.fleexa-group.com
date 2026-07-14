@@ -1,0 +1,288 @@
+diff --git a/app/models/airbyte_meta_ads_daily_spend_mock.rb b/app/models/airbyte_meta_ads_daily_spend_mock.rb
+new file mode 100644
+index 0000000..207dc4f
+--- /dev/null
++++ b/app/models/airbyte_meta_ads_daily_spend_mock.rb
+@@ -0,0 +1,20 @@
++class AirbyteMetaAdsDailySpendMock < ApplicationRecord
++  self.table_name = 'airbyte_meta_ads_daily_spend_mock'
++
++  belongs_to :account
++
++  scope :for_account, ->(account_id) { where(account_id: account_id) }
++
++  before_validation :normalize_currency
++
++  validates :external_row_id, :spend_date, :ad_account_id, :campaign_id, presence: true
++  validates :currency, presence: true, length: { is: 3 }
++  validates :spend, numericality: { greater_than_or_equal_to: 0 }
++
++  private
++
++  def normalize_currency
++    self.currency = currency.to_s.strip.upcase.presence || 'AED'
++    self.synced_at ||= Time.current
++  end
++end
+diff --git a/app/models/marketing_spend_daily.rb b/app/models/marketing_spend_daily.rb
+index 10c6dd5..1b7611a 100644
+--- a/app/models/marketing_spend_daily.rb
++++ b/app/models/marketing_spend_daily.rb
+@@ -5,6 +5,7 @@ class MarketingSpendDaily < ApplicationRecord
+   IMPORT_TYPE_AIRBYTE = 'airbyte'.freeze
+   SOURCE_SYSTEM_MANUAL = 'manual'.freeze
+   SOURCE_SYSTEM_GOOGLE_ADS = 'google_ads'.freeze
++  SOURCE_SYSTEM_META_ADS = 'meta_ads'.freeze
+   SYNC_STATUS_READY = 'ready'.freeze
+   SYNC_STATUS_NEEDS_FX = 'needs_fx'.freeze
+ 
+@@ -14,6 +15,7 @@ class MarketingSpendDaily < ApplicationRecord
+   scope :for_account, ->(account_id) { where(account_id: account_id) }
+   scope :manual, -> { where(import_type: IMPORT_TYPE_MANUAL) }
+   scope :google_ads, -> { where(import_type: IMPORT_TYPE_AIRBYTE, source_system: SOURCE_SYSTEM_GOOGLE_ADS) }
++  scope :meta_ads, -> { where(import_type: IMPORT_TYPE_AIRBYTE, source_system: SOURCE_SYSTEM_META_ADS) }
+   scope :ready, -> { where(sync_status: [nil, SYNC_STATUS_READY]).where.not(spend_aed: nil) }
+ 
+   validates :spend_date, :import_type, :source_system, :source_key, :source_label, presence: true
+diff --git a/app/services/crm/marketing_spend/meta_ads_airbyte_normalizer.rb b/app/services/crm/marketing_spend/meta_ads_airbyte_normalizer.rb
+new file mode 100644
+index 0000000..88460f8
+--- /dev/null
++++ b/app/services/crm/marketing_spend/meta_ads_airbyte_normalizer.rb
+@@ -0,0 +1,121 @@
++module Crm
++  module MarketingSpend
++    class MetaAdsAirbyteNormalizer
++      SOURCE_KEY = MarketingSpendDaily::SOURCE_SYSTEM_META_ADS
++      SOURCE_LABEL = 'Meta Ads'.freeze
++
++      Result = Struct.new(
++        :account_id,
++        :date_from,
++        :date_to,
++        :mock_rows,
++        :deleted_rows,
++        :normalized_rows,
++        :ready_rows,
++        :needs_fx_rows,
++        :spend_aed,
++        keyword_init: true
++      )
++
++      def self.rebuild!(account_id:)
++        new(account_id).rebuild!
++      end
++
++      def initialize(account_id)
++        @account_id = account_id
++      end
++
++      def rebuild!
++        affected_from, affected_to = affected_date_range
++        mock_rows = rows_for_range(affected_from, affected_to).to_a
++        deleted_count = 0
++
++        MarketingSpendDaily.transaction do
++          deleted_count = normalized_scope_for_range(affected_from, affected_to).delete_all
++          mock_rows.each { |row| MarketingSpendDaily.create!(normalized_attributes(row)) }
++        end
++
++        Result.new(
++          account_id: account_id,
++          date_from: affected_from,
++          date_to: affected_to,
++          mock_rows: mock_rows.length,
++          deleted_rows: deleted_count,
++          normalized_rows: mock_rows.length,
++          ready_rows: mock_rows.count { |row| aed?(row.currency) },
++          needs_fx_rows: mock_rows.count { |row| !aed?(row.currency) },
++          spend_aed: mock_rows.sum { |row| aed?(row.currency) ? BigDecimal(row.spend.to_s) : 0.to_d }
++        )
++      end
++
++      private
++
++      attr_reader :account_id
++
++      def affected_date_range
++        mock_range = date_range(mock_scope)
++        normalized_range = date_range(normalized_scope)
++        dates = [mock_range, normalized_range].flatten.compact
++        return [nil, nil] if dates.blank?
++
++        [dates.min, dates.max]
++      end
++
++      def date_range(scope)
++        [scope.minimum(:spend_date), scope.maximum(:spend_date)]
++      end
++
++      def rows_for_range(date_from, date_to)
++        scope = mock_scope.order(:spend_date, :ad_account_id, :campaign_id, :id)
++        scope = scope.where('spend_date >= ?', date_from) if date_from.present?
++        scope = scope.where('spend_date <= ?', date_to) if date_to.present?
++        scope
++      end
++
++      def normalized_scope_for_range(date_from, date_to)
++        scope = normalized_scope
++        scope = scope.where('spend_date >= ?', date_from) if date_from.present?
++        scope = scope.where('spend_date <= ?', date_to) if date_to.present?
++        scope
++      end
++
++      def mock_scope
++        AirbyteMetaAdsDailySpendMock.for_account(account_id)
++      end
++
++      def normalized_scope
++        MarketingSpendDaily.for_account(account_id).meta_ads
++      end
++
++      def normalized_attributes(row)
++        row_is_aed = aed?(row.currency)
++
++        {
++          account_id: account_id,
++          spend_date: row.spend_date,
++          import_type: MarketingSpendDaily::IMPORT_TYPE_AIRBYTE,
++          source_system: MarketingSpendDaily::SOURCE_SYSTEM_META_ADS,
++          source_key: SOURCE_KEY,
++          source_label: SOURCE_LABEL,
++          platform: MarketingSpendDaily::SOURCE_SYSTEM_META_ADS,
++          vendor_name: SOURCE_LABEL,
++          ad_account_id: row.ad_account_id,
++          ad_account_name: row.ad_account_name,
++          campaign_id: row.campaign_id,
++          campaign_name: row.campaign_name,
++          source_currency: row.currency,
++          source_spend: row.spend,
++          fx_rate_to_aed: row_is_aed ? 1 : nil,
++          spend_aed: row_is_aed ? row.spend : nil,
++          sync_status: row_is_aed ? MarketingSpendDaily::SYNC_STATUS_READY : MarketingSpendDaily::SYNC_STATUS_NEEDS_FX,
++          last_synced_at: row.synced_at,
++          raw_row_id: row.external_row_id
++        }
++      end
++
++      def aed?(currency)
++        currency.to_s.casecmp('AED').zero?
++      end
++    end
++  end
++end
+diff --git a/lib/tasks/crm_marketing_spend.rake b/lib/tasks/crm_marketing_spend.rake
+index f0c1903..b58682b 100644
+--- a/lib/tasks/crm_marketing_spend.rake
++++ b/lib/tasks/crm_marketing_spend.rake
+@@ -148,7 +148,110 @@ namespace :crm do
+       puts "normalized_rows=#{result.normalized_rows}"
+     end
+ 
++    desc 'Seed local mock Airbyte Meta Ads daily spend rows'
++    task :seed_meta_ads_mock, [:account_id] => :environment do |_task, args|
++      account_id = args[:account_id].presence || ENV.fetch('ACCOUNT_ID', nil)
++      abort 'Usage: ACCOUNT_ID=1 rake crm:marketing_spend:seed_meta_ads_mock' if account_id.blank?
++
++      rows = [
++        {
++          external_row_id: 'meta-ads-2026-07-01-fleexa-leads-aed',
++          spend_date: Date.new(2026, 7, 1),
++          ad_account_id: 'meta-act-1',
++          ad_account_name: 'Fleexa Meta Ads',
++          campaign_id: 'meta-campaign-leads',
++          campaign_name: 'Lead forms July',
++          spend: 700,
++          currency: 'AED',
++          synced_at: Time.zone.parse('2026-07-02 02:00:00')
++        },
++        {
++          external_row_id: 'meta-ads-2026-07-02-fleexa-leads-aed',
++          spend_date: Date.new(2026, 7, 2),
++          ad_account_id: 'meta-act-1',
++          ad_account_name: 'Fleexa Meta Ads',
++          campaign_id: 'meta-campaign-leads',
++          campaign_name: 'Lead forms July',
++          spend: 850,
++          currency: 'AED',
++          synced_at: Time.zone.parse('2026-07-03 02:00:00')
++        },
++        {
++          external_row_id: 'meta-ads-2026-07-03-fleexa-retargeting-aed',
++          spend_date: Date.new(2026, 7, 3),
++          ad_account_id: 'meta-act-1',
++          ad_account_name: 'Fleexa Meta Ads',
++          campaign_id: 'meta-campaign-retargeting',
++          campaign_name: 'Retargeting July',
++          spend: 500,
++          currency: 'AED',
++          synced_at: Time.zone.parse('2026-07-04 02:15:00')
++        },
++        {
++          external_row_id: 'meta-ads-2026-07-04-fleexa-awareness-usd',
++          spend_date: Date.new(2026, 7, 4),
++          ad_account_id: 'meta-act-2',
++          ad_account_name: 'Fleexa Meta Ads USD',
++          campaign_id: 'meta-campaign-awareness',
++          campaign_name: 'Awareness July',
++          spend: 200,
++          currency: 'USD',
++          synced_at: Time.zone.parse('2026-07-05 02:00:00')
++        }
++      ]
++
++      rows.each do |attributes|
++        row = AirbyteMetaAdsDailySpendMock.where(
++          account_id: account_id,
++          external_row_id: attributes[:external_row_id]
++        ).first_or_initialize
++        row.assign_attributes(attributes.merge(account_id: account_id))
++        row.save!
++      end
++
++      scope = AirbyteMetaAdsDailySpendMock.for_account(account_id)
++      puts "mock_rows=#{scope.count}"
++      puts "mock_source_spend=#{scope.sum(:spend).to_d.to_s('F')}"
++    end
++
++    desc 'Normalize mock Airbyte Meta Ads rows into marketing_spend_daily'
++    task :normalize_meta_ads, [:account_id] => :environment do |_task, args|
++      account_id = args[:account_id].presence || ENV.fetch('ACCOUNT_ID', nil)
++      abort 'Usage: ACCOUNT_ID=1 rake crm:marketing_spend:normalize_meta_ads' if account_id.blank?
++
++      result = Crm::MarketingSpend::MetaAdsAirbyteNormalizer.rebuild!(account_id: account_id)
++      scope = MarketingSpendDaily.for_account(account_id).meta_ads
++
++      puts "account_id=#{result.account_id}"
++      puts "date_from=#{result.date_from}"
++      puts "date_to=#{result.date_to}"
++      puts "mock_rows=#{result.mock_rows}"
++      puts "deleted_rows=#{result.deleted_rows}"
++      puts "normalized_rows=#{result.normalized_rows}"
++      puts "ready_rows=#{result.ready_rows}"
++      puts "needs_fx_rows=#{result.needs_fx_rows}"
++      puts "total_spend_aed=#{scope.ready.sum(:spend_aed).to_d.to_s('F')}"
++      puts "duplicate_grains=#{duplicate_airbyte_grains(scope)}"
++    end
++
++    desc 'Clear local mock Airbyte Meta Ads rows and rebuild normalized rows'
++    task :clear_meta_ads_mock, [:account_id] => :environment do |_task, args|
++      account_id = args[:account_id].presence || ENV.fetch('ACCOUNT_ID', nil)
++      abort 'Usage: ACCOUNT_ID=1 rake crm:marketing_spend:clear_meta_ads_mock' if account_id.blank?
++
++      deleted = AirbyteMetaAdsDailySpendMock.for_account(account_id).delete_all
++      result = Crm::MarketingSpend::MetaAdsAirbyteNormalizer.rebuild!(account_id: account_id)
++
++      puts "deleted_mock_rows=#{deleted}"
++      puts "deleted_normalized_rows=#{result.deleted_rows}"
++      puts "normalized_rows=#{result.normalized_rows}"
++    end
++
+     def duplicate_google_ads_grains(scope)
++      duplicate_airbyte_grains(scope)
++    end
++
++    def duplicate_airbyte_grains(scope)
+       scope
+         .select('spend_date, ad_account_id, campaign_id, source_currency, COUNT(*) AS rows_count')
+         .group('spend_date, ad_account_id, campaign_id, source_currency')
