@@ -1,0 +1,88 @@
+diff --git a/app/controllers/api/v1/accounts/crm/marketing_dashboard_controller.rb b/app/controllers/api/v1/accounts/crm/marketing_dashboard_controller.rb
+index 0000000000..0000000000 100644
+--- a/app/controllers/api/v1/accounts/crm/marketing_dashboard_controller.rb
++++ b/app/controllers/api/v1/accounts/crm/marketing_dashboard_controller.rb
+@@ -108,16 +108,20 @@ def create_manual_spend_entry
+   def create_manual_spend_entry
+     entry = ManualSpendEntry.new(manual_spend_entry_params.merge(account: Current.account, creator: Current.user))
+     entry.save!
+ 
+     render json: { manual_spend_entry: manual_spend_entry_json(entry) }, status: :created
+   rescue ActiveRecord::RecordInvalid => e
+     render json: { error: e.record.errors.full_messages.join(', ') }, status: :unprocessable_entity
++  rescue ArgumentError => e
++    render json: { error: e.message }, status: :unprocessable_entity
+   end
+ 
+   def update_manual_spend_entry
+     @manual_spend_entry.update!(manual_spend_entry_params)
+ 
+     render json: { manual_spend_entry: manual_spend_entry_json(@manual_spend_entry) }
+   rescue ActiveRecord::RecordInvalid => e
+     render json: { error: e.record.errors.full_messages.join(', ') }, status: :unprocessable_entity
++  rescue ArgumentError => e
++    render json: { error: e.message }, status: :unprocessable_entity
+   end
+@@ -401,30 +405,56 @@ def manual_spend_entry_params
+   def manual_spend_entry_params
+     payload = manual_spend_entry_payload.permit(
+-      :source,
+-      :source_key,
+-      :source_label,
+-      :vendor_name,
++      :traffic_source_key,
++      :traffic_source_label,
+       :campaign_name,
+       :notes,
+       :start_date,
+       :end_date,
+       :total_budget,
+       :currency,
+       :is_active
+     ).to_h
+-    source = payload.delete('source')
+-    payload['source_label'] = source if payload['source_label'].blank? && source.present?
++    traffic_source_key = payload.delete('traffic_source_key')
++    payload.delete('traffic_source_label')
++
++    if traffic_source_key.present? || action_name == 'create_manual_spend_entry'
++      traffic_source = manual_spend_traffic_source!(traffic_source_key)
++      payload['source_key'] = traffic_source[:key]
++      payload['source_label'] = traffic_source[:label]
++    end
++
+     payload['currency'] = 'AED'
+     payload['platform'] = 'manual'
+     payload['allocation_mode'] = ManualSpendEntry::ALLOCATION_EVEN_BY_DAY
+     payload
+   end
++
++  def manual_spend_traffic_source!(key)
++    normalized_key = attribution_key(key)
++    traffic_source = active_manual_spend_traffic_sources.find { |source| source[:key] == normalized_key }
++    return traffic_source if traffic_source.present?
++
++    if action_name == 'update_manual_spend_entry' && @manual_spend_entry&.source_key == normalized_key
++      return {
++        key: @manual_spend_entry.source_key,
++        label: @manual_spend_entry.source_label
++      }
++    end
++
++    raise ArgumentError, 'Traffic Source must be an active Attribution Settings source'
++  end
++
++  def active_manual_spend_traffic_sources
++    normalized_config(stored_config)[:traffic_sources].select { |source| source[:is_active] != false }
++  end
+ 
+   def manual_spend_entry_json(entry)
+     daily_scope = MarketingSpendDaily.manual.where(manual_spend_entry_id: entry.id)
+ 
+     {
+       id: entry.id,
++      traffic_source_key: entry.source_key,
++      traffic_source_label: entry.source_label,
+       source_key: entry.source_key,
+       source_label: entry.source_label,
+       vendor_name: entry.vendor_name,

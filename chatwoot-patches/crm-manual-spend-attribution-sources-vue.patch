@@ -1,0 +1,164 @@
+diff --git a/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue b/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue
+index 82090bf..e67ccba 100644
+--- a/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue
++++ b/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue
+@@ -175,8 +175,8 @@ const activeTrendIndex = ref(null);
+ const activeMonthlyIndex = ref(null);
+ 
+ const defaultManualSpendForm = () => ({
+-  source_label: '',
+-  vendor_name: '',
++  traffic_source_key: '',
++  traffic_source_label: '',
+   campaign_name: '',
+   start_date: '',
+   end_date: '',
+@@ -1218,6 +1218,23 @@ const labelForAttributionKey = (items, key) => {
+   return items.find(item => item.key === key)?.label || '';
+ };
+ 
++const activeManualSpendTrafficSources = computed(() => {
++  return activeAttributionItems(dashboardWidgetConfig.value.traffic_sources);
++});
++
++const manualSpendTrafficSourceIsInactive = computed(() => {
++  const key = manualSpendForm.value.traffic_source_key;
++  if (!key) return false;
++
++  return !activeManualSpendTrafficSources.value.some(source => source.key === key);
++});
++
++const updateManualSpendTrafficSource = key => {
++  const source = activeManualSpendTrafficSources.value.find(item => item.key === key);
++  manualSpendForm.value.traffic_source_key = source?.key || '';
++  manualSpendForm.value.traffic_source_label = source?.label || '';
++};
++
+ const openAttributionSettings = () => {
+   if (!isAdmin.value) return;
+ 
+@@ -1661,8 +1678,8 @@ const openEditManualSpend = entry => {
+ 
+   editingManualSpendEntry.value = entry;
+   manualSpendForm.value = {
+-    source_label: entry.source_label || '',
+-    vendor_name: entry.vendor_name || '',
++    traffic_source_key: entry.traffic_source_key || entry.source_key || '',
++    traffic_source_label: entry.traffic_source_label || entry.source_label || '',
+     campaign_name: entry.campaign_name || '',
+     start_date: entry.start_date || '',
+     end_date: entry.end_date || '',
+@@ -1683,20 +1700,20 @@ const closeManualSpendDrawer = () => {
+ 
+ const manualSpendValidationMessage = computed(() => {
+   const form = manualSpendForm.value;
+-  if (!String(form.source_label || '').trim()) return 'Source is required';
++  if (!String(form.traffic_source_key || '').trim()) return 'Traffic Source is required';
+   if (!form.start_date) return 'Start date is required';
+   if (!form.end_date) return 'End date is required';
+   if (form.start_date && form.end_date && form.end_date < form.start_date) {
+     return 'End date must be on or after start date';
+   }
+-  if (amountValue(form.total_budget) <= 0) return 'Budget must be greater than 0';
++  if (amountValue(form.total_budget) <= 0) return 'Amount must be greater than 0';
+   return '';
+ });
+ 
+ const manualSpendPayload = () => ({
+   manual_spend_entry: {
+-    source_label: String(manualSpendForm.value.source_label || '').trim(),
+-    vendor_name: String(manualSpendForm.value.vendor_name || '').trim(),
++    traffic_source_key: String(manualSpendForm.value.traffic_source_key || '').trim(),
++    traffic_source_label: String(manualSpendForm.value.traffic_source_label || '').trim(),
+     campaign_name: String(manualSpendForm.value.campaign_name || '').trim(),
+     start_date: manualSpendForm.value.start_date,
+     end_date: manualSpendForm.value.end_date,
+@@ -2551,11 +2568,10 @@ onMounted(() => {
+             <table class="min-w-full border-separate border-spacing-0 text-left text-sm">
+               <thead class="text-xs uppercase text-n-slate-10">
+                 <tr>
+-                  <th class="border-b border-n-weak py-2 pr-4 font-medium">Source</th>
+-                  <th class="border-b border-n-weak py-2 pr-4 font-medium">Vendor</th>
+-                  <th class="border-b border-n-weak py-2 pr-4 font-medium">Campaign</th>
++                  <th class="border-b border-n-weak py-2 pr-4 font-medium">Traffic Source</th>
++                  <th class="border-b border-n-weak py-2 pr-4 font-medium">Campaign / placement</th>
+                   <th class="border-b border-n-weak py-2 pr-4 font-medium">Period</th>
+-                  <th class="border-b border-n-weak py-2 pr-4 font-medium">Budget</th>
++                  <th class="border-b border-n-weak py-2 pr-4 font-medium">Amount</th>
+                   <th class="border-b border-n-weak py-2 pr-4 font-medium">Status</th>
+                   <th class="border-b border-n-weak py-2 pr-4 font-medium">Updated at</th>
+                   <th class="border-b border-n-weak py-2 text-right font-medium">Actions</th>
+@@ -2568,10 +2584,7 @@ onMounted(() => {
+                   class="text-n-slate-12"
+                 >
+                   <td class="border-b border-n-weak py-3 pr-4 font-medium">
+-                    {{ entry.source_label }}
+-                  </td>
+-                  <td class="border-b border-n-weak py-3 pr-4 text-n-slate-11">
+-                    {{ entry.vendor_name || '--' }}
++                    {{ entry.traffic_source_label || entry.source_label }}
+                   </td>
+                   <td class="border-b border-n-weak py-3 pr-4 text-n-slate-11">
+                     {{ entry.campaign_name || '--' }}
+@@ -3409,27 +3422,35 @@ onMounted(() => {
+ 
+           <div class="grid gap-4">
+             <label class="grid gap-1 text-sm font-medium text-n-slate-11">
+-              Source
+-              <input
+-                v-model="manualSpendForm.source_label"
++              Traffic Source
++              <select
++                :value="manualSpendForm.traffic_source_key"
+                 class="h-10 rounded-md border border-n-weak bg-n-background px-3 text-sm font-normal text-n-slate-12 outline-none transition focus:border-n-brand"
+-                placeholder="Dubizzle Ads"
+-                type="text"
+-              />
+-            </label>
+-
+-            <label class="grid gap-1 text-sm font-medium text-n-slate-11">
+-              Vendor
+-              <input
+-                v-model="manualSpendForm.vendor_name"
+-                class="h-10 rounded-md border border-n-weak bg-n-background px-3 text-sm font-normal text-n-slate-12 outline-none transition focus:border-n-brand"
+-                placeholder="Dubizzle"
+-                type="text"
+-              />
++                required
++                @change="updateManualSpendTrafficSource($event.target.value)"
++              >
++                <option value="" disabled>
++                  {{ activeManualSpendTrafficSources.length ? 'Select traffic source' : 'No active traffic sources' }}
++                </option>
++                <option
++                  v-if="manualSpendTrafficSourceIsInactive"
++                  :value="manualSpendForm.traffic_source_key"
++                  disabled
++                >
++                  {{ manualSpendForm.traffic_source_label || 'Inactive source' }} (inactive)
++                </option>
++                <option
++                  v-for="source in activeManualSpendTrafficSources"
++                  :key="source.key"
++                  :value="source.key"
++                >
++                  {{ source.label }}
++                </option>
++              </select>
+             </label>
+ 
+             <label class="grid gap-1 text-sm font-medium text-n-slate-11">
+-              Campaign name
++              Campaign / placement name
+               <input
+                 v-model="manualSpendForm.campaign_name"
+                 class="h-10 rounded-md border border-n-weak bg-n-background px-3 text-sm font-normal text-n-slate-12 outline-none transition focus:border-n-brand"
+@@ -3460,7 +3481,7 @@ onMounted(() => {
+ 
+             <div class="grid gap-4 sm:grid-cols-[1fr_120px]">
+               <label class="grid gap-1 text-sm font-medium text-n-slate-11">
+-                Budget
++                Amount
+                 <input
+                   v-model="manualSpendForm.total_budget"
+                   class="h-10 rounded-md border border-n-weak bg-n-background px-3 text-sm font-normal text-n-slate-12 outline-none transition focus:border-n-brand"
