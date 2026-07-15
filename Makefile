@@ -234,6 +234,7 @@ crm-vue-copy: ensure-env
 	$(COMPOSE) cp chatwoot-patches/crm-marketing-economics-kpi-layer-vue.patch rails:/tmp/crm-marketing-economics-kpi-layer-vue.patch
 	$(COMPOSE) cp chatwoot-patches/crm-marketing-loss-analysis-vue.patch rails:/tmp/crm-marketing-loss-analysis-vue.patch
 	$(COMPOSE) cp chatwoot-patches/crm-marketing-demo-readiness-vue.patch rails:/tmp/crm-marketing-demo-readiness-vue.patch
+	$(COMPOSE) cp chatwoot-patches/crm-marketing-economics-meeting-polish-vue.patch rails:/tmp/crm-marketing-economics-meeting-polish-vue.patch
 	@echo "CRM Vue patch copied to Rails container"
 
 crm-vue-check: crm-vue-copy
@@ -266,6 +267,7 @@ crm-vue-check: crm-vue-copy
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply --check /tmp/crm-marketing-economics-kpi-layer-vue.patch"
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply --check /tmp/crm-marketing-loss-analysis-vue.patch"
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply --check /tmp/crm-marketing-demo-readiness-vue.patch"
+	$(COMPOSE) exec rails sh -lc "cd /app && git apply --check /tmp/crm-marketing-economics-meeting-polish-vue.patch"
 	@echo "CRM Vue patch validated"
 
 crm-vue-patch: crm-vue-copy
@@ -298,6 +300,7 @@ crm-vue-patch: crm-vue-copy
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply /tmp/crm-marketing-economics-kpi-layer-vue.patch"
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply /tmp/crm-marketing-loss-analysis-vue.patch"
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply /tmp/crm-marketing-demo-readiness-vue.patch"
+	$(COMPOSE) exec rails sh -lc "cd /app && git apply /tmp/crm-marketing-economics-meeting-polish-vue.patch"
 	@echo "CRM Vue patch applied"
 
 crm-assets-build-host:
@@ -362,6 +365,7 @@ crm-assets-build-host:
 		git apply "$(CURDIR)/chatwoot-patches/crm-marketing-economics-kpi-layer-vue.patch"; \
 		git apply "$(CURDIR)/chatwoot-patches/crm-marketing-loss-analysis-vue.patch"; \
 		git apply "$(CURDIR)/chatwoot-patches/crm-marketing-demo-readiness-vue.patch"; \
+		git apply "$(CURDIR)/chatwoot-patches/crm-marketing-economics-meeting-polish-vue.patch"; \
 	perl -0pi -e "s/import \\{ colors \\} from '\\.\\/theme\\/colors';/const { colors } = require('.\\/theme\\/colors.js');/; s/import \\{ icons \\} from '\\.\\/theme\\/icons';/const { icons } = require('.\\/theme\\/icons.js');/" tailwind.config.js; \
 	perl -0pi -e "s/export const colors =/const colors =/; s/\\n\\};\\s*\\z/\\n};\\nmodule.exports = { colors };\\n/s" theme/colors.js; \
 	perl -0pi -e "s/export const icons =/const icons =/; s/\\n\\};\\s*\\z/\\n};\\nmodule.exports = { icons };\\n/s" theme/icons.js; \

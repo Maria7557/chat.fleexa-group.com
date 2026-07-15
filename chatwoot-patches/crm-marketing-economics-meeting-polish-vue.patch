@@ -1,0 +1,780 @@
+diff --git a/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue b/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue
+index cbc9137..95bb2f4 100644
+--- a/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue
++++ b/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue
+@@ -41,12 +41,17 @@ const EMPTY_METRIC_VALUE = '--';
+ const AED_FORMATTER = new Intl.NumberFormat('en-AE', {
+   style: 'currency',
+   currency: 'AED',
++  minimumFractionDigits: 0,
+   maximumFractionDigits: 2,
+ });
+ const COMPACT_AED_FORMATTER = new Intl.NumberFormat('en-AE', {
+   notation: 'compact',
+   maximumFractionDigits: 1,
+ });
++const PLAIN_AMOUNT_FORMATTER = new Intl.NumberFormat('en-US', {
++  minimumFractionDigits: 0,
++  maximumFractionDigits: 2,
++});
+ 
+ const KPI_WIDGETS = [
+   { key: 'leads', label: 'Leads', visible: true },
+@@ -235,6 +240,7 @@ const amountValue = value => {
+ };
+ 
+ const formatAmount = value => AED_FORMATTER.format(amountValue(value));
++const formatPlainAmount = value => PLAIN_AMOUNT_FORMATTER.format(amountValue(value));
+ 
+ const formatCompactAmount = value => `AED ${COMPACT_AED_FORMATTER.format(amountValue(value))}`;
+ 
+@@ -247,6 +253,11 @@ const formatCostPer = (spend, count) => {
+   return formatAmount(amountValue(spend) / amountValue(count));
+ };
+ 
++const formatPlainCostPer = (spend, count) => {
++  if (!hasPositiveDenominator(count)) return EMPTY_METRIC_VALUE;
++  return formatPlainAmount(amountValue(spend) / amountValue(count));
++};
++
+ const formatConversionRate = (numerator, denominator) => {
+   if (!hasPositiveDenominator(denominator)) return EMPTY_METRIC_VALUE;
+   return formatPercent((amountValue(numerator) / amountValue(denominator)) * 100);
+@@ -256,7 +267,20 @@ const formatRoas = (value, spend) => {
+   if (!hasPositiveDenominator(spend)) return EMPTY_METRIC_VALUE;
+ 
+   const ratio = amountValue(value) / amountValue(spend);
+-  return `${ratio.toFixed(ratio >= 10 ? 1 : 2)}x`;
++  const precision = ratio >= 10 ? 1 : 2;
++  return `${String(ratio.toFixed(precision)).replace(/\.00$/, '').replace(/(\.\d)0$/, '$1')}x`;
++};
++
++const formatRomi = (value, spend) => {
++  if (!hasPositiveDenominator(spend)) return EMPTY_METRIC_VALUE;
++
++  const romi = ((amountValue(value) - amountValue(spend)) / amountValue(spend)) * 100;
++  return `${Math.round(romi)}%`;
++};
++
++const formatStepPercent = (numerator, denominator) => {
++  if (!hasPositiveDenominator(denominator)) return EMPTY_METRIC_VALUE;
++  return `${Math.round((amountValue(numerator) / amountValue(denominator)) * 100)}%`;
+ };
+ 
+ const formatDate = value => {
+@@ -440,6 +464,10 @@ const stageRows = computed(() => {
+   return [...forwardRows, ...lostRows];
+ });
+ 
++const stageLabelForType = (type, fallback) => {
++  return orderedStages.value.find(stage => stageType(stage) === type)?.name || fallback;
++};
++
+ const hasValue = value => {
+   if (Array.isArray(value)) return value.length > 0;
+   return value !== null && value !== undefined && String(value).trim() !== '';
+@@ -990,8 +1018,10 @@ const economicsSummaryForDeals = (sourceDeals, spend) => {
+   return {
+     leads: sourceDeals.length,
+     qualifiedLeads: qualifiedDeals.length,
++    bookings: successfulDeals.length,
+     successfulDeals: successfulDeals.length,
+     successfulDealAmount: pipelineValue,
++    revenue: pipelineValue,
+     pipelineValue,
+     completedValue,
+     spend: amountValue(spend),
+@@ -1005,6 +1035,10 @@ const selectedDeals = computed(() => {
+   return deals.value.filter(deal => sourceMatches(classifyTrafficSource(deal)));
+ });
+ 
++const selectedCountForStageTypes = types => {
++  return selectedDeals.value.filter(deal => types.includes(dealStageType(deal))).length;
++};
++
+ const selectedSpendAmount = computed(() => {
+   if (selectedSourceKey.value === 'all') return amountValue(spendAmount.value);
+   return spendAmountForSource(selectedSourceKey.value);
+@@ -1049,8 +1083,9 @@ const sourceEconomicsRows = computed(() => {
+       return row.leads || row.spend || row.successfulDeals || row.lost || row.unqualifiedLost;
+     })
+     .sort((first, second) => {
+-      if (second.leads !== first.leads) return second.leads - first.leads;
+       if (second.spend !== first.spend) return second.spend - first.spend;
++      if (second.revenue !== first.revenue) return second.revenue - first.revenue;
++      if (second.leads !== first.leads) return second.leads - first.leads;
+       return first.source.localeCompare(second.source);
+     });
+ });
+@@ -1178,6 +1213,58 @@ const conversionRows = computed(() => [
+   },
+ ]);
+ 
++const salesFunnelSteps = computed(() => {
++  const baseSteps = [
++    {
++      key: 'leads',
++      label: 'Лид',
++      count: selectedEconomics.value.leads,
++      bgClass: 'bg-slate-100',
++      textClass: 'text-n-slate-12',
++    },
++    {
++      key: 'qualified',
++      label: 'Квал.',
++      count: selectedEconomics.value.qualifiedLeads,
++      bgClass: 'bg-[#E6F6F4]',
++      textClass: 'text-[#0F1923]',
++    },
++    {
++      key: 'reserved',
++      label: stageLabelForType('reserved', 'Бронь'),
++      count: selectedCountForStageTypes(['reserved']),
++      bgClass: 'bg-[#FDE7CC]',
++      textClass: 'text-[#0F1923]',
++    },
++    {
++      key: 'rental',
++      label: stageLabelForType('rental', 'В аренде'),
++      count: selectedCountForStageTypes(['rental']),
++      bgClass: 'bg-[#DDF4ED]',
++      textClass: 'text-[#0F1923]',
++    },
++    {
++      key: 'closed_won',
++      label: stageLabelForType('closed_won', 'Завершено'),
++      count: selectedCountForStageTypes(['closed_won']),
++      bgClass: 'bg-[#3BB36B]',
++      textClass: 'text-white',
++    },
++  ];
++
++  return baseSteps.filter((step, index) => index < 2 || step.count > 0 || orderedStages.value.some(stage => stageType(stage) === step.key));
++});
++
++const salesFunnelTransitions = computed(() => {
++  return salesFunnelSteps.value.slice(1).map((step, index) => {
++    const previous = salesFunnelSteps.value[index];
++    return {
++      key: `${previous.key}-${step.key}`,
++      value: formatStepPercent(step.count, previous.count),
++    };
++  });
++});
++
+ const monthlyChartRows = computed(() => {
+   const rowsByMonth = {};
+   const ensureMonth = month => {
+@@ -2493,7 +2580,7 @@ onMounted(() => {
+                 Source Economics
+               </h2>
+               <div class="mt-1 text-xs text-n-slate-10">
+-                Created-deal cohort by selected source
++                AED metrics for the selected lead cohort
+               </div>
+             </div>
+             <span class="rounded-full bg-[#E0F5F4] px-2 py-0.5 text-[10px] font-semibold text-[#0C8A86]">
+@@ -2505,18 +2592,16 @@ onMounted(() => {
+             <table class="min-w-full border-separate border-spacing-0 text-left text-sm">
+               <thead class="text-xs uppercase text-n-slate-10">
+                 <tr>
+-                  <th class="border-b border-n-weak py-2 pr-4 font-medium">Source</th>
+-                  <th class="border-b border-n-weak py-2 pr-4 text-right font-medium">Leads</th>
+-                  <th class="border-b border-n-weak py-2 pr-4 text-right font-medium">Qualified Leads</th>
+-                  <th class="border-b border-n-weak py-2 pr-4 text-right font-medium">Successful Deals</th>
+-                  <th class="border-b border-n-weak py-2 pr-4 text-right font-medium">Successful Deal Amount</th>
+-                  <th class="border-b border-n-weak py-2 pr-4 text-right font-medium">Spend</th>
++                  <th class="border-b border-n-weak py-2 pr-4 font-medium">Канал</th>
++                  <th class="border-b border-n-weak py-2 pr-4 text-right font-medium">Затраты</th>
++                  <th class="border-b border-n-weak py-2 pr-4 text-right font-medium">Лиды</th>
++                  <th class="border-b border-n-weak py-2 pr-4 text-right font-medium">Квал.</th>
+                   <th class="border-b border-n-weak py-2 pr-4 text-right font-medium">CPL</th>
+                   <th class="border-b border-n-weak py-2 pr-4 text-right font-medium">CPLQ</th>
+-                  <th class="border-b border-n-weak py-2 pr-4 text-right font-medium">Pipeline ROAS</th>
+-                  <th class="border-b border-n-weak py-2 pr-4 text-right font-medium">Completed ROAS</th>
+-                  <th class="border-b border-n-weak py-2 pr-4 text-right font-medium">Lost</th>
+-                  <th class="border-b border-n-weak py-2 text-right font-medium">Unqualified Share</th>
++                  <th class="border-b border-n-weak py-2 pr-4 text-right font-medium">Брони</th>
++                  <th class="border-b border-n-weak py-2 pr-4 text-right font-medium">Выручка</th>
++                  <th class="border-b border-n-weak py-2 pr-4 text-right font-medium">ROAS</th>
++                  <th class="border-b border-n-weak py-2 text-right font-medium">ROMI</th>
+                 </tr>
+               </thead>
+               <tbody>
+@@ -2529,37 +2614,31 @@ onMounted(() => {
+                     {{ row.source }}
+                   </td>
+                   <td class="whitespace-nowrap border-b border-n-weak py-3 pr-4 text-right">
+-                    {{ formatNumber(row.leads) }}
+-                  </td>
+-                  <td class="whitespace-nowrap border-b border-n-weak py-3 pr-4 text-right">
+-                    {{ formatNumber(row.qualifiedLeads) }}
++                    {{ formatPlainAmount(row.spend) }}
+                   </td>
+                   <td class="whitespace-nowrap border-b border-n-weak py-3 pr-4 text-right">
+-                    {{ formatNumber(row.successfulDeals) }}
++                    {{ formatNumber(row.leads) }}
+                   </td>
+                   <td class="whitespace-nowrap border-b border-n-weak py-3 pr-4 text-right">
+-                    {{ formatAmount(row.successfulDealAmount) }}
++                    {{ formatNumber(row.qualifiedLeads) }}
+                   </td>
+                   <td class="whitespace-nowrap border-b border-n-weak py-3 pr-4 text-right">
+-                    {{ formatAmount(row.spend) }}
++                    {{ formatPlainCostPer(row.spend, row.leads) }}
+                   </td>
+                   <td class="whitespace-nowrap border-b border-n-weak py-3 pr-4 text-right">
+-                    {{ formatCostPer(row.spend, row.leads) }}
++                    {{ formatPlainCostPer(row.spend, row.qualifiedLeads) }}
+                   </td>
+                   <td class="whitespace-nowrap border-b border-n-weak py-3 pr-4 text-right">
+-                    {{ formatCostPer(row.spend, row.qualifiedLeads) }}
++                    {{ formatNumber(row.bookings) }}
+                   </td>
+                   <td class="whitespace-nowrap border-b border-n-weak py-3 pr-4 text-right">
+-                    {{ formatRoas(row.pipelineValue, row.spend) }}
++                    {{ formatPlainAmount(row.revenue) }}
+                   </td>
+                   <td class="whitespace-nowrap border-b border-n-weak py-3 pr-4 text-right">
+-                    {{ formatRoas(row.completedValue, row.spend) }}
++                    {{ formatRoas(row.revenue, row.spend) }}
+                   </td>
+                   <td class="whitespace-nowrap border-b border-n-weak py-3 pr-4 text-right">
+-                    {{ formatNumber(row.lost) }}
+-                  </td>
+-                  <td class="whitespace-nowrap border-b border-n-weak py-3 text-right">
+-                    {{ formatConversionRate(row.unqualifiedLost, row.leads) }}
++                    {{ formatRomi(row.revenue, row.spend) }}
+                   </td>
+                 </tr>
+               </tbody>
+@@ -2574,6 +2653,249 @@ onMounted(() => {
+           </div>
+         </section>
+ 
++        <section class="grid gap-4 rounded-lg border border-n-weak bg-n-solid-1 p-5">
++          <div class="flex flex-wrap items-start justify-between gap-3">
++            <div>
++              <h2 class="text-sm font-semibold text-n-slate-12">
++                Sales Funnel
++              </h2>
++              <div class="mt-1 text-xs text-n-slate-10">
++                Lead to qualified to sale-stage progression
++              </div>
++            </div>
++            <span class="rounded-full bg-[#E0F5F4] px-2 py-0.5 text-[10px] font-semibold text-[#0C8A86]">
++              {{ selectedTrendSeriesLabel }}
++            </span>
++          </div>
++
++          <div class="overflow-x-auto pb-1">
++            <div class="flex min-w-max items-center gap-3">
++              <template
++                v-for="(step, index) in salesFunnelSteps"
++                :key="step.key"
++              >
++                <article
++                  class="flex h-[120px] min-w-[150px] flex-col items-center justify-center rounded-2xl px-4 text-center shadow-[0_10px_24px_rgba(15,25,35,0.05)]"
++                  :class="[step.bgClass, step.textClass]"
++                >
++                  <div class="text-3xl font-semibold tracking-normal">
++                    {{ formatNumber(step.count) }}
++                  </div>
++                  <div class="mt-5 text-sm font-semibold">
++                    {{ step.label }}
++                  </div>
++                </article>
++
++                <div
++                  v-if="index < salesFunnelTransitions.length"
++                  class="flex min-w-[66px] flex-col items-center justify-center gap-2 px-1 text-n-slate-10"
++                >
++                  <div class="text-sm font-semibold text-n-slate-11">
++                    {{ salesFunnelTransitions[index].value }}
++                  </div>
++                  <i class="i-lucide-arrow-right h-4 w-4" />
++                </div>
++              </template>
++            </div>
++          </div>
++        </section>
++
++        <section class="grid gap-3 rounded-lg border border-n-weak bg-n-solid-1 p-4 shadow-[0_12px_32px_rgba(15,25,35,0.05)]">
++          <div class="flex flex-wrap items-start justify-between gap-3">
++            <div class="min-w-0">
++              <div class="flex min-w-0 flex-wrap items-center gap-2">
++                <h2 class="text-sm font-semibold text-n-slate-12">
++                  Lead Trend
++                </h2>
++                <span class="rounded-full bg-[#E0F5F4] px-2 py-0.5 text-[11px] font-semibold text-[#0C8A86]">
++                  {{ selectedTrendSeriesLabel }}
++                </span>
++              </div>
++              <div class="mt-1 text-xs text-n-slate-10">
++                Leads by source over time
++              </div>
++            </div>
++
++            <div class="flex flex-wrap items-center gap-3 text-xs text-n-slate-10">
++              <span>
++                Total
++                <strong class="ml-1 font-semibold text-n-slate-12">
++                  {{ formatNumber(totalLeadTrendCount) }}
++                </strong>
++              </span>
++              <span>
++                Peak day
++                <strong class="ml-1 font-semibold text-n-slate-12">
++                  {{ formatNumber(peakLeadTrendCount) }}
++                </strong>
++              </span>
++            </div>
++          </div>
++
++          <div
++            v-if="leadTrendRows.length"
++            class="relative min-h-[260px] overflow-hidden rounded-xl border border-[#D8EEEC] bg-gradient-to-b from-white to-[#F8FBFA] p-4 shadow-inner"
++          >
++            <div
++              v-if="activeTrendRow"
++              class="pointer-events-none absolute top-4 z-10 hidden min-w-[190px] rounded-lg border border-[#D8EEEC] bg-white/95 px-3 py-2 text-xs shadow-[0_16px_36px_rgba(15,25,35,0.14)] backdrop-blur sm:block"
++              :style="trendTooltipStyle"
++            >
++              <div class="mb-2 flex items-center justify-between gap-4">
++                <span class="font-semibold text-n-slate-12">
++                  {{ activeTrendRow.label }}
++                </span>
++                <span class="rounded-full bg-[#E0F5F4] px-2 py-0.5 text-[10px] font-semibold text-[#0C8A86]">
++                  leads
++                </span>
++              </div>
++              <div
++                v-for="series in activeTrendSeriesPoints"
++                :key="series.key"
++                class="flex items-center justify-between gap-4 py-0.5"
++                :class="isTrendSeriesSelected(series.key) ? 'text-n-slate-12' : 'text-n-slate-10'"
++              >
++                <span class="inline-flex items-center gap-2">
++                  <span
++                    class="h-2 w-2 rounded-full"
++                    :style="{ backgroundColor: trendSeriesStroke(series) }"
++                  />
++                  {{ series.label }}
++                </span>
++                <span class="font-semibold">
++                  {{ formatNumber(series.point.value) }}
++                </span>
++              </div>
++            </div>
++
++            <svg
++              class="h-[260px] w-full overflow-visible"
++              role="img"
++              aria-label="Lead trend by source over time"
++              :viewBox="`0 0 ${TREND_CHART_WIDTH} ${TREND_CHART_HEIGHT}`"
++              preserveAspectRatio="none"
++              @mousemove="setActiveTrendPoint"
++              @mouseleave="clearActiveTrendPoint"
++            >
++              <defs>
++                <linearGradient id="leadTrendAreaGradient" x1="0" x2="0" y1="0" y2="1">
++                  <stop
++                    offset="0%"
++                    :stop-color="selectedTrendSeriesColor"
++                    stop-opacity="0.22"
++                  />
++                  <stop
++                    offset="100%"
++                    :stop-color="selectedTrendSeriesColor"
++                    stop-opacity="0.02"
++                  />
++                </linearGradient>
++              </defs>
++
++              <g>
++                <line
++                  v-for="line in trendGridLines"
++                  :key="line.key"
++                  :x1="TREND_CHART_PADDING.left"
++                  :x2="TREND_CHART_WIDTH - TREND_CHART_PADDING.right"
++                  :y1="line.y"
++                  :y2="line.y"
++                  stroke="#DDEBEA"
++                  stroke-width="1"
++                />
++                <text
++                  v-for="line in trendGridLines"
++                  :key="`${line.key}-label`"
++                  :x="TREND_CHART_PADDING.left - 10"
++                  :y="line.y + 4"
++                  class="fill-n-slate-9 text-[9px] font-medium"
++                  text-anchor="end"
++                >
++                  {{ line.label }}
++                </text>
++              </g>
++
++              <g>
++                <text
++                  v-for="label in trendXAxisLabels"
++                  :key="label.key"
++                  :x="label.x"
++                  :y="TREND_CHART_HEIGHT - 8"
++                  class="fill-n-slate-9 text-[9px] font-medium"
++                  text-anchor="middle"
++                >
++                  {{ label.label }}
++                </text>
++              </g>
++
++              <g>
++                <path
++                  v-if="selectedTrendAreaPath"
++                  :d="selectedTrendAreaPath"
++                  fill="url(#leadTrendAreaGradient)"
++                />
++                <path
++                  v-for="series in leadTrendLayeredSeries"
++                  :key="series.key"
++                  :d="series.path"
++                  fill="none"
++                  stroke-linecap="round"
++                  stroke-linejoin="round"
++                  :stroke="trendSeriesStroke(series)"
++                  :stroke-opacity="trendSeriesOpacity(series)"
++                  :stroke-width="trendSeriesWidth(series)"
++                  vector-effect="non-scaling-stroke"
++                />
++              </g>
++
++              <g v-if="leadTrendRows.length === 1">
++                <circle
++                  v-for="series in leadTrendSeries"
++                  :key="`${series.key}-single-point`"
++                  :cx="series.points[0].x"
++                  :cy="series.points[0].y"
++                  :r="isTrendSeriesSelected(series.key) ? 4.5 : 3"
++                  :fill="trendSeriesStroke(series)"
++                  :opacity="trendSeriesOpacity(series)"
++                  vector-effect="non-scaling-stroke"
++                />
++              </g>
++
++              <g v-if="activeTrendRow">
++                <line
++                  :x1="activeTrendGuideX"
++                  :x2="activeTrendGuideX"
++                  :y1="TREND_CHART_PADDING.top"
++                  :y2="TREND_CHART_HEIGHT - TREND_CHART_PADDING.bottom"
++                  stroke="#BBDCD9"
++                  stroke-dasharray="3 5"
++                  stroke-width="1"
++                  vector-effect="non-scaling-stroke"
++                />
++                <circle
++                  v-for="series in activeTrendSeriesPoints"
++                  :key="series.key"
++                  :cx="series.point.x"
++                  :cy="series.point.y"
++                  :r="isTrendSeriesSelected(series.key) ? 5 : 3.5"
++                  fill="#FFFFFF"
++                  :stroke="trendSeriesStroke(series)"
++                  :stroke-opacity="isTrendSeriesSelected(series.key) ? 1 : 0.7"
++                  :stroke-width="isTrendSeriesSelected(series.key) ? 2.5 : 1.75"
++                  vector-effect="non-scaling-stroke"
++                />
++              </g>
++            </svg>
++          </div>
++
++          <div
++            v-else
++            class="grid min-h-[280px] place-items-center rounded-lg border border-dashed border-n-weak bg-n-background px-4 text-center text-sm text-n-slate-10"
++          >
++            No leads in selected period
++          </div>
++        </section>
++
+         <section class="grid gap-4 rounded-lg border border-n-weak bg-n-solid-1 p-4 shadow-[0_12px_32px_rgba(15,25,35,0.05)]">
+           <div class="flex flex-wrap items-start justify-between gap-3">
+             <div>
+@@ -3073,280 +3395,6 @@ onMounted(() => {
+           </div>
+         </section>
+ 
+-        <section class="grid gap-3 rounded-lg border border-n-weak bg-n-solid-1 p-4 shadow-[0_12px_32px_rgba(15,25,35,0.05)]">
+-          <div class="flex flex-wrap items-start justify-between gap-3">
+-            <div class="min-w-0">
+-              <div class="flex min-w-0 flex-wrap items-center gap-2">
+-                <h2 class="text-sm font-semibold text-n-slate-12">
+-                  Lead Trend
+-                </h2>
+-                <span class="rounded-full bg-[#E0F5F4] px-2 py-0.5 text-[11px] font-semibold text-[#0C8A86]">
+-                  {{ selectedTrendSeriesLabel }}
+-                </span>
+-              </div>
+-              <div class="mt-1 text-xs text-n-slate-10">
+-                Leads by source over time
+-              </div>
+-            </div>
+-
+-            <div class="flex flex-wrap items-center gap-3 text-xs text-n-slate-10">
+-              <span>
+-                Total
+-                <strong class="ml-1 font-semibold text-n-slate-12">
+-                  {{ formatNumber(totalLeadTrendCount) }}
+-                </strong>
+-              </span>
+-              <span>
+-                Peak day
+-                <strong class="ml-1 font-semibold text-n-slate-12">
+-                  {{ formatNumber(peakLeadTrendCount) }}
+-                </strong>
+-              </span>
+-            </div>
+-          </div>
+-
+-          <div
+-            v-if="leadTrendRows.length"
+-            class="relative min-h-[260px] overflow-hidden rounded-xl border border-[#D8EEEC] bg-gradient-to-b from-white to-[#F8FBFA] p-4 shadow-inner"
+-          >
+-            <div
+-              v-if="activeTrendRow"
+-              class="pointer-events-none absolute top-4 z-10 hidden min-w-[190px] rounded-lg border border-[#D8EEEC] bg-white/95 px-3 py-2 text-xs shadow-[0_16px_36px_rgba(15,25,35,0.14)] backdrop-blur sm:block"
+-              :style="trendTooltipStyle"
+-            >
+-              <div class="mb-2 flex items-center justify-between gap-4">
+-                <span class="font-semibold text-n-slate-12">
+-                  {{ activeTrendRow.label }}
+-                </span>
+-                <span class="rounded-full bg-[#E0F5F4] px-2 py-0.5 text-[10px] font-semibold text-[#0C8A86]">
+-                  leads
+-                </span>
+-              </div>
+-              <div
+-                v-for="series in activeTrendSeriesPoints"
+-                :key="series.key"
+-                class="flex items-center justify-between gap-4 py-0.5"
+-                :class="isTrendSeriesSelected(series.key) ? 'text-n-slate-12' : 'text-n-slate-10'"
+-              >
+-                <span class="inline-flex items-center gap-2">
+-                  <span
+-                    class="h-2 w-2 rounded-full"
+-                    :style="{ backgroundColor: trendSeriesStroke(series) }"
+-                  />
+-                  {{ series.label }}
+-                </span>
+-                <span class="font-semibold">
+-                  {{ formatNumber(series.point.value) }}
+-                </span>
+-              </div>
+-            </div>
+-
+-            <svg
+-              class="h-[260px] w-full overflow-visible"
+-              role="img"
+-              aria-label="Lead trend by source over time"
+-              :viewBox="`0 0 ${TREND_CHART_WIDTH} ${TREND_CHART_HEIGHT}`"
+-              preserveAspectRatio="none"
+-              @mousemove="setActiveTrendPoint"
+-              @mouseleave="clearActiveTrendPoint"
+-            >
+-              <defs>
+-                <linearGradient id="leadTrendAreaGradient" x1="0" x2="0" y1="0" y2="1">
+-                  <stop
+-                    offset="0%"
+-                    :stop-color="selectedTrendSeriesColor"
+-                    stop-opacity="0.22"
+-                  />
+-                  <stop
+-                    offset="100%"
+-                    :stop-color="selectedTrendSeriesColor"
+-                    stop-opacity="0.02"
+-                  />
+-                </linearGradient>
+-              </defs>
+-
+-              <g>
+-                <line
+-                  v-for="line in trendGridLines"
+-                  :key="line.key"
+-                  :x1="TREND_CHART_PADDING.left"
+-                  :x2="TREND_CHART_WIDTH - TREND_CHART_PADDING.right"
+-                  :y1="line.y"
+-                  :y2="line.y"
+-                  stroke="#DDEBEA"
+-                  stroke-width="1"
+-                />
+-                <text
+-                  v-for="line in trendGridLines"
+-                  :key="`${line.key}-label`"
+-                  :x="TREND_CHART_PADDING.left - 10"
+-                  :y="line.y + 4"
+-                  class="fill-n-slate-9 text-[9px] font-medium"
+-                  text-anchor="end"
+-                >
+-                  {{ line.label }}
+-                </text>
+-              </g>
+-
+-              <g>
+-                <text
+-                  v-for="label in trendXAxisLabels"
+-                  :key="label.key"
+-                  :x="label.x"
+-                  :y="TREND_CHART_HEIGHT - 8"
+-                  class="fill-n-slate-9 text-[9px] font-medium"
+-                  text-anchor="middle"
+-                >
+-                  {{ label.label }}
+-                </text>
+-              </g>
+-
+-              <g>
+-                <path
+-                  v-if="selectedTrendAreaPath"
+-                  :d="selectedTrendAreaPath"
+-                  fill="url(#leadTrendAreaGradient)"
+-                />
+-                <path
+-                  v-for="series in leadTrendLayeredSeries"
+-                  :key="series.key"
+-                  :d="series.path"
+-                  fill="none"
+-                  stroke-linecap="round"
+-                  stroke-linejoin="round"
+-                  :stroke="trendSeriesStroke(series)"
+-                  :stroke-opacity="trendSeriesOpacity(series)"
+-                  :stroke-width="trendSeriesWidth(series)"
+-                  vector-effect="non-scaling-stroke"
+-                />
+-              </g>
+-
+-              <g v-if="leadTrendRows.length === 1">
+-                <circle
+-                  v-for="series in leadTrendSeries"
+-                  :key="`${series.key}-single-point`"
+-                  :cx="series.points[0].x"
+-                  :cy="series.points[0].y"
+-                  :r="isTrendSeriesSelected(series.key) ? 4.5 : 3"
+-                  :fill="trendSeriesStroke(series)"
+-                  :opacity="trendSeriesOpacity(series)"
+-                  vector-effect="non-scaling-stroke"
+-                />
+-              </g>
+-
+-              <g v-if="activeTrendRow">
+-                <line
+-                  :x1="activeTrendGuideX"
+-                  :x2="activeTrendGuideX"
+-                  :y1="TREND_CHART_PADDING.top"
+-                  :y2="TREND_CHART_HEIGHT - TREND_CHART_PADDING.bottom"
+-                  stroke="#BBDCD9"
+-                  stroke-dasharray="3 5"
+-                  stroke-width="1"
+-                  vector-effect="non-scaling-stroke"
+-                />
+-                <circle
+-                  v-for="series in activeTrendSeriesPoints"
+-                  :key="series.key"
+-                  :cx="series.point.x"
+-                  :cy="series.point.y"
+-                  :r="isTrendSeriesSelected(series.key) ? 5 : 3.5"
+-                  fill="#FFFFFF"
+-                  :stroke="trendSeriesStroke(series)"
+-                  :stroke-opacity="isTrendSeriesSelected(series.key) ? 1 : 0.7"
+-                  :stroke-width="isTrendSeriesSelected(series.key) ? 2.5 : 1.75"
+-                  vector-effect="non-scaling-stroke"
+-                />
+-              </g>
+-            </svg>
+-          </div>
+-
+-          <div
+-            v-else
+-            class="grid min-h-[280px] place-items-center rounded-lg border border-dashed border-n-weak bg-n-background px-4 text-center text-sm text-n-slate-10"
+-          >
+-            No leads in selected period
+-          </div>
+-        </section>
+-
+-        <section class="grid gap-4 rounded-lg border border-n-weak bg-n-solid-1 p-5">
+-          <div class="flex items-center justify-between gap-3">
+-            <div>
+-              <h2 class="text-sm font-semibold text-n-slate-12">
+-                Stage Reach
+-              </h2>
+-              <div class="mt-1 text-xs text-n-slate-10">
+-                Best-effort stage reach for created deals
+-              </div>
+-            </div>
+-            <span class="text-xs text-n-slate-10">
+-              {{ orderedStages.length }} stages
+-            </span>
+-          </div>
+-
+-          <div class="grid gap-3">
+-            <div
+-              v-for="stage in stageRows"
+-              :key="stage.id"
+-              class="grid gap-3 rounded-lg border border-n-weak bg-n-background p-4 lg:grid-cols-[180px_1fr_120px_160px_140px]"
+-            >
+-              <div class="min-w-0">
+-                <div class="flex min-w-0 items-center gap-2">
+-                  <span
+-                    class="h-2.5 w-2.5 shrink-0 rounded-full"
+-                    :style="{ backgroundColor: stage.color || '#6B7280' }"
+-                  />
+-                  <span class="truncate text-sm font-medium text-n-slate-12">
+-                    {{ stage.name }}
+-                  </span>
+-                </div>
+-                <div class="mt-1 text-xs text-n-slate-10">
+-                  {{ stage.slug }}
+-                </div>
+-              </div>
+-
+-              <div class="flex min-w-0 items-center gap-3">
+-                <div class="h-2 min-w-0 flex-1 overflow-hidden rounded-full bg-n-alpha-2">
+-                  <div
+-                    class="h-full rounded-full"
+-                    :style="{ width: `${stage.barWidth}%`, backgroundColor: stage.color || '#6B7280' }"
+-                  />
+-                </div>
+-                <span class="w-14 text-right text-xs text-n-slate-10">
+-                  {{ formatPercent(stage.share) }}
+-                </span>
+-              </div>
+-
+-              <div>
+-                <div class="text-sm font-semibold text-n-slate-12">
+-                  {{ formatNumber(stage.count) }}
+-                </div>
+-                <div class="text-xs text-n-slate-10">
+-                  deals
+-                </div>
+-              </div>
+-
+-              <div>
+-                <div class="text-sm font-semibold text-n-slate-12">
+-                  {{ formatAmount(stage.amount) }}
+-                </div>
+-                <div class="text-xs text-n-slate-10">
+-                  value
+-                </div>
+-              </div>
+-
+-              <div>
+-                <div class="text-sm font-semibold text-n-slate-12">
+-                  {{ formatPercent(stage.share) }}
+-                </div>
+-                <div class="text-xs text-n-slate-10">
+-                  {{ stage.metricLabel }}
+-                </div>
+-              </div>
+-            </div>
+-          </div>
+-        </section>
+-
+       </div>
+     </main>
