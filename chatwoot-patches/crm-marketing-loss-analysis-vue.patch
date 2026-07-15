@@ -1,0 +1,420 @@
+diff --git a/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue b/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue
+index 8e95d09..1c896f8 100644
+--- a/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue
++++ b/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue
+@@ -22,6 +22,21 @@ const COMPLETED_STAGE_TYPES = ['closed_won'];
+ const LOST_STAGE_TYPES = ['closed_lost'];
+ const QUALIFIED_STATUS = 'qualified';
+ const UNQUALIFIED_LOST_REASON_CATEGORIES = ['invalid', 'eligibility'];
++const SALES_LOST_REASON_CATEGORY = 'sales';
++const LOST_REASON_CATEGORY_LABELS = {
++  invalid: 'Invalid',
++  eligibility: 'Eligibility',
++  sales: 'Sales',
++  other: 'Other',
++};
++const LOST_REASON_CATEGORY_ORDER = ['invalid', 'eligibility', 'sales', 'other'];
++const LOST_REASON_CATEGORY_COLORS = {
++  invalid: '#DC2626',
++  eligibility: '#D97706',
++  sales: '#2563EB',
++  other: '#64748B',
++};
++const UNKNOWN_LOST_REASON_LABEL = 'Unspecified';
+ const EMPTY_METRIC_VALUE = '--';
+ const AED_FORMATTER = new Intl.NumberFormat('en-AE', {
+   style: 'currency',
+@@ -897,11 +912,41 @@ const dealIsCompleted = deal => COMPLETED_STAGE_TYPES.includes(dealStageType(dea
+ 
+ const dealIsLost = deal => LOST_STAGE_TYPES.includes(dealStageType(deal));
+ 
++const humanizeLostReasonKey = key => {
++  const normalizedKey = String(key || '').trim();
++  if (!normalizedKey) return UNKNOWN_LOST_REASON_LABEL;
++
++  return normalizedKey
++    .replace(/[_-]+/g, ' ')
++    .replace(/\s+/g, ' ')
++    .trim()
++    .replace(/\b\w/g, char => char.toUpperCase());
++};
++
++const lostReasonCategoryKey = deal => {
++  const category = normalizeText(dealCustomAttributeValue(deal, 'lost_reason_category'));
++  return LOST_REASON_CATEGORY_LABELS[category] ? category : 'other';
++};
++
++const lostReasonCategoryLabel = category => {
++  return LOST_REASON_CATEGORY_LABELS[category] || LOST_REASON_CATEGORY_LABELS.other;
++};
++
++const lostReasonLabel = deal => {
++  const label = String(dealCustomAttributeValue(deal, 'lost_reason_label') || '').trim();
++  if (label) return label;
++
++  return humanizeLostReasonKey(dealCustomAttributeValue(deal, 'lost_reason_key'));
++};
++
+ const dealIsUnqualifiedLost = deal => {
+   if (!dealIsLost(deal)) return false;
+ 
+-  const category = normalizeText(dealCustomAttributeValue(deal, 'lost_reason_category'));
+-  return UNQUALIFIED_LOST_REASON_CATEGORIES.includes(category);
++  return UNQUALIFIED_LOST_REASON_CATEGORIES.includes(lostReasonCategoryKey(deal));
++};
++
++const dealIsSalesLost = deal => {
++  return dealIsLost(deal) && lostReasonCategoryKey(deal) === SALES_LOST_REASON_CATEGORY;
+ };
+ 
+ const amountForDeals = sourceDeals => {
+@@ -920,6 +965,7 @@ const economicsSummaryForDeals = (sourceDeals, spend) => {
+   const qualifiedDeals = sourceDeals.filter(dealIsQualified);
+   const lostDeals = sourceDeals.filter(dealIsLost);
+   const unqualifiedLostDeals = sourceDeals.filter(dealIsUnqualifiedLost);
++  const salesLostDeals = sourceDeals.filter(dealIsSalesLost);
+   const pipelineValue = amountForDeals(successfulDeals);
+   const completedValue = amountForDeals(completedDeals);
+ 
+@@ -933,6 +979,7 @@ const economicsSummaryForDeals = (sourceDeals, spend) => {
+     spend: amountValue(spend),
+     lost: lostDeals.length,
+     unqualifiedLost: unqualifiedLostDeals.length,
++    salesLost: salesLostDeals.length,
+   };
+ };
+ 
+@@ -990,6 +1037,125 @@ const sourceEconomicsRows = computed(() => {
+     });
+ });
+ 
++const selectedLostDeals = computed(() => selectedDeals.value.filter(dealIsLost));
++
++const buildLostReasonBuckets = lostDeals => {
++  const buckets = new Map();
++
++  lostDeals.forEach(deal => {
++    const category = lostReasonCategoryKey(deal);
++    const reason = lostReasonLabel(deal);
++    const key = `${category}:${reason}`;
++    const bucket = buckets.get(key) || {
++      key,
++      category,
++      categoryLabel: lostReasonCategoryLabel(category),
++      reason,
++      count: 0,
++    };
++
++    bucket.count += 1;
++    buckets.set(key, bucket);
++  });
++
++  return [...buckets.values()].sort((first, second) => {
++    if (second.count !== first.count) return second.count - first.count;
++    if (first.categoryLabel !== second.categoryLabel) return first.categoryLabel.localeCompare(second.categoryLabel);
++    return first.reason.localeCompare(second.reason);
++  });
++};
++
++const topLostReasonForDeals = lostDeals => {
++  return buildLostReasonBuckets(lostDeals)[0]?.reason || EMPTY_METRIC_VALUE;
++};
++
++const sourceLossRows = computed(() => {
++  return sourceEconomicsRows.value
++    .map(row => {
++      const sourceDeals = deals.value.filter(deal => classifyTrafficSource(deal) === row.key);
++      const lostDeals = sourceDeals.filter(dealIsLost);
++      const categoryCounts = LOST_REASON_CATEGORY_ORDER.reduce((memo, category) => {
++        memo[category] = 0;
++        return memo;
++      }, {});
++
++      lostDeals.forEach(deal => {
++        categoryCounts[lostReasonCategoryKey(deal)] += 1;
++      });
++
++      return {
++        ...row,
++        invalidLost: categoryCounts.invalid,
++        eligibilityLost: categoryCounts.eligibility,
++        salesLost: categoryCounts.sales,
++        otherLost: categoryCounts.other,
++        topLostReason: topLostReasonForDeals(lostDeals),
++      };
++    })
++    .filter(row => {
++      if (selectedSourceKey.value !== 'all') return true;
++      return row.leads || row.lost || row.unqualifiedLost || row.salesLost || row.spend;
++    });
++});
++
++const lostReasonCategoryRows = computed(() => {
++  const counts = LOST_REASON_CATEGORY_ORDER.reduce((memo, category) => {
++    memo[category] = 0;
++    return memo;
++  }, {});
++
++  selectedLostDeals.value.forEach(deal => {
++    counts[lostReasonCategoryKey(deal)] += 1;
++  });
++
++  const totalLost = selectedLostDeals.value.length;
++
++  return LOST_REASON_CATEGORY_ORDER
++    .map(category => ({
++      key: category,
++      label: lostReasonCategoryLabel(category),
++      color: LOST_REASON_CATEGORY_COLORS[category],
++      count: counts[category],
++      share: totalLost ? (counts[category] / totalLost) * 100 : 0,
++    }))
++    .filter(row => row.count || row.key !== 'other');
++});
++
++const lostReasonRows = computed(() => buildLostReasonBuckets(selectedLostDeals.value));
++
++const unqualifiedShareRows = computed(() => {
++  return sourceLossRows.value
++    .map(row => ({
++      ...row,
++      shareValue: row.leads ? (row.unqualifiedLost / row.leads) * 100 : 0,
++      shareLabel: formatConversionRate(row.unqualifiedLost, row.leads),
++    }))
++    .sort((first, second) => {
++      if (second.shareValue !== first.shareValue) return second.shareValue - first.shareValue;
++      if (second.unqualifiedLost !== first.unqualifiedLost) return second.unqualifiedLost - first.unqualifiedLost;
++      return first.source.localeCompare(second.source);
++    });
++});
++
++const conversionRows = computed(() => [
++  {
++    key: 'lead_to_qualified',
++    label: 'Lead → Qualified',
++    numerator: selectedEconomics.value.qualifiedLeads,
++    denominator: selectedEconomics.value.leads,
++    value: formatConversionRate(selectedEconomics.value.qualifiedLeads, selectedEconomics.value.leads),
++    detail: `${formatNumber(selectedEconomics.value.qualifiedLeads)} / ${formatNumber(selectedEconomics.value.leads)} leads`,
++  },
++  {
++    key: 'qualified_to_successful',
++    label: 'Qualified → Successful',
++    numerator: selectedEconomics.value.successfulDeals,
++    denominator: selectedEconomics.value.qualifiedLeads,
++    value: formatConversionRate(selectedEconomics.value.successfulDeals, selectedEconomics.value.qualifiedLeads),
++    detail: `${formatNumber(selectedEconomics.value.successfulDeals)} / ${formatNumber(selectedEconomics.value.qualifiedLeads)} qualified`,
++  },
++]);
++
+ const monthlyChartRows = computed(() => {
+   const rowsByMonth = {};
+   const ensureMonth = month => {
+@@ -2386,6 +2552,207 @@ onMounted(() => {
+           </div>
+         </section>
+ 
++        <section class="grid gap-4 rounded-lg border border-n-weak bg-n-solid-1 p-4 shadow-[0_12px_32px_rgba(15,25,35,0.05)]">
++          <div class="flex flex-wrap items-start justify-between gap-3">
++            <div>
++              <h2 class="text-sm font-semibold text-n-slate-12">
++                Loss Analysis
++              </h2>
++              <div class="mt-1 text-xs text-n-slate-10">
++                Lost reasons and conversion for created deals
++              </div>
++            </div>
++            <span class="rounded-full bg-[#E0F5F4] px-2 py-0.5 text-[10px] font-semibold text-[#0C8A86]">
++              {{ selectedTrendSeriesLabel }}
++            </span>
++          </div>
++
++          <div class="grid gap-3 lg:grid-cols-2">
++            <div class="rounded-lg border border-n-weak bg-n-alpha-1 p-3">
++              <h3 class="m-0 text-xs font-semibold uppercase text-n-slate-10">
++                Minimal Conversion
++              </h3>
++              <div class="mt-3 grid gap-2">
++                <div
++                  v-for="row in conversionRows"
++                  :key="row.key"
++                  class="flex items-center justify-between gap-4 rounded-md bg-n-solid-1 px-3 py-2"
++                >
++                  <div class="min-w-0">
++                    <div class="text-sm font-medium text-n-slate-12">
++                      {{ row.label }}
++                    </div>
++                    <div class="mt-0.5 text-xs text-n-slate-10">
++                      {{ row.detail }}
++                    </div>
++                  </div>
++                  <div class="text-right text-base font-semibold text-n-slate-12">
++                    {{ row.value }}
++                  </div>
++                </div>
++              </div>
++            </div>
++
++            <div class="rounded-lg border border-n-weak bg-n-alpha-1 p-3">
++              <h3 class="m-0 text-xs font-semibold uppercase text-n-slate-10">
++                Lost Reason Category Breakdown
++              </h3>
++              <div class="mt-3 grid gap-2">
++                <div
++                  v-for="row in lostReasonCategoryRows"
++                  :key="row.key"
++                  class="grid gap-1"
++                >
++                  <div class="flex items-center justify-between gap-3 text-sm">
++                    <span class="inline-flex items-center gap-2 font-medium text-n-slate-12">
++                      <span
++                        class="h-2 w-2 rounded-sm"
++                        :style="{ backgroundColor: row.color }"
++                      />
++                      {{ row.label }}
++                    </span>
++                    <span class="text-n-slate-11">
++                      {{ formatNumber(row.count) }} · {{ formatPercent(row.share) }}
++                    </span>
++                  </div>
++                  <div class="h-1.5 overflow-hidden rounded-full bg-n-alpha-2">
++                    <div
++                      class="h-full rounded-full"
++                      :style="{ width: `${Math.min(row.share, 100)}%`, backgroundColor: row.color }"
++                    />
++                  </div>
++                </div>
++                <div
++                  v-if="!selectedLostDeals.length"
++                  class="text-sm text-n-slate-10"
++                >
++                  No lost deals in selected cohort
++                </div>
++              </div>
++            </div>
++          </div>
++
++          <div class="grid gap-3 xl:grid-cols-[minmax(0,1.45fr)_minmax(0,1fr)]">
++            <div class="rounded-lg border border-n-weak bg-n-alpha-1 p-3">
++              <div class="flex items-center justify-between gap-3">
++                <h3 class="m-0 text-xs font-semibold uppercase text-n-slate-10">
++                  Lost Reasons by Source
++                </h3>
++                <span class="text-xs text-n-slate-10">
++                  {{ formatNumber(selectedEconomics.lost) }} lost
++                </span>
++              </div>
++
++              <div class="mt-3 overflow-x-auto">
++                <table class="min-w-full border-separate border-spacing-0 text-left text-sm">
++                  <thead class="text-xs uppercase text-n-slate-10">
++                    <tr>
++                      <th class="border-b border-n-weak py-2 pr-4 font-medium">Source</th>
++                      <th class="border-b border-n-weak py-2 pr-4 text-right font-medium">Lost</th>
++                      <th class="border-b border-n-weak py-2 pr-4 text-right font-medium">Invalid</th>
++                      <th class="border-b border-n-weak py-2 pr-4 text-right font-medium">Eligibility</th>
++                      <th class="border-b border-n-weak py-2 pr-4 text-right font-medium">Sales Lost</th>
++                      <th class="border-b border-n-weak py-2 text-left font-medium">Top Reason</th>
++                    </tr>
++                  </thead>
++                  <tbody>
++                    <tr
++                      v-for="row in sourceLossRows"
++                      :key="`loss-${row.key}`"
++                      class="text-n-slate-12"
++                    >
++                      <td class="whitespace-nowrap border-b border-n-weak py-3 pr-4 font-medium">
++                        {{ row.source }}
++                      </td>
++                      <td class="whitespace-nowrap border-b border-n-weak py-3 pr-4 text-right">
++                        {{ formatNumber(row.lost) }}
++                      </td>
++                      <td class="whitespace-nowrap border-b border-n-weak py-3 pr-4 text-right">
++                        {{ formatNumber(row.invalidLost) }}
++                      </td>
++                      <td class="whitespace-nowrap border-b border-n-weak py-3 pr-4 text-right">
++                        {{ formatNumber(row.eligibilityLost) }}
++                      </td>
++                      <td class="whitespace-nowrap border-b border-n-weak py-3 pr-4 text-right">
++                        {{ formatNumber(row.salesLost) }}
++                      </td>
++                      <td class="min-w-[9rem] border-b border-n-weak py-3 text-n-slate-11">
++                        {{ row.topLostReason }}
++                      </td>
++                    </tr>
++                  </tbody>
++                </table>
++              </div>
++            </div>
++
++            <div class="grid gap-3">
++              <div class="rounded-lg border border-n-weak bg-n-alpha-1 p-3">
++                <h3 class="m-0 text-xs font-semibold uppercase text-n-slate-10">
++                  Unqualified Share by Source
++                </h3>
++                <div class="mt-3 grid gap-2">
++                  <div
++                    v-for="row in unqualifiedShareRows"
++                    :key="`unqualified-${row.key}`"
++                    class="grid gap-1"
++                  >
++                    <div class="flex items-center justify-between gap-3 text-sm">
++                      <span class="min-w-0 truncate font-medium text-n-slate-12">
++                        {{ row.source }}
++                      </span>
++                      <span class="whitespace-nowrap text-n-slate-11">
++                        {{ row.shareLabel }}
++                      </span>
++                    </div>
++                    <div class="flex items-center gap-2">
++                      <div class="h-1.5 flex-1 overflow-hidden rounded-full bg-n-alpha-2">
++                        <div
++                          class="h-full rounded-full bg-n-amber-9"
++                          :style="{ width: `${Math.min(row.shareValue, 100)}%` }"
++                        />
++                      </div>
++                      <span class="w-12 text-right text-xs text-n-slate-10">
++                        {{ formatNumber(row.unqualifiedLost) }}/{{ formatNumber(row.leads) }}
++                      </span>
++                    </div>
++                  </div>
++                </div>
++              </div>
++
++              <div class="rounded-lg border border-n-weak bg-n-alpha-1 p-3">
++                <h3 class="m-0 text-xs font-semibold uppercase text-n-slate-10">
++                  Lost Reason Details
++                </h3>
++                <div class="mt-3 grid gap-2">
++                  <div
++                    v-for="row in lostReasonRows"
++                    :key="row.key"
++                    class="flex items-center justify-between gap-3 text-sm"
++                  >
++                    <div class="min-w-0">
++                      <div class="truncate font-medium text-n-slate-12">
++                        {{ row.reason }}
++                      </div>
++                      <div class="text-xs text-n-slate-10">
++                        {{ row.categoryLabel }}
++                      </div>
++                    </div>
++                    <span class="whitespace-nowrap font-semibold text-n-slate-12">
++                      {{ formatNumber(row.count) }}
++                    </span>
++                  </div>
++                  <div
++                    v-if="!lostReasonRows.length"
++                    class="text-sm text-n-slate-10"
++                  >
++                    No lost reasons in selected cohort
++                  </div>
++                </div>
++              </div>
++            </div>
++          </div>
++        </section>
++
+         <section class="grid gap-3 rounded-lg border border-n-weak bg-n-solid-1 p-4 shadow-[0_12px_32px_rgba(15,25,35,0.05)]">
+           <div class="flex flex-wrap items-start justify-between gap-3">
+             <div class="min-w-0">

@@ -232,6 +232,7 @@ crm-vue-copy: ensure-env
 	$(COMPOSE) cp chatwoot-patches/crm-marketing-attribution-settings-board-vue.patch rails:/tmp/crm-marketing-attribution-settings-board-vue.patch
 	$(COMPOSE) cp chatwoot-patches/crm-marketing-economics-foundation-vue.patch rails:/tmp/crm-marketing-economics-foundation-vue.patch
 	$(COMPOSE) cp chatwoot-patches/crm-marketing-economics-kpi-layer-vue.patch rails:/tmp/crm-marketing-economics-kpi-layer-vue.patch
+	$(COMPOSE) cp chatwoot-patches/crm-marketing-loss-analysis-vue.patch rails:/tmp/crm-marketing-loss-analysis-vue.patch
 	@echo "CRM Vue patch copied to Rails container"
 
 crm-vue-check: crm-vue-copy
@@ -262,6 +263,7 @@ crm-vue-check: crm-vue-copy
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply --check /tmp/crm-marketing-attribution-settings-board-vue.patch"
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply --check /tmp/crm-marketing-economics-foundation-vue.patch"
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply --check /tmp/crm-marketing-economics-kpi-layer-vue.patch"
+	$(COMPOSE) exec rails sh -lc "cd /app && git apply --check /tmp/crm-marketing-loss-analysis-vue.patch"
 	@echo "CRM Vue patch validated"
 
 crm-vue-patch: crm-vue-copy
@@ -292,6 +294,7 @@ crm-vue-patch: crm-vue-copy
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply /tmp/crm-marketing-attribution-settings-board-vue.patch"
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply /tmp/crm-marketing-economics-foundation-vue.patch"
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply /tmp/crm-marketing-economics-kpi-layer-vue.patch"
+	$(COMPOSE) exec rails sh -lc "cd /app && git apply /tmp/crm-marketing-loss-analysis-vue.patch"
 	@echo "CRM Vue patch applied"
 
 crm-assets-build-host:
@@ -354,6 +357,7 @@ crm-assets-build-host:
 		git apply "$(CURDIR)/chatwoot-patches/crm-marketing-attribution-settings-board-vue.patch"; \
 		git apply "$(CURDIR)/chatwoot-patches/crm-marketing-economics-foundation-vue.patch"; \
 		git apply "$(CURDIR)/chatwoot-patches/crm-marketing-economics-kpi-layer-vue.patch"; \
+		git apply "$(CURDIR)/chatwoot-patches/crm-marketing-loss-analysis-vue.patch"; \
 	perl -0pi -e "s/import \\{ colors \\} from '\\.\\/theme\\/colors';/const { colors } = require('.\\/theme\\/colors.js');/; s/import \\{ icons \\} from '\\.\\/theme\\/icons';/const { icons } = require('.\\/theme\\/icons.js');/" tailwind.config.js; \
 	perl -0pi -e "s/export const colors =/const colors =/; s/\\n\\};\\s*\\z/\\n};\\nmodule.exports = { colors };\\n/s" theme/colors.js; \
 	perl -0pi -e "s/export const icons =/const icons =/; s/\\n\\};\\s*\\z/\\n};\\nmodule.exports = { icons };\\n/s" theme/icons.js; \
@@ -408,6 +412,12 @@ crm-assets-build-host:
 	grep -n "Completed ROAS" app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue; \
 	grep -n "Source Economics" app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue; \
 	grep -n "Unqualified Share" app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue; \
+	grep -n "Loss Analysis" app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue; \
+	grep -n "Minimal Conversion" app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue; \
+	grep -n "Lost Reasons by Source" app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue; \
+	grep -n "Lost Reason Category Breakdown" app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue; \
+	grep -n "Unqualified Share by Source" app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue; \
+	grep -n "Sales Lost" app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue; \
 	grep -n "Leads by source over time" app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue; \
 	if grep -nE "source_request|first_touch_source|first_touch_entry_point|source_raw_snapshot" app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue app/javascript/dashboard/routes/dashboard/crm/Pipeline.vue app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue; then exit 1; fi; \
 	grep -n "trafficSourceDisplay" app/javascript/dashboard/routes/dashboard/crm/Pipeline.vue; \
@@ -438,7 +448,7 @@ crm-assets-build-host:
 	ls public/vite/assets/DealWorkspace-*.js >/dev/null; \
 	grep -E "CRM Deal|Field setup|Operator" public/vite/assets/DealWorkspace-*.js >/dev/null; \
 	grep -E "Pipeline|crm_pipeline_index|crm_deal_workspace|crm_marketing_analytics|MarketingAnalytics" public/vite/.vite/manifest.json public/vite/assets/Pipeline-*.js public/vite/assets/MarketingAnalytics-*.js >/dev/null; \
-		grep -E "Customize dashboard|Add metric|marketing_spend_daily in selected period|Manual Spend Entries|Spend & Revenue by Month|Add spend|Attribution Settings|Search sources, origins, rules|Show issues only|Legend|Fallback Priority|Traffic Sources|Lead Origins|Detection Rules|Source filters|Traffic Source|Campaign / placement|Select traffic source|CRM deals created in selected period|Qualified Leads|Successful Deal Amount|CPLQ|Pipeline ROAS|Completed ROAS|Source Economics|Unqualified Share|Leads by source over time|need clarification" public/vite/assets/MarketingAnalytics-*.js >/dev/null; \
+		grep -E "Customize dashboard|Add metric|marketing_spend_daily in selected period|Manual Spend Entries|Spend & Revenue by Month|Add spend|Attribution Settings|Search sources, origins, rules|Show issues only|Legend|Fallback Priority|Traffic Sources|Lead Origins|Detection Rules|Source filters|Traffic Source|Campaign / placement|Select traffic source|CRM deals created in selected period|Qualified Leads|Successful Deal Amount|CPLQ|Pipeline ROAS|Completed ROAS|Source Economics|Unqualified Share|Loss Analysis|Minimal Conversion|Lost Reasons by Source|Lost Reason Category Breakdown|Unqualified Share by Source|Sales Lost|Leads by source over time|need clarification" public/vite/assets/MarketingAnalytics-*.js >/dev/null; \
 	grep -E "Traffic Source|Lead Origin|Needs source clarification" public/vite/assets/Pipeline-*.js >/dev/null; \
 	grep -E "Source Attribution|Traffic Source|Lead Origin|Detection method|Needs clarification|Lead Qualification|Qualification Status|Lost Reason" public/vite/assets/DealWorkspace-*.js >/dev/null; \
 	echo "CRM host assets built"
@@ -572,6 +582,12 @@ crm-assets-install-local: ensure-env
 	docker exec "$$install_container" sh -lc "grep -n 'Completed ROAS' /app/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue"; \
 	docker exec "$$install_container" sh -lc "grep -n 'Source Economics' /app/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue"; \
 	docker exec "$$install_container" sh -lc "grep -n 'Unqualified Share' /app/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue"; \
+	docker exec "$$install_container" sh -lc "grep -n 'Loss Analysis' /app/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue"; \
+	docker exec "$$install_container" sh -lc "grep -n 'Minimal Conversion' /app/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue"; \
+	docker exec "$$install_container" sh -lc "grep -n 'Lost Reasons by Source' /app/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue"; \
+	docker exec "$$install_container" sh -lc "grep -n 'Lost Reason Category Breakdown' /app/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue"; \
+	docker exec "$$install_container" sh -lc "grep -n 'Unqualified Share by Source' /app/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue"; \
+	docker exec "$$install_container" sh -lc "grep -n 'Sales Lost' /app/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue"; \
 	docker exec "$$install_container" sh -lc "grep -n 'Leads by source over time' /app/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue"; \
 	docker exec "$$install_container" sh -lc "if grep -nE 'source_request|first_touch_source|first_touch_entry_point|source_raw_snapshot' /app/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue /app/app/javascript/dashboard/routes/dashboard/crm/Pipeline.vue /app/app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue; then exit 1; fi"; \
 	docker exec "$$install_container" sh -lc "grep -n 'leadTrendLayeredSeries' /app/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue"; \
@@ -664,6 +680,12 @@ crm-assets-refresh-local: crm-assets-build-host crm-assets-install-local
 	$(COMPOSE) exec -T rails sh -lc "grep -n 'Completed ROAS' /app/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue"; \
 	$(COMPOSE) exec -T rails sh -lc "grep -n 'Source Economics' /app/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue"; \
 	$(COMPOSE) exec -T rails sh -lc "grep -n 'Unqualified Share' /app/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue"; \
+	$(COMPOSE) exec -T rails sh -lc "grep -n 'Loss Analysis' /app/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue"; \
+	$(COMPOSE) exec -T rails sh -lc "grep -n 'Minimal Conversion' /app/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue"; \
+	$(COMPOSE) exec -T rails sh -lc "grep -n 'Lost Reasons by Source' /app/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue"; \
+	$(COMPOSE) exec -T rails sh -lc "grep -n 'Lost Reason Category Breakdown' /app/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue"; \
+	$(COMPOSE) exec -T rails sh -lc "grep -n 'Unqualified Share by Source' /app/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue"; \
+	$(COMPOSE) exec -T rails sh -lc "grep -n 'Sales Lost' /app/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue"; \
 	$(COMPOSE) exec -T rails sh -lc "grep -n 'Leads by source over time' /app/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue"; \
 	$(COMPOSE) exec -T rails sh -lc "if grep -nE 'source_request|first_touch_source|first_touch_entry_point|source_raw_snapshot' /app/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue /app/app/javascript/dashboard/routes/dashboard/crm/Pipeline.vue /app/app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue; then exit 1; fi"; \
 	$(COMPOSE) exec -T rails sh -lc "grep -n 'leadTrendLayeredSeries' /app/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue"; \
@@ -680,5 +702,5 @@ crm-assets-refresh-local: crm-assets-build-host crm-assets-install-local
 	$(COMPOSE) exec -T rails sh -lc "grep -n 'Fleexa brand color' /app/app/javascript/dashboard/components-next/HelpCenter/PortalSwitcher/CreatePortalDialog.vue"; \
 	$(COMPOSE) exec -T rails sh -lc "if grep -n 'Reply to client' /app/app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue; then exit 1; fi"; \
 	$(COMPOSE) exec -T rails sh -lc "if grep -nE '>Title<|Title \\*' /app/app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue; then exit 1; fi"; \
-		$(COMPOSE) exec -T rails sh -lc "test -d /app/public/vite/assets && test -f /app/public/vite/.vite/manifest.json && ls /app/public/vite/assets/DealWorkspace-*.js >/dev/null && ls /app/public/vite/assets/MarketingAnalytics-*.js >/dev/null && ls /app/public/vite/assets/Pipeline-*.js >/dev/null && grep -E 'CRM Deal|Field setup|Operator|Source Attribution|Traffic Source|Lead Origin|Detection method|Needs clarification|Lead Qualification|Qualification Status|Lost Reason' /app/public/vite/assets/DealWorkspace-*.js >/dev/null && grep -E 'Traffic Source|Lead Origin|Needs source clarification' /app/public/vite/assets/Pipeline-*.js >/dev/null && grep -E 'Marketing Analytics|Pipeline funnel|Customize dashboard|Add metric|marketing_spend_daily in selected period|Manual Spend Entries|Spend & Revenue by Month|Add spend|Attribution Settings|Search sources, origins, rules|Show issues only|Legend|Fallback Priority|Traffic Sources|Lead Origins|Detection Rules|Source filters|Traffic Source|Campaign / placement|Select traffic source|CRM deals created in selected period|Qualified Leads|Successful Deal Amount|CPLQ|Pipeline ROAS|Completed ROAS|Source Economics|Unqualified Share|Leads by source over time|need clarification' /app/public/vite/assets/MarketingAnalytics-*.js >/dev/null"; \
+		$(COMPOSE) exec -T rails sh -lc "test -d /app/public/vite/assets && test -f /app/public/vite/.vite/manifest.json && ls /app/public/vite/assets/DealWorkspace-*.js >/dev/null && ls /app/public/vite/assets/MarketingAnalytics-*.js >/dev/null && ls /app/public/vite/assets/Pipeline-*.js >/dev/null && grep -E 'CRM Deal|Field setup|Operator|Source Attribution|Traffic Source|Lead Origin|Detection method|Needs clarification|Lead Qualification|Qualification Status|Lost Reason' /app/public/vite/assets/DealWorkspace-*.js >/dev/null && grep -E 'Traffic Source|Lead Origin|Needs source clarification' /app/public/vite/assets/Pipeline-*.js >/dev/null && grep -E 'Marketing Analytics|Pipeline funnel|Customize dashboard|Add metric|marketing_spend_daily in selected period|Manual Spend Entries|Spend & Revenue by Month|Add spend|Attribution Settings|Search sources, origins, rules|Show issues only|Legend|Fallback Priority|Traffic Sources|Lead Origins|Detection Rules|Source filters|Traffic Source|Campaign / placement|Select traffic source|CRM deals created in selected period|Qualified Leads|Successful Deal Amount|CPLQ|Pipeline ROAS|Completed ROAS|Source Economics|Unqualified Share|Loss Analysis|Minimal Conversion|Lost Reasons by Source|Lost Reason Category Breakdown|Unqualified Share by Source|Sales Lost|Leads by source over time|need clarification' /app/public/vite/assets/MarketingAnalytics-*.js >/dev/null"; \
 	echo "CRM local frontend assets refreshed"
