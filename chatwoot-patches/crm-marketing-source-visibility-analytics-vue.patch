@@ -1,0 +1,563 @@
+diff --git a/app/javascript/dashboard/routes/dashboard/crm/Pipeline.vue b/app/javascript/dashboard/routes/dashboard/crm/Pipeline.vue
+index 38fb80b..c4c27f1 100644
+--- a/app/javascript/dashboard/routes/dashboard/crm/Pipeline.vue
++++ b/app/javascript/dashboard/routes/dashboard/crm/Pipeline.vue
+@@ -57,6 +57,8 @@ const DEFAULT_LIST_COLUMN_KEYS = [
+   'title',
+   'stage',
+   'source_request',
++  'traffic_source',
++  'lead_origin',
+   'selected_car',
+   'budget',
+   'operator',
+@@ -316,6 +318,20 @@ const listColumnDefinitions = computed(() => [
+     headerClass: 'w-[13rem]',
+     cellClass: 'w-[13rem] text-n-slate-11',
+   },
++  {
++    key: 'traffic_source',
++    label: 'Traffic Source',
++    width: '12rem',
++    headerClass: 'w-[12rem]',
++    cellClass: 'w-[12rem]',
++  },
++  {
++    key: 'lead_origin',
++    label: 'Lead Origin',
++    width: '11rem',
++    headerClass: 'w-[11rem]',
++    cellClass: 'w-[11rem] text-n-slate-11',
++  },
+   {
+     key: 'selected_car',
+     label: 'Selected Car',
+@@ -340,7 +356,7 @@ const listColumnDefinitions = computed(() => [
+ ]);
+ 
+ const listColumnStorageKey = computed(() => {
+-  return `fleexa.crm.pipeline.list_columns.v2.${accountId.value}`;
++  return `fleexa.crm.pipeline.list_columns.v3.${accountId.value}`;
+ });
+ 
+ const visibleListColumns = computed(() => {
+@@ -1510,6 +1526,66 @@ const tableValue = value => {
+   return hasDisplayValue(value) ? value : EMPTY_TABLE_VALUE;
+ };
+ 
++const attributionAttributes = deal => {
++  return deal?.custom_attributes && typeof deal.custom_attributes === 'object'
++    ? deal.custom_attributes
++    : {};
++};
++
++const attributionValue = (deal, keys) => {
++  const attributes = attributionAttributes(deal);
++  for (const key of keys) {
++    if (hasDisplayValue(attributes[key])) return attributes[key];
++  }
++  return '';
++};
++
++const booleanAttributeValue = value => {
++  return value === true || value === 'true' || value === 1 || value === '1';
++};
++
++const needsSourceClarification = deal => {
++  return booleanAttributeValue(attributionAttributes(deal).needs_source_clarification);
++};
++
++const trafficSourceDisplay = deal => {
++  return attributionValue(deal, [
++    'traffic_source_label',
++    'traffic_source_key',
++    'first_touch_source_label',
++    'first_touch_source_key',
++  ]) || sourceRequestValue(deal) || 'Unknown';
++};
++
++const leadOriginDisplay = deal => {
++  return attributionValue(deal, [
++    'lead_origin_label',
++    'lead_origin_key',
++    'first_touch_entry_point_label',
++    'first_touch_entry_point_key',
++    'landing_url',
++    'landing_page',
++    'utm_campaign',
++    'from',
++  ]) || 'Unknown';
++};
++
++const trafficSourceBadgeStyle = deal => {
++  if (needsSourceClarification(deal)) {
++    return {
++      backgroundColor: 'rgba(245, 158, 11, 0.16)',
++      color: '#B45309',
++      borderColor: 'rgba(245, 158, 11, 0.28)',
++    };
++  }
++
++  return {
++    backgroundColor: 'rgba(14, 165, 160, 0.14)',
++    color: '#0C8A86',
++    borderColor: 'rgba(14, 165, 160, 0.24)',
++  };
++};
++
+ const formatRentalPeriod = deal => {
+   const start = formatDate(deal.rental_start);
+   const end = formatDate(deal.rental_end);
+@@ -2304,6 +2380,22 @@ watch(
+                   {{ tableValue(sourceRequestValue(deal)) }}
+                 </span>
+ 
++                <span
++                  v-else-if="column.key === 'traffic_source'"
++                  class="inline-flex max-w-full items-center gap-1.5 rounded-md border px-2 py-1 text-xs font-medium"
++                  :style="trafficSourceBadgeStyle(deal)"
++                >
++                  <i
++                    v-if="needsSourceClarification(deal)"
++                    class="i-lucide-alert-triangle h-3.5 w-3.5 shrink-0"
++                  />
++                  <span class="truncate">{{ tableValue(trafficSourceDisplay(deal)) }}</span>
++                </span>
++
++                <span v-else-if="column.key === 'lead_origin'" class="block truncate">
++                  {{ tableValue(leadOriginDisplay(deal)) }}
++                </span>
++
+                 <span v-else-if="column.key === 'selected_car'" class="block truncate">
+                   {{ tableValue(selectedCarValue(deal)) }}
+                 </span>
+@@ -2461,6 +2553,25 @@ watch(
+               </div>
+ 
+               <div class="mt-3 flex flex-wrap items-center gap-2">
++                <span
++                  class="inline-flex min-w-0 max-w-full items-center gap-1 rounded-md border px-2 py-1 text-xs font-medium"
++                  :style="trafficSourceBadgeStyle(deal)"
++                  :title="needsSourceClarification(deal) ? 'Needs source clarification' : trafficSourceDisplay(deal)"
++                >
++                  <i
++                    v-if="needsSourceClarification(deal)"
++                    class="i-lucide-alert-triangle h-3.5 w-3.5 shrink-0"
++                  />
++                  <span class="truncate">{{ trafficSourceDisplay(deal) }}</span>
++                </span>
++                <span
++                  v-if="leadOriginDisplay(deal) !== 'Unknown'"
++                  class="inline-flex min-w-0 max-w-full items-center gap-1 rounded-md bg-n-alpha-2 px-2 py-1 text-xs text-n-slate-11"
++                  :title="leadOriginDisplay(deal)"
++                >
++                  <i class="i-lucide-map-pin h-3.5 w-3.5 shrink-0 text-n-slate-9" />
++                  <span class="truncate">{{ leadOriginDisplay(deal) }}</span>
++                </span>
+                 <span
+                   v-if="assignedName(deal)"
+                   class="inline-flex min-w-0 items-center gap-1 rounded-md bg-n-alpha-2 px-2 py-1 text-xs text-n-slate-11"
+diff --git a/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue b/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue
+index 95aa932..326930a 100644
+--- a/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue
++++ b/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue
+@@ -96,13 +96,36 @@ const TREND_CHART_INNER_WIDTH =
+   TREND_CHART_WIDTH - TREND_CHART_PADDING.left - TREND_CHART_PADDING.right;
+ const TREND_CHART_INNER_HEIGHT =
+   TREND_CHART_HEIGHT - TREND_CHART_PADDING.top - TREND_CHART_PADDING.bottom;
+-const TREND_SERIES = [
+-  { key: 'all', label: 'All Sources', color: '#0EA5A0', mutedColor: '#6B8E8B' },
+-  { key: 'google', label: 'Google', color: '#0C8A86', mutedColor: '#8FA8A6' },
+-  { key: 'meta', label: 'Meta', color: '#2E6F95', mutedColor: '#8EA6B4' },
+-  { key: 'tiktok', label: 'TikTok', color: '#875B7B', mutedColor: '#B6A0AF' },
+-];
+-const PAID_SOURCE_KEYS = ['google', 'meta', 'tiktok'];
++const ALL_SOURCE_SERIES = {
++  key: 'all',
++  label: 'All Sources',
++  color: '#0EA5A0',
++  mutedColor: '#6B8E8B',
++};
++const UNKNOWN_SOURCE_KEY = 'unknown';
++const NEEDS_CLARIFICATION_SOURCE_KEY = 'needs_source_clarification';
++const SOURCE_KEY_ALIASES = {
++  google: 'google_ads',
++  googleads: 'google_ads',
++  google_ad: 'google_ads',
++  google_ads: 'google_ads',
++  googleadwords: 'google_ads',
++  adwords: 'google_ads',
++  meta: 'meta_ads',
++  metaads: 'meta_ads',
++  meta_ads: 'meta_ads',
++  facebook: 'meta_ads',
++  facebookads: 'meta_ads',
++  fb: 'meta_ads',
++  instagram: 'meta_ads',
++  ig: 'meta_ads',
++  tiktok: 'tiktok_ads',
++  tiktokads: 'tiktok_ads',
++  tiktok_ads: 'tiktok_ads',
++  yandex: 'yandex',
++  yandexads: 'yandex',
++  yandex_ads: 'yandex',
++};
+ const MONTHLY_CHART_WIDTH = 720;
+ const MONTHLY_CHART_HEIGHT = 260;
+ const MONTHLY_CHART_PADDING = {
+@@ -514,61 +537,136 @@ const valueFromDealSources = (deal, keys) => {
+   return '';
+ };
+ 
+-const paidSourceKeyFromText = value => {
+-  const normalized = normalizeText(value).replace(/[\s_-]+/g, '');
+-  if (!normalized) return '';
+-  if (normalized.includes('google')) return 'google';
+-  if (
+-    normalized.includes('meta') ||
+-    normalized.includes('facebook') ||
+-    normalized === 'fb' ||
+-    normalized.includes('instagram') ||
+-    normalized === 'ig'
+-  ) {
+-    return 'meta';
+-  }
+-  if (normalized.includes('tiktok')) return 'tiktok';
+-  if (normalized.includes('unknown')) return 'unknown';
+-  return 'other';
++const rawSourceKeyFromText = value => {
++  return String(value || '')
++    .trim()
++    .toLowerCase()
++    .replace(/[^a-z0-9]+/g, '_')
++    .replace(/^_+|_+$/g, '');
++};
++
++const sourceKeyFromText = value => {
++  const key = rawSourceKeyFromText(value);
++  if (!key) return '';
++
++  const compactKey = key.replace(/_/g, '');
++  return SOURCE_KEY_ALIASES[key] || SOURCE_KEY_ALIASES[compactKey] || key;
++};
++
++const booleanAttributeValue = value => {
++  return value === true || value === 'true' || value === 1 || value === '1';
++};
++
++const dealNeedsSourceClarification = deal => {
++  return booleanAttributeValue(deal?.custom_attributes?.needs_source_clarification);
++};
++
++const fallbackSourceLabelForKey = key => {
++  if (key === NEEDS_CLARIFICATION_SOURCE_KEY) return 'Needs Clarification';
++  if (key === UNKNOWN_SOURCE_KEY) return 'Unknown';
++
++  const defaultSource = DEFAULT_TRAFFIC_SOURCES.find(source => source.key === key);
++  if (defaultSource) return defaultSource.label;
++
++  return String(key || '')
++    .split('_')
++    .filter(Boolean)
++    .map(part => part.charAt(0).toUpperCase() + part.slice(1))
++    .join(' ') || 'Unknown';
++};
++
++const configuredSourceFromKey = key => {
++  return dashboardWidgetConfig.value.traffic_sources.find(source => source.key === key);
+ };
+ 
+-const classifyTrafficSource = deal => {
++const sourceSnapshotFromDeal = deal => {
++  const attributes = normalizedAttributes(deal?.custom_attributes);
++  const storedKey = sourceKeyFromText(attributes.traffic_source_key);
++  const storedLabel = String(attributes.traffic_source_label || '').trim();
++
++  if (storedKey || storedLabel) {
++    const key = storedKey || sourceKeyFromText(storedLabel) || UNKNOWN_SOURCE_KEY;
++    return {
++      key,
++      label: storedLabel || configuredSourceFromKey(key)?.label || fallbackSourceLabelForKey(key),
++      needsClarification: dealNeedsSourceClarification(deal),
++    };
++  }
++
+   const firstTouchSource = valueFromDealSources(deal, [
+     'first_touch_source_label',
+     'first_touch_source_key',
+   ]);
+-  const firstTouchSourceKey = paidSourceKeyFromText(firstTouchSource);
+-  if (firstTouchSourceKey) return firstTouchSourceKey;
++  const firstTouchSourceKey = sourceKeyFromText(firstTouchSource);
++  if (firstTouchSourceKey) {
++    return {
++      key: firstTouchSourceKey,
++      label: String(firstTouchSource || '').trim() ||
++        configuredSourceFromKey(firstTouchSourceKey)?.label ||
++        fallbackSourceLabelForKey(firstTouchSourceKey),
++      needsClarification: dealNeedsSourceClarification(deal),
++    };
++  }
+ 
+   if (hasValue(valueFromDealSources(deal, ['gclid', 'gclientid']))) {
+-    return 'google';
++    return {
++      key: 'google_ads',
++      label: configuredSourceFromKey('google_ads')?.label || 'Google Ads',
++      needsClarification: dealNeedsSourceClarification(deal),
++    };
+   }
+ 
+   if (hasValue(valueFromDealSources(deal, ['fbclid']))) {
+-    return 'meta';
++    return {
++      key: 'meta_ads',
++      label: configuredSourceFromKey('meta_ads')?.label || 'Meta Ads',
++      needsClarification: dealNeedsSourceClarification(deal),
++    };
+   }
+ 
+-  if (paidSourceKeyFromText(valueFromDealSources(deal, ['utm_source'])) === 'tiktok') {
+-    return 'tiktok';
++  const utmSourceKey = sourceKeyFromText(valueFromDealSources(deal, ['utm_source']));
++  if (utmSourceKey && utmSourceKey !== UNKNOWN_SOURCE_KEY) {
++    return {
++      key: utmSourceKey,
++      label: configuredSourceFromKey(utmSourceKey)?.label ||
++        String(valueFromDealSources(deal, ['utm_source']) || '').trim() ||
++        fallbackSourceLabelForKey(utmSourceKey),
++      needsClarification: dealNeedsSourceClarification(deal),
++    };
+   }
+ 
+-  return 'unknown';
++  if (dealNeedsSourceClarification(deal)) {
++    return {
++      key: NEEDS_CLARIFICATION_SOURCE_KEY,
++      label: 'Needs Clarification',
++      needsClarification: true,
++    };
++  }
++
++  return {
++    key: UNKNOWN_SOURCE_KEY,
++    label: 'Unknown',
++    needsClarification: false,
++  };
+ };
+ 
++const classifyTrafficSource = deal => sourceSnapshotFromDeal(deal).key;
++
+ const classifySpendSource = row => {
+   const values = [
+-    row?.source_system,
+     row?.source_key,
+     row?.source_label,
++    row?.source_system,
+     row?.platform,
++    row?.vendor_name,
+   ];
+ 
+   for (const value of values) {
+-    const sourceKey = paidSourceKeyFromText(value);
+-    if (PAID_SOURCE_KEYS.includes(sourceKey)) return sourceKey;
++    const sourceKey = sourceKeyFromText(value);
++    if (sourceKey && sourceKey !== UNKNOWN_SOURCE_KEY) return sourceKey;
+   }
+ 
+-  return 'unknown';
++  return UNKNOWN_SOURCE_KEY;
+ };
+ 
+ const normalizeWidgetVisible = value => {
+@@ -787,6 +885,97 @@ const kpiCards = computed(() => visibleWidgetKeys.value.map(key => metricRegistr
+ 
+ const allMetrics = computed(() => KPI_WIDGET_KEYS.map(key => metricRegistry.value[key]).filter(Boolean));
+ 
++const colorWithAlpha = (color, alpha) => {
++  const normalizedColor = normalizeColor(color).slice(1);
++  const red = Number.parseInt(normalizedColor.slice(0, 2), 16);
++  const green = Number.parseInt(normalizedColor.slice(2, 4), 16);
++  const blue = Number.parseInt(normalizedColor.slice(4, 6), 16);
++
++  return `rgba(${red}, ${green}, ${blue}, ${alpha})`;
++};
++
++const sourceSeriesFromItem = (item, index = 0) => {
++  const color = normalizeColor(item?.color, DEFAULT_TRAFFIC_SOURCES[index % DEFAULT_TRAFFIC_SOURCES.length]?.color || '#0EA5A0');
++  return {
++    key: item.key,
++    label: item.label || fallbackSourceLabelForKey(item.key),
++    color,
++    mutedColor: colorWithAlpha(color, 0.5),
++  };
++};
++
++const observedTrafficSourceItems = computed(() => {
++  const itemsByKey = new Map();
++
++  const addItem = item => {
++    const key = sourceKeyFromText(item?.key || item?.label);
++    if (!key || key === 'all') return;
++    if (itemsByKey.has(key)) return;
++
++    const configuredSource = configuredSourceFromKey(key);
++    itemsByKey.set(key, {
++      key,
++      label: item?.label || configuredSource?.label || fallbackSourceLabelForKey(key),
++      color: item?.color || configuredSource?.color || '#94A3B8',
++    });
++  };
++
++  deals.value.forEach(deal => {
++    const snapshot = sourceSnapshotFromDeal(deal);
++    addItem({
++      key: snapshot.key,
++      label: snapshot.label,
++      color: snapshot.key === NEEDS_CLARIFICATION_SOURCE_KEY ? '#F59E0B' : undefined,
++    });
++  });
++
++  monthlySpendRows.value.forEach(row => {
++    const key = classifySpendSource(row);
++    addItem({
++      key,
++      label: row?.source_label || row?.source_key || row?.source_system || fallbackSourceLabelForKey(key),
++    });
++  });
++
++  return [...itemsByKey.values()];
++});
++
++const marketingSourceSeries = computed(() => {
++  const itemsByKey = new Map();
++  const addSeries = (item, index) => {
++    const key = sourceKeyFromText(item?.key || item?.label);
++    if (!key || key === 'all' || itemsByKey.has(key)) return;
++
++    const sourceItem = {
++      key,
++      label: item?.label || fallbackSourceLabelForKey(key),
++      color: item?.color || DEFAULT_TRAFFIC_SOURCES[index % DEFAULT_TRAFFIC_SOURCES.length]?.color || '#0EA5A0',
++    };
++    itemsByKey.set(key, sourceSeriesFromItem(sourceItem, index));
++  };
++
++  activeAttributionItems(dashboardWidgetConfig.value.traffic_sources)
++    .forEach((item, index) => addSeries(item, index));
++
++  observedTrafficSourceItems.value.forEach((item, index) => {
++    const configuredSource = configuredSourceFromKey(item.key);
++    addSeries({
++      ...item,
++      label: item.label || configuredSource?.label,
++      color: item.color || configuredSource?.color,
++    }, index);
++  });
++
++  return [
++    ALL_SOURCE_SERIES,
++    ...itemsByKey.values(),
++  ];
++});
++
++const unresolvedDealsCount = computed(() => {
++  return deals.value.filter(deal => dealNeedsSourceClarification(deal)).length;
++});
++
+ const monthKeyFromValue = value => {
+   const dateKey = trendDateKeyFromValue(value);
+   return dateKey ? dateKey.slice(0, 7) : '';
+@@ -852,8 +1041,8 @@ const totalMonthlyRevenue = computed(() => {
+ 
+ const selectedMonthlySource = computed(() => {
+   return (
+-    TREND_SERIES.find(series => series.key === selectedMonthlySourceKey.value) ||
+-    TREND_SERIES[0]
++    marketingSourceSeries.value.find(series => series.key === selectedMonthlySourceKey.value) ||
++    marketingSourceSeries.value[0]
+   );
+ });
+ 
+@@ -1342,9 +1531,6 @@ const leadTrendRows = computed(() => {
+       key: dateKey,
+       label: displayTrendDateKey(dateKey),
+       all: 0,
+-      google: 0,
+-      meta: 0,
+-      tiktok: 0,
+     };
+     return memo;
+   }, {});
+@@ -1356,7 +1542,7 @@ const leadTrendRows = computed(() => {
+ 
+     row.all += 1;
+     const sourceKey = classifyTrafficSource(deal);
+-    if (PAID_SOURCE_KEYS.includes(sourceKey)) row[sourceKey] += 1;
++    row[sourceKey] = (row[sourceKey] || 0) + 1;
+   });
+ 
+   return trendDateKeys.value.map(dateKey => rowsByDate[dateKey]).filter(Boolean);
+@@ -1364,7 +1550,7 @@ const leadTrendRows = computed(() => {
+ 
+ const maxTrendValue = computed(() => {
+   const maxValue = leadTrendRows.value.reduce((max, row) => {
+-    return Math.max(max, ...TREND_SERIES.map(series => row[series.key] || 0));
++    return Math.max(max, ...marketingSourceSeries.value.map(series => row[series.key] || 0));
+   }, 0);
+ 
+   return Math.max(maxValue, 1);
+@@ -1446,7 +1632,7 @@ const areaPathFromPoints = points => {
+ const leadTrendSeries = computed(() => {
+   const total = leadTrendRows.value.length;
+ 
+-  return TREND_SERIES.map(series => {
++  return marketingSourceSeries.value.map(series => {
+     const points = leadTrendRows.value.map((row, index) => ({
+       x: trendPointX(index, total),
+       y: trendPointY(row[series.key]),
+@@ -1737,6 +1923,13 @@ onMounted(() => {
+             <span class="rounded-md border border-n-weak px-2 py-1 text-xs font-medium text-n-slate-10">
+               Read-only
+             </span>
++            <span
++              v-if="unresolvedDealsCount"
++              class="inline-flex items-center gap-1 rounded-md border border-n-amber-6 bg-n-amber-3 px-2 py-1 text-xs font-medium text-n-amber-11"
++            >
++              <i class="i-lucide-alert-triangle h-3.5 w-3.5" />
++              {{ formatNumber(unresolvedDealsCount) }} need clarification
++            </span>
+           </div>
+           <p class="mt-1 text-sm text-n-slate-10">
+             Pipeline funnel
+@@ -1910,7 +2103,7 @@ onMounted(() => {
+ 
+             <div class="flex flex-wrap gap-2 xl:justify-end">
+               <button
+-                v-for="series in TREND_SERIES"
++                v-for="series in marketingSourceSeries"
+                 :key="series.key"
+                 type="button"
+                 class="inline-flex h-8 items-center gap-2 rounded-full border px-3 text-xs font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B7EDEA] focus-visible:ring-offset-1"
+@@ -2244,7 +2437,7 @@ onMounted(() => {
+ 
+             <div class="flex flex-wrap gap-2 xl:justify-end">
+               <button
+-                v-for="series in TREND_SERIES"
++                v-for="series in marketingSourceSeries"
+                 :key="series.key"
+                 type="button"
+                 class="inline-flex h-8 items-center gap-2 rounded-full border px-3 text-xs font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B7EDEA] focus-visible:ring-offset-1"
+diff --git a/app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue b/app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue
+index bb09155..46a74f8 100644
+--- a/app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue
++++ b/app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue
+@@ -1821,7 +1821,7 @@ onUnmounted(() => {
+             <div class="flex items-center justify-between gap-3">
+               <div>
+                 <h3 class="m-0 text-xs font-semibold uppercase text-n-slate-10">
+-                  Manual Attribution
++                  Source Attribution
+                 </h3>
+                 <div class="mt-1 text-xs text-n-slate-10">
+                   {{ selectedTrafficSourceDisplay }} / {{ selectedLeadOriginDisplay }}
