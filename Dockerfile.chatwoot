@@ -18,6 +18,12 @@ COPY chatwoot-patches/crm-marketing-spend-vue.patch /tmp/crm-marketing-spend-vue
 COPY chatwoot-patches/fleexa-global-branding-visible-ui.patch /tmp/fleexa-global-branding-visible-ui.patch
 COPY chatwoot-patches/crm-marketing-lead-trend-polish-vue.patch /tmp/crm-marketing-lead-trend-polish-vue.patch
 COPY chatwoot-patches/crm-marketing-monthly-spend-revenue-vue.patch /tmp/crm-marketing-monthly-spend-revenue-vue.patch
+COPY chatwoot-patches/crm-marketing-source-settings-vue.patch /tmp/crm-marketing-source-settings-vue.patch
+COPY chatwoot-patches/crm-marketing-source-detection-rules-vue.patch /tmp/crm-marketing-source-detection-rules-vue.patch
+COPY chatwoot-patches/crm-marketing-source-visibility-analytics-vue.patch /tmp/crm-marketing-source-visibility-analytics-vue.patch
+COPY chatwoot-patches/crm-marketing-attribution-settings-native-vue.patch /tmp/crm-marketing-attribution-settings-native-vue.patch
+COPY chatwoot-patches/crm-marketing-page-level-controls-vue.patch /tmp/crm-marketing-page-level-controls-vue.patch
+COPY chatwoot-patches/crm-marketing-reuse-chatwoot-date-filter-vue.patch /tmp/crm-marketing-reuse-chatwoot-date-filter-vue.patch
 
 RUN cd /app && \
     git apply /tmp/crm-pipeline-vue.patch && \
@@ -36,6 +42,12 @@ RUN cd /app && \
     git apply /tmp/fleexa-global-branding-visible-ui.patch && \
     git apply /tmp/crm-marketing-lead-trend-polish-vue.patch && \
     git apply /tmp/crm-marketing-monthly-spend-revenue-vue.patch && \
+    git apply /tmp/crm-marketing-source-settings-vue.patch && \
+    git apply /tmp/crm-marketing-source-detection-rules-vue.patch && \
+    git apply /tmp/crm-marketing-source-visibility-analytics-vue.patch && \
+    git apply /tmp/crm-marketing-attribution-settings-native-vue.patch && \
+    git apply /tmp/crm-marketing-page-level-controls-vue.patch && \
+    git apply /tmp/crm-marketing-reuse-chatwoot-date-filter-vue.patch && \
     HUSKY=0 pnpm install --frozen-lockfile && \
     (node node_modules/esbuild/install.js 2>/dev/null || true)
 
@@ -64,6 +76,9 @@ COPY chatwoot-patches/crm-marketing-google-airbyte-backend.patch /tmp/crm-market
 COPY chatwoot-patches/crm-marketing-meta-airbyte-backend.patch /tmp/crm-marketing-meta-airbyte-backend.patch
 COPY chatwoot-patches/crm-marketing-source-mapping-backend.patch /tmp/crm-marketing-source-mapping-backend.patch
 COPY chatwoot-patches/crm-marketing-monthly-spend-source-backend.patch /tmp/crm-marketing-monthly-spend-source-backend.patch
+COPY chatwoot-patches/crm-marketing-source-settings-backend.patch /tmp/crm-marketing-source-settings-backend.patch
+COPY chatwoot-patches/crm-marketing-source-detection-rules-backend.patch /tmp/crm-marketing-source-detection-rules-backend.patch
+COPY chatwoot-patches/crm-marketing-attribution-settings-native-backend.patch /tmp/crm-marketing-attribution-settings-native-backend.patch
 COPY chatwoot-patches/crm-pipeline-vue.patch /tmp/crm-pipeline-vue.patch
 COPY chatwoot-patches/crm-deal-workspace-vue.patch /tmp/crm-deal-workspace-vue.patch
 COPY chatwoot-patches/crm-deal-fields-vue.patch /tmp/crm-deal-fields-vue.patch
@@ -80,6 +95,12 @@ COPY chatwoot-patches/crm-marketing-spend-vue.patch /tmp/crm-marketing-spend-vue
 COPY chatwoot-patches/fleexa-global-branding-visible-ui.patch /tmp/fleexa-global-branding-visible-ui.patch
 COPY chatwoot-patches/crm-marketing-lead-trend-polish-vue.patch /tmp/crm-marketing-lead-trend-polish-vue.patch
 COPY chatwoot-patches/crm-marketing-monthly-spend-revenue-vue.patch /tmp/crm-marketing-monthly-spend-revenue-vue.patch
+COPY chatwoot-patches/crm-marketing-source-settings-vue.patch /tmp/crm-marketing-source-settings-vue.patch
+COPY chatwoot-patches/crm-marketing-source-detection-rules-vue.patch /tmp/crm-marketing-source-detection-rules-vue.patch
+COPY chatwoot-patches/crm-marketing-source-visibility-analytics-vue.patch /tmp/crm-marketing-source-visibility-analytics-vue.patch
+COPY chatwoot-patches/crm-marketing-attribution-settings-native-vue.patch /tmp/crm-marketing-attribution-settings-native-vue.patch
+COPY chatwoot-patches/crm-marketing-page-level-controls-vue.patch /tmp/crm-marketing-page-level-controls-vue.patch
+COPY chatwoot-patches/crm-marketing-reuse-chatwoot-date-filter-vue.patch /tmp/crm-marketing-reuse-chatwoot-date-filter-vue.patch
 
 RUN cd /app && \
     git apply /tmp/patch.patch && \
@@ -98,6 +119,9 @@ RUN cd /app && \
     git apply /tmp/crm-marketing-meta-airbyte-backend.patch && \
     git apply /tmp/crm-marketing-source-mapping-backend.patch && \
     git apply /tmp/crm-marketing-monthly-spend-source-backend.patch && \
+    git apply /tmp/crm-marketing-source-settings-backend.patch && \
+    git apply /tmp/crm-marketing-source-detection-rules-backend.patch && \
+    git apply /tmp/crm-marketing-attribution-settings-native-backend.patch && \
     git apply /tmp/crm-pipeline-vue.patch && \
     git apply /tmp/crm-deal-workspace-vue.patch && \
     git apply /tmp/crm-deal-fields-vue.patch && \
@@ -113,4 +137,10 @@ RUN cd /app && \
     git apply /tmp/crm-marketing-spend-vue.patch && \
     git apply /tmp/fleexa-global-branding-visible-ui.patch && \
     git apply /tmp/crm-marketing-lead-trend-polish-vue.patch && \
-    git apply /tmp/crm-marketing-monthly-spend-revenue-vue.patch
+    git apply /tmp/crm-marketing-monthly-spend-revenue-vue.patch && \
+    git apply /tmp/crm-marketing-source-settings-vue.patch && \
+    git apply /tmp/crm-marketing-source-detection-rules-vue.patch && \
+    git apply /tmp/crm-marketing-source-visibility-analytics-vue.patch && \
+    git apply /tmp/crm-marketing-attribution-settings-native-vue.patch && \
+    git apply /tmp/crm-marketing-page-level-controls-vue.patch && \
+    git apply /tmp/crm-marketing-reuse-chatwoot-date-filter-vue.patch

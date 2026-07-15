@@ -1,0 +1,381 @@
+diff --git a/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue b/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue
+index 6f171e2..490758b 100644
+--- a/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue
++++ b/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue
+@@ -1,11 +1,20 @@
+ <script setup>
+ import { computed, onMounted, ref } from 'vue';
++import { useRoute, useRouter } from 'vue-router';
+ import Draggable from 'vuedraggable';
++import subDays from 'date-fns/subDays';
+ 
+ import CrmPipelineAPI from 'dashboard/api/crmPipeline';
+ import Button from 'dashboard/components-next/button/Button.vue';
+ import Spinner from 'dashboard/components-next/spinner/Spinner.vue';
++import WootDatePicker from 'dashboard/components/ui/DatePicker/DatePicker.vue';
++import { DATE_RANGE_TYPES } from 'dashboard/components/ui/DatePicker/helpers/DatePickerHelper';
+ import { useAdmin } from 'dashboard/composables/useAdmin';
++import { getUnixStartOfDay, getUnixEndOfDay } from 'helpers/DateHelper';
++import {
++  generateReportURLParams,
++  parseReportURLParams,
++} from 'dashboard/routes/dashboard/settings/reports/helpers/reportFilterHelper';
+ 
+ const PAGE_SIZE = 200;
+ const SUCCESSFUL_STAGE_TYPES = ['reserved', 'rental', 'closed_won'];
+@@ -20,15 +29,6 @@ const COMPACT_AED_FORMATTER = new Intl.NumberFormat('en-AE', {
+   maximumFractionDigits: 1,
+ });
+ 
+-const rangeOptions = [
+-  { value: '', label: 'All' },
+-  { value: 'today', label: 'Today' },
+-  { value: 'yesterday', label: 'Yesterday' },
+-  { value: 'last_30_days', label: '30 days' },
+-  { value: 'this_month', label: 'This month' },
+-  { value: 'last_7_days', label: '7 days' },
+-];
+-
+ const KPI_WIDGETS = [
+   { key: 'spend', label: 'Spend', visible: true },
+   { key: 'new_leads', label: 'New Leads', visible: true },
+@@ -147,9 +147,8 @@ const meta = ref({});
+ const spendAmount = ref(0);
+ const monthlySpendRows = ref([]);
+ const manualSpendEntries = ref([]);
+-const selectedRange = ref('');
+-const customDateFrom = ref('');
+-const customDateTo = ref('');
++const analyticsDateRange = ref([subDays(new Date(), 6), new Date()]);
++const selectedDateRange = ref(DATE_RANGE_TYPES.LAST_7_DAYS);
+ const isLoading = ref(false);
+ const errorMessage = ref('');
+ const dashboardConfig = ref(null);
+@@ -163,6 +162,8 @@ const draftTrafficSources = ref([]);
+ const draftLeadOrigins = ref([]);
+ const draftDetectionRules = ref([]);
+ const { isAdmin } = useAdmin();
++const route = useRoute();
++const router = useRouter();
+ const isManualSpendDrawerOpen = ref(false);
+ const isSavingManualSpend = ref(false);
+ const manualSpendError = ref('');
+@@ -238,56 +239,12 @@ const formatPercent = value => {
+   return `${parsed.toFixed(parsed >= 10 ? 0 : 1)}%`;
+ };
+ 
+-const DATE_INPUT_PLACEHOLDER = 'dd/mm/yyyy';
+-const ISO_DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
+-const DISPLAY_DATE_PATTERN = /^(\d{1,2})[./-](\d{1,2})[./-](\d{4})$/;
+-
+-const padDatePart = value => String(value).padStart(2, '0');
+-
+-const formatDateInputValue = value => {
+-  if (!value) return '';
+-
+-  const rawValue = String(value).trim();
+-  const isoMatch = rawValue.match(ISO_DATE_PATTERN);
+-  if (isoMatch) return `${isoMatch[3]}/${isoMatch[2]}/${isoMatch[1]}`;
+-
+-  return rawValue;
+-};
+-
+-const normalizeDateInputValue = value => {
+-  const rawValue = String(value || '').trim();
+-  if (!rawValue) return '';
+-  if (ISO_DATE_PATTERN.test(rawValue)) return rawValue;
+-
+-  const displayMatch = rawValue.match(DISPLAY_DATE_PATTERN);
+-  if (!displayMatch) return '';
+-
+-  const day = Number(displayMatch[1]);
+-  const month = Number(displayMatch[2]);
+-  const year = Number(displayMatch[3]);
+-  const date = new Date(Date.UTC(year, month - 1, day));
+-
+-  if (
+-    date.getUTCFullYear() !== year ||
+-    date.getUTCMonth() !== month - 1 ||
+-    date.getUTCDate() !== day
+-  ) {
+-    return '';
+-  }
+-
+-  return `${year}-${padDatePart(month)}-${padDatePart(day)}`;
+-};
+-
+ const orderedStages = computed(() => {
+   return [...stages.value].sort((a, b) => Number(a.position || 0) - Number(b.position || 0));
+ });
+ 
+ const totalDeals = computed(() => deals.value.length);
+ 
+-const isCustomRangeActive = computed(() => {
+-  return Boolean(customDateFrom.value || customDateTo.value);
+-});
+-
+ const stageCount = stageId => {
+   return deals.value.filter(deal => String(deal.stage_id) === String(stageId)).length;
+ };
+@@ -451,13 +408,8 @@ const trendDateKeyFromValue = value => {
+   return trendDateKeyFromDate(date);
+ };
+ 
+-const addDaysToTrendKey = (key, days) => {
+-  const date = trendDateFromKey(key);
+-  if (!date) return '';
+-
+-  date.setDate(date.getDate() + days);
+-  return trendDateKeyFromDate(date);
+-};
++const analyticsDateFrom = computed(() => trendDateKeyFromValue(analyticsDateRange.value[0]));
++const analyticsDateTo = computed(() => trendDateKeyFromValue(analyticsDateRange.value[1]));
+ 
+ const trendDateKeysBetween = (fromKey, toKey) => {
+   const fromDate = trendDateFromKey(fromKey);
+@@ -479,37 +431,6 @@ const displayTrendDateKey = key => {
+   return year && month && day ? `${day}/${month}/${year}` : '';
+ };
+ 
+-const dateBoundsForPreset = preset => {
+-  const todayKey = trendDateKeyFromDate(new Date());
+-
+-  if (preset === 'today') {
+-    return { from: todayKey, to: todayKey };
+-  }
+-
+-  if (preset === 'yesterday') {
+-    const yesterdayKey = addDaysToTrendKey(todayKey, -1);
+-    return { from: yesterdayKey, to: yesterdayKey };
+-  }
+-
+-  if (preset === 'last_7_days') {
+-    return { from: addDaysToTrendKey(todayKey, -6), to: todayKey };
+-  }
+-
+-  if (preset === 'last_30_days') {
+-    return { from: addDaysToTrendKey(todayKey, -29), to: todayKey };
+-  }
+-
+-  if (preset === 'this_month') {
+-    const today = new Date();
+-    return {
+-      from: trendDateKeyFromDate(new Date(today.getFullYear(), today.getMonth(), 1)),
+-      to: todayKey,
+-    };
+-  }
+-
+-  return { from: '', to: '' };
+-};
+-
+ const normalizedAttributes = source => {
+   if (!source || Array.isArray(source) || typeof source !== 'object') return {};
+   return source;
+@@ -1563,14 +1484,10 @@ const dealDateKeys = computed(() => {
+ });
+ 
+ const trendDateKeys = computed(() => {
+-  if (!dealDateKeys.value.length) return [];
++  if (!deals.value.length) return [];
+ 
+-  const presetBounds = dateBoundsForPreset(selectedRange.value);
+-  const fromKey = customDateFrom.value || presetBounds.from || dealDateKeys.value[0];
+-  const toKey =
+-    customDateTo.value ||
+-    presetBounds.to ||
+-    dealDateKeys.value[dealDateKeys.value.length - 1];
++  const fromKey = analyticsDateFrom.value || dealDateKeys.value[0];
++  const toKey = analyticsDateTo.value || dealDateKeys.value[dealDateKeys.value.length - 1];
+ 
+   return trendDateKeysBetween(fromKey, toKey);
+ });
+@@ -1805,16 +1722,12 @@ const requestParams = page => {
+     per_page: PAGE_SIZE,
+   };
+ 
+-  if (selectedRange.value) {
+-    params.created_at_preset = selectedRange.value;
+-  }
+-
+-  if (customDateFrom.value) {
+-    params.created_at_from = customDateFrom.value;
++  if (analyticsDateFrom.value) {
++    params.created_at_from = analyticsDateFrom.value;
+   }
+ 
+-  if (customDateTo.value) {
+-    params.created_at_to = customDateTo.value;
++  if (analyticsDateTo.value) {
++    params.created_at_to = analyticsDateTo.value;
+   }
+ 
+   return params;
+@@ -1823,16 +1736,12 @@ const requestParams = page => {
+ const spendRequestParams = () => {
+   const params = {};
+ 
+-  if (selectedRange.value) {
+-    params.spend_date_preset = selectedRange.value;
+-  }
+-
+-  if (customDateFrom.value) {
+-    params.spend_date_from = customDateFrom.value;
++  if (analyticsDateFrom.value) {
++    params.spend_date_from = analyticsDateFrom.value;
+   }
+ 
+-  if (customDateTo.value) {
+-    params.spend_date_to = customDateTo.value;
++  if (analyticsDateTo.value) {
++    params.spend_date_to = analyticsDateTo.value;
+   }
+ 
+   return params;
+@@ -1895,18 +1804,42 @@ const fetchAnalytics = async () => {
+   }
+ };
+ 
+-const selectRange = value => {
+-  selectedRange.value = value;
+-  customDateFrom.value = '';
+-  customDateTo.value = '';
+-  fetchAnalytics();
++const updateAnalyticsDateRangeURL = () => {
++  const [startDate, endDate] = analyticsDateRange.value;
++  if (!startDate || !endDate) return;
++
++  const params = generateReportURLParams({
++    from: getUnixStartOfDay(startDate),
++    to: getUnixEndOfDay(endDate),
++    range: selectedDateRange.value,
++  });
++
++  router.replace({ query: { ...route.query, ...params } });
++};
++
++const initializeDateRangeFromURL = () => {
++  const urlParams = parseReportURLParams(route.query);
++
++  if (urlParams.range) {
++    selectedDateRange.value = urlParams.range;
++  }
++
++  if (urlParams.from && urlParams.to) {
++    analyticsDateRange.value = [
++      new Date(urlParams.from * 1000),
++      new Date(urlParams.to * 1000),
++    ];
++  }
+ };
+ 
+-const updateCustomDates = ({ from = customDateFrom.value, to = customDateTo.value } = {}) => {
+-  customDateFrom.value = normalizeDateInputValue(from);
+-  customDateTo.value = normalizeDateInputValue(to);
+-  selectedRange.value = '';
+-  fetchAnalytics();
++const onDateRangeChange = value => {
++  const [startDate, endDate, rangeType] = value;
++  analyticsDateRange.value = [startDate, endDate];
++  selectedDateRange.value = rangeType || DATE_RANGE_TYPES.CUSTOM_RANGE;
++  activeTrendIndex.value = null;
++  activeMonthlyIndex.value = null;
++  updateAnalyticsDateRangeURL();
++  refreshMarketingAnalytics();
+ };
+ 
+ const refreshMarketingAnalytics = async () => {
+@@ -1952,6 +1885,8 @@ const clearActiveMonthlyPoint = () => {
+ };
+ 
+ onMounted(() => {
++  initializeDateRangeFromURL();
++  updateAnalyticsDateRangeURL();
+   fetchDashboardConfig();
+   refreshMarketingAnalytics();
+ });
+@@ -2003,79 +1938,12 @@ onMounted(() => {
+           </div>
+         </div>
+ 
+-        <div class="flex flex-col gap-2 xl:flex-row xl:items-center xl:justify-between">
+-          <div class="inline-flex h-9 w-fit rounded-md border border-n-weak bg-n-surface-2 p-0.5">
+-            <button
+-              v-for="option in rangeOptions"
+-              :key="option.value || 'all'"
+-              type="button"
+-              class="rounded px-3 text-xs font-medium text-n-slate-11 transition"
+-              :class="{
+-                'bg-n-background text-n-slate-12 shadow-sm':
+-                  selectedRange === option.value &&
+-                  !(option.value === '' && isCustomRangeActive),
+-              }"
+-              @click="selectRange(option.value)"
+-            >
+-              {{ option.label }}
+-            </button>
+-          </div>
+-
+-          <div class="flex flex-wrap items-center gap-2 xl:justify-end">
+-            <label class="flex shrink-0 items-center gap-1.5 text-[11px] font-medium text-n-slate-10">
+-              <span>Date from</span>
+-              <span class="relative block">
+-                <input
+-                  :value="formatDateInputValue(customDateFrom)"
+-                  class="h-9 w-32 min-w-0 rounded-md border border-n-weak bg-n-background px-3 pr-9 text-xs text-n-slate-12 outline-none transition focus:border-n-brand"
+-                  inputmode="numeric"
+-                  :placeholder="DATE_INPUT_PLACEHOLDER"
+-                  type="text"
+-                  @change="updateCustomDates({ from: $event.target.value, to: customDateTo })"
+-                />
+-                <input
+-                  :value="customDateFrom"
+-                  aria-label="Open date from calendar"
+-                  class="absolute inset-y-0 right-0 z-10 h-full w-9 cursor-pointer opacity-0"
+-                  style="width: 2.25rem; min-width: 2.25rem;"
+-                  type="date"
+-                  @change="updateCustomDates({ from: $event.target.value, to: customDateTo })"
+-                />
+-                <i class="i-lucide-calendar pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-n-slate-10" />
+-              </span>
+-            </label>
+-            <label class="flex shrink-0 items-center gap-1.5 text-[11px] font-medium text-n-slate-10">
+-              <span>Date to</span>
+-              <span class="relative block">
+-                <input
+-                  :value="formatDateInputValue(customDateTo)"
+-                  class="h-9 w-32 min-w-0 rounded-md border border-n-weak bg-n-background px-3 pr-9 text-xs text-n-slate-12 outline-none transition focus:border-n-brand"
+-                  inputmode="numeric"
+-                  :placeholder="DATE_INPUT_PLACEHOLDER"
+-                  type="text"
+-                  @change="updateCustomDates({ from: customDateFrom, to: $event.target.value })"
+-                />
+-                <input
+-                  :value="customDateTo"
+-                  aria-label="Open date to calendar"
+-                  class="absolute inset-y-0 right-0 z-10 h-full w-9 cursor-pointer opacity-0"
+-                  style="width: 2.25rem; min-width: 2.25rem;"
+-                  type="date"
+-                  @change="updateCustomDates({ from: customDateFrom, to: $event.target.value })"
+-                />
+-                <i class="i-lucide-calendar pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-n-slate-10" />
+-              </span>
+-            </label>
+-            <Button
+-              icon="i-lucide-refresh-cw"
+-              size="sm"
+-              slate
+-              faded
+-              :is-loading="isLoading"
+-              aria-label="Refresh marketing analytics"
+-              @click="refreshMarketingAnalytics"
+-            />
+-          </div>
++        <div class="flex items-center">
++          <WootDatePicker
++            v-model:date-range="analyticsDateRange"
++            v-model:range-type="selectedDateRange"
++            @date-range-changed="onDateRangeChange"
++          />
+         </div>
+ 
+         <div class="flex min-w-0 items-center gap-2">
