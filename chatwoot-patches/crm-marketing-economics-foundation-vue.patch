@@ -1,0 +1,228 @@
+diff --git a/app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue b/app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue
+index 621eb2f..19cb73d 100644
+--- a/app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue
++++ b/app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue
+@@ -116,6 +116,10 @@ const FIELD_GROUP_KEYS = {
+ };
+ 
+ const ATTRIBUTION_FIELDS = [
++  { key: 'qualification_status', label: 'Qualification status' },
++  { key: 'lost_reason_key', label: 'Lost reason key' },
++  { key: 'lost_reason_label', label: 'Lost reason label' },
++  { key: 'lost_reason_category', label: 'Lost reason category' },
+   { key: 'traffic_source_key', label: 'Traffic source key' },
+   { key: 'traffic_source_label', label: 'Traffic source label' },
+   { key: 'lead_origin_key', label: 'Lead origin key' },
+@@ -136,6 +140,37 @@ const MANUAL_ATTRIBUTION_KEYS = [
+   'source_override_by',
+   'needs_source_clarification',
+ ];
++const QUALIFICATION_STATUS_OPTIONS = [
++  { value: 'pending', label: 'Pending' },
++  { value: 'qualified', label: 'Qualified' },
++];
++const LOST_REASON_CATEGORIES = {
++  invalid: 'Invalid',
++  eligibility: 'Eligibility',
++  sales: 'Sales',
++};
++const DEFAULT_LOST_REASONS = [
++  { key: 'spam', label: 'Spam', category: LOST_REASON_CATEGORIES.invalid },
++  { key: 'duplicate', label: 'Duplicate', category: LOST_REASON_CATEGORIES.invalid },
++  { key: 'accidental', label: 'Accidental', category: LOST_REASON_CATEGORIES.invalid },
++  { key: 'not_a_rental_request', label: 'Not a rental request', category: LOST_REASON_CATEGORIES.invalid },
++  { key: 'underage', label: 'Underage', category: LOST_REASON_CATEGORIES.eligibility },
++  { key: 'missing_documents', label: 'Missing documents', category: LOST_REASON_CATEGORIES.eligibility },
++  { key: 'invalid_licence', label: 'Invalid licence', category: LOST_REASON_CATEGORIES.eligibility },
++  { key: 'wrong_location', label: 'Wrong location', category: LOST_REASON_CATEGORIES.eligibility },
++  { key: 'no_car_available', label: 'No car available', category: LOST_REASON_CATEGORIES.sales },
++  { key: 'too_expensive', label: 'Too expensive', category: LOST_REASON_CATEGORIES.sales },
++  { key: 'chose_competitor', label: 'Chose competitor', category: LOST_REASON_CATEGORIES.sales },
++  { key: 'no_reply', label: 'No reply', category: LOST_REASON_CATEGORIES.sales },
++  { key: 'not_needed_now', label: 'Not needed now', category: LOST_REASON_CATEGORIES.sales },
++];
++
++const normalizeQualificationStatus = value => {
++  const normalizedValue = String(value || '').trim().toLowerCase();
++  return QUALIFICATION_STATUS_OPTIONS.some(option => option.value === normalizedValue)
++    ? normalizedValue
++    : 'pending';
++};
+ const DEFAULT_TRAFFIC_SOURCES = [
+   { key: 'google_ads', label: 'Google Ads', color: '#0EA5A0', is_active: true },
+   { key: 'meta_ads', label: 'Meta Ads', color: '#2E6F95', is_active: true },
+@@ -529,6 +564,26 @@ const trafficSourceKey = computed(() => dealForm.value.custom_attributes?.traffi
+ const trafficSourceLabel = computed(() => dealForm.value.custom_attributes?.traffic_source_label || '');
+ const leadOriginKey = computed(() => dealForm.value.custom_attributes?.lead_origin_key || '');
+ const leadOriginLabel = computed(() => dealForm.value.custom_attributes?.lead_origin_label || '');
++const qualificationStatus = computed(() => {
++  return normalizeQualificationStatus(dealForm.value.custom_attributes?.qualification_status);
++});
++const qualificationStatusLabel = computed(() => {
++  return QUALIFICATION_STATUS_OPTIONS.find(option => option.value === qualificationStatus.value)?.label || 'Pending';
++});
++const lostReasonKey = computed(() => dealForm.value.custom_attributes?.lost_reason_key || '');
++const lostReasonOption = computed(() => {
++  return DEFAULT_LOST_REASONS.find(reason => reason.key === lostReasonKey.value) || null;
++});
++const lostReasonLabel = computed(() => {
++  return dealForm.value.custom_attributes?.lost_reason_label || lostReasonOption.value?.label || '';
++});
++const lostReasonCategory = computed(() => {
++  return dealForm.value.custom_attributes?.lost_reason_category || lostReasonOption.value?.category || '';
++});
++const lostReasonSummary = computed(() => {
++  if (!lostReasonKey.value) return 'No lost reason selected';
++  return [lostReasonCategory.value, lostReasonLabel.value].filter(Boolean).join(' / ');
++});
+ 
+ const trafficSourceOptions = computed(() => {
+   return activeAttributionOptions(
+@@ -732,7 +787,10 @@ const buildDealForm = source => ({
+   rental_end: source?.rental_end || '',
+   amount: source?.amount ?? '',
+   debt_amount: source?.debt_amount ?? '',
+-  custom_attributes: { ...(source?.custom_attributes || {}) },
++  custom_attributes: {
++    ...(source?.custom_attributes || {}),
++    qualification_status: normalizeQualificationStatus(source?.custom_attributes?.qualification_status),
++  },
+ });
+ 
+ const setError = error => {
+@@ -1195,7 +1253,7 @@ const saveMarketingAttribution = async () => {
+ 
+     deal.value = response.data;
+     dealForm.value = buildDealForm(deal.value);
+-    saveMessage.value = 'Attribution saved';
++    saveMessage.value = 'Marketing saved';
+   } catch (error) {
+     setError(error);
+   } finally {
+@@ -1230,6 +1288,25 @@ const updateManualAttribution = async (type, key) => {
+   await saveMarketingAttribution();
+ };
+ 
++const updateQualificationStatus = async value => {
++  dealForm.value.custom_attributes = {
++    ...(dealForm.value.custom_attributes || {}),
++    qualification_status: normalizeQualificationStatus(value),
++  };
++  await saveMarketingAttribution();
++};
++
++const updateLostReason = async key => {
++  const reason = DEFAULT_LOST_REASONS.find(item => item.key === key);
++  dealForm.value.custom_attributes = {
++    ...(dealForm.value.custom_attributes || {}),
++    lost_reason_key: reason?.key || '',
++    lost_reason_label: reason?.label || '',
++    lost_reason_category: reason?.category || '',
++  };
++  await saveMarketingAttribution();
++};
++
+ const saveDeal = async () => {
+   if (!deal.value?.id || !dealForm.value.title.trim()) return;
+ 
+@@ -1833,7 +1910,7 @@ onUnmounted(() => {
+                 Saving
+               </span>
+               <span
+-                v-else-if="saveMessage === 'Attribution saved'"
++                v-else-if="saveMessage === 'Marketing saved'"
+                 class="rounded-md bg-n-teal-3 px-2 py-1 text-xs font-medium text-n-teal-11"
+               >
+                 Saved
+@@ -1872,6 +1949,58 @@ onUnmounted(() => {
+               </div>
+             </div>
+ 
++            <div class="mt-3 rounded-lg border border-n-weak bg-n-alpha-1 p-3">
++              <div class="flex items-center justify-between gap-3">
++                <div>
++                  <h4 class="m-0 text-xs font-semibold uppercase text-n-slate-10">
++                    Lead Qualification
++                  </h4>
++                  <div class="mt-1 text-xs text-n-slate-10">
++                    {{ qualificationStatusLabel }} · {{ lostReasonSummary }}
++                  </div>
++                </div>
++              </div>
++
++              <div class="mt-3 grid gap-3">
++                <label class="grid gap-1 text-sm font-medium text-n-slate-11">
++                  Qualification Status
++                  <select
++                    :value="qualificationStatus"
++                    :class="compactFieldClass"
++                    :disabled="isSavingAttribution"
++                    @change="updateQualificationStatus($event.target.value)"
++                  >
++                    <option
++                      v-for="status in QUALIFICATION_STATUS_OPTIONS"
++                      :key="status.value"
++                      :value="status.value"
++                    >
++                      {{ status.label }}
++                    </option>
++                  </select>
++                </label>
++
++                <label class="grid gap-1 text-sm font-medium text-n-slate-11">
++                  Lost Reason
++                  <select
++                    :value="lostReasonKey"
++                    :class="compactFieldClass"
++                    :disabled="isSavingAttribution"
++                    @change="updateLostReason($event.target.value)"
++                  >
++                    <option value="">No lost reason</option>
++                    <option
++                      v-for="reason in DEFAULT_LOST_REASONS"
++                      :key="reason.key"
++                      :value="reason.key"
++                    >
++                      {{ reason.category }} · {{ reason.label }}
++                    </option>
++                  </select>
++                </label>
++              </div>
++            </div>
++
+             <div class="mt-3 grid gap-3">
+               <label class="grid gap-1 text-sm font-medium text-n-slate-11">
+                 Traffic Source
+diff --git a/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue b/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue
+index 7f65e27..0ca993f 100644
+--- a/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue
++++ b/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue
+@@ -31,7 +31,7 @@ const COMPACT_AED_FORMATTER = new Intl.NumberFormat('en-AE', {
+ 
+ const KPI_WIDGETS = [
+   { key: 'spend', label: 'Spend', visible: true },
+-  { key: 'new_leads', label: 'New Leads', visible: true },
++  { key: 'new_leads', label: 'Leads', visible: true },
+   { key: 'successful_deals', label: 'Successful Deals', visible: true },
+   { key: 'successful_deals_amount', label: 'Successful Deals Amount', visible: true },
+   { key: 'lost', label: 'Lost', visible: true },
+@@ -686,9 +686,9 @@ const metricRegistry = computed(() => ({
+   },
+   new_leads: {
+     key: 'new_leads',
+-    label: 'New Leads',
++    label: 'Leads',
+     value: formatNumber(totalDeals.value),
+-    detail: 'All new deals in selected period',
++    detail: 'CRM deals created in selected period',
+   },
+   successful_deals: {
+     key: 'successful_deals',
+@@ -2465,6 +2465,6 @@ onMounted(() => {
+                 </span>
+               </div>
+               <div class="mt-1 text-xs text-n-slate-10">
+-                New leads by source over time
++                Leads by source over time
+               </div>
+             </div>
