@@ -1,5 +1,5 @@
 diff --git a/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue b/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue
-index a8a217a..0fb22fd 100644
+index a8a217a..2f15e5e 100644
 --- a/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue
 +++ b/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue
 @@ -161,6 +161,9 @@ const attributionSettingsError = ref('');
@@ -230,8 +230,9 @@ index a8a217a..0fb22fd 100644
        @click.self="closeAttributionSettings"
      >
 -      <aside class="ml-auto flex h-full w-full max-w-[980px] flex-col border-l border-n-weak bg-n-background shadow-xl">
+-        <header class="flex flex-wrap items-center justify-between gap-3 border-b border-n-weak px-5 py-4">
 +      <aside class="ml-auto flex h-full w-full max-w-[1420px] flex-col border-l border-n-weak bg-n-background shadow-xl">
-         <header class="flex flex-wrap items-center justify-between gap-3 border-b border-n-weak px-5 py-4">
++        <header class="flex flex-wrap items-center justify-between gap-2 border-b border-n-weak px-4 py-3">
            <div class="min-w-0">
              <h2 class="text-base font-semibold text-n-slate-12">
                Attribution Settings
@@ -259,11 +260,11 @@ index a8a217a..0fb22fd 100644
          </header>
  
 -        <div class="min-h-0 flex-1 overflow-y-auto px-5 py-4">
-+        <div class="min-h-0 flex-1 overflow-y-auto bg-n-alpha-1/30 px-5 py-4">
++        <div class="min-h-0 flex-1 overflow-hidden bg-n-alpha-1/30 px-4 py-3">
            <div
              v-if="attributionSettingsError"
              class="mb-4 rounded-lg border border-n-ruby-5 bg-n-ruby-3 px-3 py-2 text-sm text-n-ruby-11"
-@@ -2594,254 +2773,425 @@ onMounted(() => {
+@@ -2594,254 +2773,427 @@ onMounted(() => {
              {{ attributionSettingsError }}
            </div>
  
@@ -286,20 +287,20 @@ index a8a217a..0fb22fd 100644
 -                    <th class="px-3 py-2 text-right">Actions</th>
 -                  </tr>
 -                </thead>
-+          <div class="grid gap-4">
-+            <div class="flex flex-wrap items-center gap-3">
-+              <label class="relative min-w-[18rem] flex-1">
++          <div class="flex h-full min-h-0 flex-col gap-3">
++            <div class="flex flex-none flex-wrap items-center gap-2">
++              <label class="relative min-w-[16rem] flex-1">
 +                <i class="i-lucide-search pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-n-slate-9" />
 +                <input
 +                  v-model="attributionSettingsSearch"
-+                  class="h-10 w-full rounded-lg border border-n-weak bg-n-background pl-9 pr-3 text-sm text-n-slate-12 outline-none transition focus:border-n-brand"
++                  class="h-9 w-full rounded-lg border border-n-weak bg-n-background pl-9 pr-3 text-sm text-n-slate-12 outline-none transition focus:border-n-brand"
 +                  type="text"
 +                  placeholder="Search sources, origins, rules..."
 +                />
 +              </label>
 +              <button
 +                type="button"
-+                class="inline-flex h-10 items-center gap-2 rounded-lg border border-n-weak bg-n-background px-3 text-sm font-medium text-n-slate-11 transition hover:bg-n-alpha-2"
++                class="inline-flex h-9 items-center gap-2 rounded-lg border border-n-weak bg-n-background px-3 text-sm font-medium text-n-slate-11 transition hover:bg-n-alpha-2"
 +                @click="showAttributionIssuesOnly = !showAttributionIssuesOnly"
 +              >
 +                <i class="i-lucide-filter h-4 w-4" />
@@ -310,7 +311,7 @@ index a8a217a..0fb22fd 100644
 +              </button>
 +              <button
 +                type="button"
-+                class="ml-auto inline-flex h-10 items-center gap-1.5 rounded-lg px-2 text-sm text-n-slate-10 transition hover:bg-n-alpha-2 hover:text-n-slate-12"
++                class="ml-auto inline-flex h-9 items-center gap-1.5 rounded-lg px-2 text-sm text-n-slate-10 transition hover:bg-n-alpha-2 hover:text-n-slate-12"
 +                @click="showAttributionLegend = !showAttributionLegend"
 +              >
 +                <i class="i-lucide-info h-4 w-4" />
@@ -320,9 +321,9 @@ index a8a217a..0fb22fd 100644
 +
 +            <div
 +              v-if="showAttributionLegend"
-+              class="rounded-lg border border-n-weak bg-n-background px-3 py-3 text-xs text-n-slate-10"
++              class="flex-none rounded-lg border border-n-weak bg-n-background px-2.5 py-2 text-xs text-n-slate-10"
 +            >
-+              <div class="flex flex-wrap items-center gap-4">
++              <div class="flex flex-wrap items-center gap-3">
 +                <span class="inline-flex items-center gap-1.5">
 +                  <span class="inline-block h-2.5 w-2.5 rounded-full bg-n-brand" />
 +                  Active mapping
@@ -340,9 +341,9 @@ index a8a217a..0fb22fd 100644
 +              </div>
 +            </div>
 +
-+            <div class="grid gap-4 xl:grid-cols-3">
-+              <section class="space-y-3">
-+                <div class="flex items-end justify-between gap-3 px-1">
++            <div class="grid min-h-0 flex-1 gap-3 xl:grid-cols-3">
++              <section class="flex min-h-0 flex-col">
++                <div class="mb-2 flex flex-none items-end justify-between gap-2 px-0.5">
 +                  <div>
 +                    <div class="text-[11px] font-semibold uppercase tracking-[0.14em] text-n-slate-9">
 +                      Traffic Sources
@@ -369,7 +370,7 @@ index a8a217a..0fb22fd 100644
 -                  tag="tbody"
 -                  class="divide-y divide-n-weak"
 +                  :disabled="Boolean(normalizedAttributionSearch) || showAttributionIssuesOnly"
-+                  class="grid gap-3"
++                  class="min-h-0 flex-1 space-y-2 overflow-y-auto pr-1"
                  >
                    <template #item="{ element }">
 -                    <tr class="align-middle">
@@ -377,12 +378,12 @@ index a8a217a..0fb22fd 100644
 -                        <label class="inline-flex h-8 items-center">
 +                    <article
 +                      v-if="sourceVisibleInBoard(element)"
-+                      class="rounded-xl border border-n-weak bg-n-background p-3 shadow-sm"
++                      class="rounded-lg border border-n-weak bg-n-background px-3 py-2.5"
 +                      :class="{ 'border-n-amber-5': sourceHasIssue(element) }"
 +                    >
 +                      <div class="flex items-start gap-2">
 +                        <span
-+                          class="mt-1 h-3 w-3 shrink-0 rounded-full border border-white shadow-sm"
++                          class="mt-1 h-2.5 w-2.5 shrink-0 rounded-full border border-white"
 +                          :style="{ backgroundColor: element.color }"
 +                        />
 +                        <div class="min-w-0 flex-1">
@@ -397,12 +398,12 @@ index a8a217a..0fb22fd 100644
 +                              class="i-lucide-triangle-alert h-4 w-4 shrink-0 text-n-amber-10"
 +                            />
 +                          </div>
-+                          <div class="mt-0.5 text-[11px] text-n-slate-9">
++                          <div class="mt-0.5 text-[10px] text-n-slate-9">
 +                            {{ element.key }}
 +                          </div>
 +                        </div>
 +                        <div class="flex items-center gap-1">
-+                          <span class="text-[11px] text-n-slate-9">
++                          <span class="text-[10px] text-n-slate-9">
 +                            {{ sourceConnectionLabel(element) }}
 +                          </span>
                            <input
@@ -420,14 +421,14 @@ index a8a217a..0fb22fd 100644
 -                            class="h-6 w-6 shrink-0 cursor-pointer rounded border border-n-weak bg-n-background p-0.5"
 -                            type="color"
 -                            aria-label="Traffic source color"
-+                            aria-label="Toggle source active state"
-                           />
+-                          />
 -                          <input
 -                            v-model="element.label"
 -                            class="h-8 min-w-0 flex-1 rounded-md border border-transparent bg-transparent px-2 text-sm font-medium text-n-slate-12 outline-none transition hover:border-n-weak hover:bg-n-background focus:border-n-brand focus:bg-n-background"
 -                            type="text"
 -                            aria-label="Traffic source label"
--                          />
++                            aria-label="Toggle source active state"
+                           />
 -                          <span class="max-w-24 shrink-0 truncate text-[11px] text-n-slate-9">
 -                            {{ element.key }}
 -                          </span>
@@ -541,7 +542,7 @@ index a8a217a..0fb22fd 100644
 -                          <button
 -                            type="button"
 -                            class="js-attribution-drag-handle grid h-8 w-8 cursor-grab place-items-center rounded-md text-n-slate-9 transition hover:bg-n-alpha-2 hover:text-n-slate-12"
-+                            class="grid h-8 w-8 place-items-center rounded-md text-n-slate-9 transition hover:bg-n-alpha-2 hover:text-n-slate-12"
++                            class="grid h-7 w-7 place-items-center rounded-md text-n-slate-9 transition hover:bg-n-alpha-2 hover:text-n-slate-12"
                              aria-label="Reorder mapping"
                              title="Reorder"
                            >
@@ -562,9 +563,9 @@ index a8a217a..0fb22fd 100644
 -                    </tr>
 +                      </div>
 +
-+                      <div class="mt-3 flex flex-wrap items-center gap-2">
++                      <div class="mt-2 flex flex-wrap items-center gap-1.5">
 +                        <select
-+                          class="h-8 min-w-[11rem] rounded-md border border-dashed border-n-weak bg-n-background px-2 text-xs text-n-slate-11 outline-none transition focus:border-n-brand"
++                          class="h-7 min-w-[9rem] rounded-md border border-dashed border-n-weak bg-n-background px-2 text-[11px] text-n-slate-11 outline-none transition focus:border-n-brand"
 +                          :value="leadOriginKeyForSource(element)"
 +                          @change="setTrafficSourceLeadOrigin(element, $event.target.value)"
 +                        >
@@ -579,7 +580,7 @@ index a8a217a..0fb22fd 100644
 +                        </select>
 +                        <button
 +                          type="button"
-+                          class="inline-flex h-8 items-center gap-1 rounded-md px-2 text-xs font-medium text-n-brand transition hover:bg-n-alpha-2"
++                          class="inline-flex h-7 items-center gap-1 rounded-md px-2 text-[11px] font-medium text-n-brand transition hover:bg-n-alpha-2"
 +                          @click="addRuleForSource(element)"
 +                        >
 +                          <i class="i-lucide-plus h-3.5 w-3.5" />
@@ -587,7 +588,7 @@ index a8a217a..0fb22fd 100644
 +                        </button>
 +                        <button
 +                          type="button"
-+                          class="ml-auto grid h-8 w-8 place-items-center rounded-md text-n-slate-9 transition hover:bg-n-ruby-3 hover:text-n-ruby-11"
++                          class="ml-auto grid h-7 w-7 place-items-center rounded-md text-n-slate-9 transition hover:bg-n-ruby-3 hover:text-n-ruby-11"
 +                          aria-label="Remove mapping"
 +                          @click="removeAttributionMapping(element)"
 +                        >
@@ -647,8 +648,8 @@ index a8a217a..0fb22fd 100644
 -                    aria-label="Lead origin label"
 +              </section>
 +
-+              <section class="space-y-3">
-+                <div class="flex items-end justify-between gap-3 px-1">
++              <section class="flex min-h-0 flex-col">
++                <div class="mb-2 flex flex-none items-end justify-between gap-2 px-0.5">
 +                  <div>
 +                    <div class="text-[11px] font-semibold uppercase tracking-[0.14em] text-n-slate-9">
 +                      Lead Origins
@@ -670,92 +671,95 @@ index a8a217a..0fb22fd 100644
 -                <span class="truncate text-right text-[11px] text-n-slate-9">
 -                  {{ origin.key }}
 -                </span>
+-              </div>
 +
-+                <article
-+                  v-for="origin in filteredLeadOrigins"
-+                  :key="origin.key"
-+                  class="rounded-xl border border-n-weak bg-n-background p-3 shadow-sm"
-+                  :class="{ 'border-n-amber-5': originHasIssue(origin) }"
-+                >
-+                  <div class="flex items-start gap-2">
-+                    <span
-+                      class="mt-1 h-3 w-3 shrink-0 rounded-full border border-white shadow-sm"
-+                      :style="{ backgroundColor: origin.color }"
-+                    />
-+                    <div class="min-w-0 flex-1">
-+                      <div class="flex items-center gap-1.5">
++                <div class="min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
++                  <article
++                    v-for="origin in filteredLeadOrigins"
++                    :key="origin.key"
++                    class="rounded-lg border border-n-weak bg-n-background px-3 py-2.5"
++                    :class="{ 'border-n-amber-5': originHasIssue(origin) }"
++                  >
++                    <div class="flex items-start gap-2">
++                      <span
++                        class="mt-1 h-2.5 w-2.5 shrink-0 rounded-full border border-white"
++                        :style="{ backgroundColor: origin.color }"
++                      />
++                      <div class="min-w-0 flex-1">
++                        <div class="flex items-center gap-1.5">
++                          <input
++                            v-model="origin.label"
++                            class="min-w-0 flex-1 rounded-md border border-transparent bg-transparent px-1 py-0.5 text-sm font-medium text-n-slate-12 outline-none transition hover:border-n-weak focus:border-n-brand focus:bg-n-alpha-1"
++                            type="text"
++                          />
++                          <i
++                            v-if="originHasIssue(origin)"
++                            class="i-lucide-triangle-alert h-4 w-4 shrink-0 text-n-amber-10"
++                          />
++                        </div>
++                        <div class="mt-0.5 text-[10px] text-n-slate-9">
++                          {{ origin.key }}
++                        </div>
++                      </div>
++                      <div class="flex items-center gap-1">
++                        <span class="text-[10px] text-n-slate-9">
++                          {{ leadOriginCountLabel(origin) }}
++                        </span>
 +                        <input
-+                          v-model="origin.label"
-+                          class="min-w-0 flex-1 rounded-md border border-transparent bg-transparent px-1 py-0.5 text-sm font-medium text-n-slate-12 outline-none transition hover:border-n-weak focus:border-n-brand focus:bg-n-alpha-1"
-+                          type="text"
-+                        />
-+                        <i
-+                          v-if="originHasIssue(origin)"
-+                          class="i-lucide-triangle-alert h-4 w-4 shrink-0 text-n-amber-10"
++                          v-model="origin.is_active"
++                          class="h-4 w-4 rounded border-n-weak text-n-brand"
++                          type="checkbox"
++                          aria-label="Toggle origin active state"
 +                        />
 +                      </div>
-+                      <div class="mt-0.5 text-[11px] text-n-slate-9">
-+                        {{ origin.key }}
-+                      </div>
 +                    </div>
-+                    <div class="flex items-center gap-1">
-+                      <span class="text-[11px] text-n-slate-9">
-+                        {{ leadOriginCountLabel(origin) }}
-+                      </span>
-+                      <input
-+                        v-model="origin.is_active"
-+                        class="h-4 w-4 rounded border-n-weak text-n-brand"
-+                        type="checkbox"
-+                        aria-label="Toggle origin active state"
-+                      />
-+                    </div>
-+                  </div>
 +
-+                  <div class="mt-3 space-y-2">
-+                    <div
-+                      v-if="!leadOriginMappings(origin).length"
-+                      class="rounded-md border border-dashed border-n-weak px-3 py-2 text-xs text-n-slate-10"
-+                    >
-+                      No connected sources yet
++                    <div class="mt-2 space-y-1.5">
++                      <div
++                        v-if="!leadOriginMappings(origin).length"
++                        class="rounded-md border border-dashed border-n-weak px-2.5 py-2 text-[11px] text-n-slate-10"
++                      >
++                        No connected sources yet
++                      </div>
++                      <div
++                        v-for="source in leadOriginMappings(origin)"
++                        :key="source.key"
++                        class="flex items-center gap-1.5 rounded-md bg-n-alpha-1 px-2 py-1.5 text-[11px]"
++                      >
++                        <span
++                          class="h-2.5 w-2.5 shrink-0 rounded-full"
++                          :style="{ backgroundColor: source.color }"
++                        />
++                        <span class="truncate text-n-slate-11">{{ source.label }}</span>
++                        <i class="i-lucide-chevron-right h-3.5 w-3.5 shrink-0 text-n-slate-8" />
++                        <span
++                          class="truncate"
++                          :class="sourceRuleCount(source) ? 'text-n-slate-10' : 'text-n-amber-10'"
++                        >
++                          {{ sourceRulePreview(source) }}
++                        </span>
++                        <span
++                          v-if="sourceRuleCount(source) > 1"
++                          class="rounded-md bg-n-background px-1.5 py-0.5 text-[10px] text-n-slate-9"
++                        >
++                          +{{ sourceRuleCount(source) - 1 }}
++                        </span>
++                        <button
++                          type="button"
++                          class="ml-auto grid h-5 w-5 place-items-center rounded text-n-slate-9 transition hover:bg-n-ruby-3 hover:text-n-ruby-11"
++                          aria-label="Remove source from origin"
++                          @click="setTrafficSourceLeadOrigin(source, '')"
++                        >
++                          <i class="i-lucide-trash-2 h-3.5 w-3.5" />
++                        </button>
++                      </div>
 +                    </div>
-+                    <div
-+                      v-for="source in leadOriginMappings(origin)"
-+                      :key="source.key"
-+                      class="flex items-center gap-2 rounded-md bg-n-alpha-1 px-2.5 py-2 text-xs"
-+                    >
-+                      <span
-+                        class="h-2.5 w-2.5 shrink-0 rounded-full"
-+                        :style="{ backgroundColor: source.color }"
-+                      />
-+                      <span class="truncate text-n-slate-11">{{ source.label }}</span>
-+                      <i class="i-lucide-chevron-right h-3.5 w-3.5 shrink-0 text-n-slate-8" />
-+                      <span
-+                        class="truncate"
-+                        :class="sourceRuleCount(source) ? 'text-n-slate-10' : 'text-n-amber-10'"
-+                      >
-+                        {{ sourceRulePreview(source) }}
-+                      </span>
-+                      <span
-+                        v-if="sourceRuleCount(source) > 1"
-+                        class="rounded-md bg-n-background px-1.5 py-0.5 text-[11px] text-n-slate-9"
-+                      >
-+                        +{{ sourceRuleCount(source) - 1 }}
-+                      </span>
-+                      <button
-+                        type="button"
-+                        class="ml-auto grid h-6 w-6 place-items-center rounded text-n-slate-9 transition hover:bg-n-ruby-3 hover:text-n-ruby-11"
-+                        aria-label="Remove source from origin"
-+                        @click="setTrafficSourceLeadOrigin(source, '')"
-+                      >
-+                        <i class="i-lucide-trash-2 h-3.5 w-3.5" />
-+                      </button>
-+                    </div>
-+                  </div>
-+                </article>
++                  </article>
++                </div>
 +              </section>
 +
-+              <section class="space-y-3">
-+                <div class="flex items-end justify-between gap-3 px-1">
++              <section class="flex min-h-0 flex-col">
++                <div class="mb-2 flex flex-none items-end justify-between gap-2 px-0.5">
 +                  <div>
 +                    <div class="text-[11px] font-semibold uppercase tracking-[0.14em] text-n-slate-9">
 +                      Detection Rules
@@ -766,116 +770,118 @@ index a8a217a..0fb22fd 100644
 +                  </div>
 +                </div>
 +
-+                <article
-+                  v-for="rule in filteredDetectionRules"
-+                  :key="rule.id"
-+                  class="rounded-xl border border-n-weak bg-n-background p-3 shadow-sm"
-+                  :class="{ 'border-n-amber-5': ruleHasIssue(rule) }"
-+                >
-+                  <div class="flex items-start gap-2">
-+                    <span class="rounded-md border border-n-weak bg-n-alpha-1 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wide text-n-slate-10">
-+                      {{ ruleTypeLabel(rule) }}
-+                    </span>
-+                    <div class="min-w-0 flex-1">
-+                      <div class="truncate text-sm font-medium text-n-slate-12">
-+                        {{ ruleSummary(rule) }}
++                <div class="min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
++                  <article
++                    v-for="rule in filteredDetectionRules"
++                    :key="rule.id"
++                    class="rounded-lg border border-n-weak bg-n-background px-3 py-2.5"
++                    :class="{ 'border-n-amber-5': ruleHasIssue(rule) }"
++                  >
++                    <div class="flex items-start gap-2">
++                      <span class="rounded-md border border-n-weak bg-n-alpha-1 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wide text-n-slate-10">
++                        {{ ruleTypeLabel(rule) }}
++                      </span>
++                      <div class="min-w-0 flex-1">
++                        <div class="truncate text-sm font-medium text-n-slate-12">
++                          {{ ruleSummary(rule) }}
++                        </div>
++                        <div class="mt-0.5 text-[10px] text-n-slate-9">
++                          {{ ruleUsageLabel(rule) }}
++                        </div>
 +                      </div>
-+                      <div class="mt-0.5 text-[11px] text-n-slate-9">
-+                        {{ ruleUsageLabel(rule) }}
-+                      </div>
-+                    </div>
-+                    <div class="flex items-center gap-1">
-+                      <input
-+                        v-model="rule.active"
-+                        class="h-4 w-4 rounded border-n-weak text-n-brand"
-+                        type="checkbox"
-+                        aria-label="Toggle rule active state"
-+                      />
-+                      <button
-+                        type="button"
-+                        class="grid h-8 w-8 place-items-center rounded-md text-n-slate-9 transition hover:bg-n-ruby-3 hover:text-n-ruby-11"
-+                        aria-label="Remove rule"
-+                        @click="removeDetectionRule(rule)"
-+                      >
-+                        <i class="i-lucide-trash-2 h-4 w-4" />
-+                      </button>
-+                    </div>
-+                  </div>
-+
-+                  <div class="mt-3 grid gap-2 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-+                    <select
-+                      class="h-8 rounded-md border border-n-weak bg-n-background px-2 text-xs text-n-slate-12 outline-none transition focus:border-n-brand"
-+                      :value="rule.result_traffic_source_key"
-+                      @change="setDetectionRuleTrafficSource(rule, $event.target.value)"
-+                    >
-+                      <option value="">Choose source</option>
-+                      <option
-+                        v-for="source in activeAttributionItems(draftTrafficSources)"
-+                        :key="source.key"
-+                        :value="source.key"
-+                      >
-+                        {{ source.label }}
-+                      </option>
-+                    </select>
-+                    <select
-+                      class="h-8 rounded-md border border-n-weak bg-n-background px-2 text-xs text-n-slate-12 outline-none transition focus:border-n-brand"
-+                      :value="rule.result_lead_origin_key"
-+                      @change="setDetectionRuleLeadOrigin(rule, $event.target.value)"
-+                    >
-+                      <option value="">Choose origin</option>
-+                      <option
-+                        v-for="origin in activeAttributionItems(draftLeadOrigins)"
-+                        :key="origin.key"
-+                        :value="origin.key"
-+                      >
-+                        {{ origin.label }}
-+                      </option>
-+                    </select>
-+                    <select
-+                      v-model="rule.field"
-+                      class="h-8 rounded-md border border-n-weak bg-n-background px-2 text-xs text-n-slate-12 outline-none transition focus:border-n-brand"
-+                    >
-+                      <option
-+                        v-for="field in DETECTION_RULE_FIELDS"
-+                        :key="field.value"
-+                        :value="field.value"
-+                      >
-+                        {{ field.label }}
-+                      </option>
-+                    </select>
-+                    <div class="grid gap-2 sm:grid-cols-[7rem_minmax(0,1fr)]">
-+                      <select
-+                        v-model="rule.operator"
-+                        class="h-8 rounded-md border border-n-weak bg-n-background px-2 text-xs text-n-slate-12 outline-none transition focus:border-n-brand"
-+                      >
-+                        <option
-+                          v-for="operator in DETECTION_RULE_OPERATORS"
-+                          :key="operator.value"
-+                          :value="operator.value"
++                      <div class="flex items-center gap-1">
++                        <input
++                          v-model="rule.active"
++                          class="h-4 w-4 rounded border-n-weak text-n-brand"
++                          type="checkbox"
++                          aria-label="Toggle rule active state"
++                        />
++                        <button
++                          type="button"
++                          class="grid h-7 w-7 place-items-center rounded-md text-n-slate-9 transition hover:bg-n-ruby-3 hover:text-n-ruby-11"
++                          aria-label="Remove rule"
++                          @click="removeDetectionRule(rule)"
 +                        >
-+                          {{ operator.label }}
++                          <i class="i-lucide-trash-2 h-4 w-4" />
++                        </button>
++                      </div>
++                    </div>
++
++                    <div class="mt-2 grid gap-1.5 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
++                      <select
++                        class="h-7 rounded-md border border-n-weak bg-n-background px-2 text-[11px] text-n-slate-12 outline-none transition focus:border-n-brand"
++                        :value="rule.result_traffic_source_key"
++                        @change="setDetectionRuleTrafficSource(rule, $event.target.value)"
++                      >
++                        <option value="">Choose source</option>
++                        <option
++                          v-for="source in activeAttributionItems(draftTrafficSources)"
++                          :key="source.key"
++                          :value="source.key"
++                        >
++                          {{ source.label }}
 +                        </option>
 +                      </select>
-+                      <input
-+                        v-if="rule.operator !== 'exists'"
-+                        v-model="rule.value"
-+                        class="h-8 rounded-md border border-n-weak bg-n-background px-2 text-xs text-n-slate-12 outline-none transition focus:border-n-brand"
-+                        placeholder="Match text"
-+                        type="text"
-+                      />
-+                      <div
-+                        v-else
-+                        class="inline-flex h-8 items-center rounded-md border border-dashed border-n-weak px-2 text-xs text-n-slate-10"
++                      <select
++                        class="h-7 rounded-md border border-n-weak bg-n-background px-2 text-[11px] text-n-slate-12 outline-none transition focus:border-n-brand"
++                        :value="rule.result_lead_origin_key"
++                        @change="setDetectionRuleLeadOrigin(rule, $event.target.value)"
 +                      >
-+                        Any value
++                        <option value="">Choose origin</option>
++                        <option
++                          v-for="origin in activeAttributionItems(draftLeadOrigins)"
++                          :key="origin.key"
++                          :value="origin.key"
++                        >
++                          {{ origin.label }}
++                        </option>
++                      </select>
++                      <select
++                        v-model="rule.field"
++                        class="h-7 rounded-md border border-n-weak bg-n-background px-2 text-[11px] text-n-slate-12 outline-none transition focus:border-n-brand"
++                      >
++                        <option
++                          v-for="field in DETECTION_RULE_FIELDS"
++                          :key="field.value"
++                          :value="field.value"
++                        >
++                          {{ field.label }}
++                        </option>
++                      </select>
++                      <div class="grid gap-1.5 sm:grid-cols-[6rem_minmax(0,1fr)]">
++                        <select
++                          v-model="rule.operator"
++                          class="h-7 rounded-md border border-n-weak bg-n-background px-2 text-[11px] text-n-slate-12 outline-none transition focus:border-n-brand"
++                        >
++                          <option
++                            v-for="operator in DETECTION_RULE_OPERATORS"
++                            :key="operator.value"
++                            :value="operator.value"
++                          >
++                            {{ operator.label }}
++                          </option>
++                        </select>
++                        <input
++                          v-if="rule.operator !== 'exists'"
++                          v-model="rule.value"
++                          class="h-7 rounded-md border border-n-weak bg-n-background px-2 text-[11px] text-n-slate-12 outline-none transition focus:border-n-brand"
++                          placeholder="Match text"
++                          type="text"
++                        />
++                        <div
++                          v-else
++                          class="inline-flex h-7 items-center rounded-md border border-dashed border-n-weak px-2 text-[11px] text-n-slate-10"
++                        >
++                          Any value
++                        </div>
 +                      </div>
 +                    </div>
-+                  </div>
-+                </article>
++                  </article>
++                </div>
 +
 +                <button
 +                  type="button"
-+                  class="inline-flex h-9 w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-n-weak bg-n-background text-sm text-n-slate-10 transition hover:bg-n-alpha-2 hover:text-n-slate-12"
++                  class="mt-2 inline-flex h-8 w-full flex-none items-center justify-center gap-1.5 rounded-lg border border-dashed border-n-weak bg-n-background text-xs text-n-slate-10 transition hover:bg-n-alpha-2 hover:text-n-slate-12"
 +                  @click="addDetectionRule"
 +                >
 +                  <i class="i-lucide-plus h-3.5 w-3.5" />
@@ -884,14 +890,13 @@ index a8a217a..0fb22fd 100644
 +              </section>
 +            </div>
 +
-+            <div class="rounded-lg border border-n-weak bg-n-background px-3 py-2.5">
-+              <div class="flex flex-wrap items-center gap-2 text-xs text-n-slate-10">
++            <div class="flex flex-none flex-wrap items-center gap-2 rounded-lg border border-n-weak bg-n-background px-3 py-2">
 +                <span class="font-semibold uppercase tracking-[0.14em] text-n-slate-9">Fallback Priority</span>
 +                <template
 +                  v-for="(label, index) in fallbackPriorityLabels"
 +                  :key="`${label}-${index}`"
 +                >
-+                  <span class="rounded-md border border-n-weak bg-n-alpha-1 px-2 py-1 text-xs text-n-slate-11">
++                  <span class="rounded-md border border-n-weak bg-n-alpha-1 px-2 py-0.5 text-xs text-n-slate-11">
 +                    {{ label }}
 +                  </span>
 +                  <i
@@ -899,7 +904,6 @@ index a8a217a..0fb22fd 100644
 +                    class="i-lucide-chevron-right h-3.5 w-3.5 text-n-slate-8"
 +                  />
 +                </template>
-               </div>
              </div>
 -          </section>
 -
