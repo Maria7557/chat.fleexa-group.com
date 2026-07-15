@@ -1,0 +1,101 @@
+diff --git a/app/controllers/api/v1/accounts/crm/marketing_dashboard_controller.rb b/app/controllers/api/v1/accounts/crm/marketing_dashboard_controller.rb
+index e9dfe46..1abf793 100644
+--- a/app/controllers/api/v1/accounts/crm/marketing_dashboard_controller.rb
++++ b/app/controllers/api/v1/accounts/crm/marketing_dashboard_controller.rb
+@@ -30,6 +30,19 @@ class Api::V1::Accounts::Crm::MarketingDashboardController < Api::V1::Accounts::
+     { key: 'call', label: 'Call', color: '#0F1923', is_active: true },
+     { key: 'other', label: 'Other', color: '#94A3B8', is_active: true }
+   ].freeze
++  DETECTION_RULE_FIELDS = %w[
++    gclid
++    fbclid
++    yclid
++    utm_source
++    utm_medium
++    utm_campaign
++    utm_content
++    utm_referrer
++    from
++    first_message
++  ].freeze
++  DETECTION_RULE_OPERATORS = %w[contains equals exists].freeze
+ 
+   before_action :check_read_authorization, only: [:show, :spend, :monthly_spend]
+   before_action :check_write_authorization, only: [
+@@ -129,7 +142,19 @@ class Api::V1::Accounts::Crm::MarketingDashboardController < Api::V1::Accounts::
+     params.require(:crm_marketing_dashboard).permit(
+       widgets: [:key, :visible, :position],
+       traffic_sources: [:key, :label, :color, :is_active, :sort_order],
+-      lead_origins: [:key, :label, :color, :is_active, :sort_order]
++      lead_origins: [:key, :label, :color, :is_active, :sort_order],
++      detection_rules: [
++        :id,
++        :active,
++        :priority,
++        :field,
++        :operator,
++        :value,
++        :result_traffic_source_key,
++        :result_traffic_source_label,
++        :result_lead_origin_key,
++        :result_lead_origin_label
++      ]
+     )
+   end
+ 
+@@ -145,7 +170,8 @@ class Api::V1::Accounts::Crm::MarketingDashboardController < Api::V1::Accounts::
+       lead_origins: normalized_attribution_items(
+         raw_config['lead_origins'] || raw_config[:lead_origins],
+         DEFAULT_LEAD_ORIGINS
+-      )
++      ),
++      detection_rules: normalized_detection_rules(raw_config['detection_rules'] || raw_config[:detection_rules])
+     }
+   end
+ 
+@@ -190,7 +216,8 @@ class Api::V1::Accounts::Crm::MarketingDashboardController < Api::V1::Accounts::
+     {
+       widgets: default_widgets,
+       traffic_sources: default_attribution_items(DEFAULT_TRAFFIC_SOURCES),
+-      lead_origins: default_attribution_items(DEFAULT_LEAD_ORIGINS)
++      lead_origins: default_attribution_items(DEFAULT_LEAD_ORIGINS),
++      detection_rules: []
+     }
+   end
+ 
+@@ -253,6 +280,35 @@ class Api::V1::Accounts::Crm::MarketingDashboardController < Api::V1::Accounts::
+     fallback.presence || '#94A3B8'
+   end
+ 
++  def normalized_detection_rules(raw_rules)
++    Array(raw_rules).each_with_index.filter_map do |rule, index|
++      field = value_for(rule, :field).to_s
++      operator = value_for(rule, :operator).to_s
++      next unless DETECTION_RULE_FIELDS.include?(field) && DETECTION_RULE_OPERATORS.include?(operator)
++
++      traffic_source_key = attribution_key(value_for(rule, :result_traffic_source_key))
++      traffic_source_label = value_for(rule, :result_traffic_source_label).to_s.strip
++      lead_origin_key = attribution_key(value_for(rule, :result_lead_origin_key))
++      lead_origin_label = value_for(rule, :result_lead_origin_label).to_s.strip
++      next if traffic_source_key.blank? && lead_origin_key.blank?
++
++      priority = value_for(rule, :priority).to_i
++      {
++        id: value_for(rule, :id).presence || SecureRandom.uuid,
++        active: value_for(rule, :active).nil? ? true : boolean_value(value_for(rule, :active)),
++        priority: priority.positive? ? priority : index + 1,
++        field: field,
++        operator: operator,
++        value: value_for(rule, :value).to_s,
++        result_traffic_source_key: traffic_source_key,
++        result_traffic_source_label: traffic_source_label,
++        result_lead_origin_key: lead_origin_key,
++        result_lead_origin_label: lead_origin_label
++      }
++    end.sort_by { |rule| rule[:priority] }
++       .map.with_index { |rule, index| rule.merge(priority: index + 1) }
++  end
++
+   def default_position(key)
+     ALLOWED_WIDGET_KEYS.index(key) || ALLOWED_WIDGET_KEYS.length
+   end

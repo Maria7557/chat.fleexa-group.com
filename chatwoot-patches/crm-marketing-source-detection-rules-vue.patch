@@ -1,0 +1,738 @@
+diff --git a/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue b/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue
+index 88ffe68..95aa932 100644
+--- a/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue
++++ b/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue
+@@ -64,6 +64,25 @@ const DEFAULT_LEAD_ORIGINS = [
+   { key: 'call', label: 'Call', color: '#0F1923', is_active: true },
+   { key: 'other', label: 'Other', color: '#94A3B8', is_active: true },
+ ];
++const DETECTION_RULE_FIELDS = [
++  { value: 'gclid', label: 'GCLID' },
++  { value: 'fbclid', label: 'FBCLID' },
++  { value: 'yclid', label: 'YCLID' },
++  { value: 'utm_source', label: 'UTM source' },
++  { value: 'utm_medium', label: 'UTM medium' },
++  { value: 'utm_campaign', label: 'UTM campaign' },
++  { value: 'utm_content', label: 'UTM content' },
++  { value: 'utm_referrer', label: 'UTM referrer' },
++  { value: 'from', label: 'From' },
++  { value: 'first_message', label: 'First message' },
++];
++const DETECTION_RULE_FIELD_KEYS = DETECTION_RULE_FIELDS.map(field => field.value);
++const DETECTION_RULE_OPERATORS = [
++  { value: 'contains', label: 'Contains' },
++  { value: 'equals', label: 'Equals' },
++  { value: 'exists', label: 'Exists' },
++];
++const DETECTION_RULE_OPERATOR_KEYS = DETECTION_RULE_OPERATORS.map(operator => operator.value);
+ 
+ const TREND_CHART_WIDTH = 720;
+ const TREND_CHART_HEIGHT = 240;
+@@ -119,6 +138,7 @@ const isSavingAttributionSettings = ref(false);
+ const attributionSettingsError = ref('');
+ const draftTrafficSources = ref([]);
+ const draftLeadOrigins = ref([]);
++const draftDetectionRules = ref([]);
+ const { isAdmin } = useAdmin();
+ const isManualSpendDrawerOpen = ref(false);
+ const isSavingManualSpend = ref(false);
+@@ -618,6 +638,39 @@ const sanitizeAttributionItems = (items, defaults) => {
+     .map((item, index) => ({ ...item, sort_order: index + 1 }));
+ };
+ 
++const ruleId = () => {
++  if (window.crypto?.randomUUID) return window.crypto.randomUUID();
++  return `rule_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
++};
++
++const sanitizeDetectionRules = rules => {
++  const rawRules = Array.isArray(rules) ? rules : [];
++
++  return rawRules
++    .map((rule, index) => {
++      const field = DETECTION_RULE_FIELD_KEYS.includes(rule?.field) ? rule.field : 'first_message';
++      const operator = DETECTION_RULE_OPERATOR_KEYS.includes(rule?.operator) ? rule.operator : 'contains';
++      const trafficSourceKey = attributionKeyFromLabel(rule?.result_traffic_source_key || '');
++      const leadOriginKey = attributionKeyFromLabel(rule?.result_lead_origin_key || '');
++      const priority = Number.parseInt(rule?.priority, 10);
++
++      return {
++        id: rule?.id || ruleId(),
++        active: rule?.active !== false,
++        priority: Number.isFinite(priority) && priority > 0 ? priority : index + 1,
++        field,
++        operator,
++        value: String(rule?.value || ''),
++        result_traffic_source_key: trafficSourceKey,
++        result_traffic_source_label: String(rule?.result_traffic_source_label || '').trim(),
++        result_lead_origin_key: leadOriginKey,
++        result_lead_origin_label: String(rule?.result_lead_origin_label || '').trim(),
++      };
++    })
++    .sort((a, b) => a.priority - b.priority)
++    .map((rule, index) => ({ ...rule, priority: index + 1 }));
++};
++
+ const defaultDashboardConfig = () => ({
+   widgets: KPI_WIDGETS.map((widget, index) => ({
+     key: widget.key,
+@@ -626,6 +679,7 @@ const defaultDashboardConfig = () => ({
+   })),
+   traffic_sources: defaultAttributionItems(DEFAULT_TRAFFIC_SOURCES),
+   lead_origins: defaultAttributionItems(DEFAULT_LEAD_ORIGINS),
++  detection_rules: [],
+ });
+ 
+ const sanitizeDashboardConfig = config => {
+@@ -659,6 +713,7 @@ const sanitizeDashboardConfig = config => {
+       .map((widget, index) => ({ ...widget, position: index + 1 })),
+     traffic_sources: sanitizeAttributionItems(config?.traffic_sources, DEFAULT_TRAFFIC_SOURCES),
+     lead_origins: sanitizeAttributionItems(config?.lead_origins, DEFAULT_LEAD_ORIGINS),
++    detection_rules: sanitizeDetectionRules(config?.detection_rules),
+   };
+ };
+ 
+@@ -947,6 +1002,7 @@ const resetDraftDashboard = () => {
+ const cloneAttributionItems = items => items.map(item => ({ ...item }));
+ 
+ const settingItemKey = item => item.key;
++const ruleItemKey = item => item.id;
+ 
+ const activeCountFor = items => items.filter(item => item.is_active !== false).length;
+ 
+@@ -963,12 +1019,19 @@ const nextCustomAttributionKey = (items, prefix) => {
+   return key;
+ };
+ 
++const activeAttributionItems = items => items.filter(item => item.is_active !== false);
++
++const labelForAttributionKey = (items, key) => {
++  return items.find(item => item.key === key)?.label || '';
++};
++
+ const openAttributionSettings = () => {
+   if (!isAdmin.value) return;
+ 
+   const config = sanitizeDashboardConfig(dashboardConfig.value);
+   draftTrafficSources.value = cloneAttributionItems(config.traffic_sources);
+   draftLeadOrigins.value = cloneAttributionItems(config.lead_origins);
++  draftDetectionRules.value = config.detection_rules.map(rule => ({ ...rule }));
+   attributionSettingsError.value = '';
+   isAttributionSettingsOpen.value = true;
+ };
+@@ -1006,6 +1069,36 @@ const addLeadOrigin = () => {
+   ];
+ };
+ 
++const addDetectionRule = () => {
++  const defaultTrafficSource = activeAttributionItems(draftTrafficSources.value)[0] || {};
++
++  draftDetectionRules.value = [
++    ...draftDetectionRules.value,
++    {
++      id: ruleId(),
++      active: true,
++      priority: draftDetectionRules.value.length + 1,
++      field: 'first_message',
++      operator: 'contains',
++      value: '',
++      result_traffic_source_key: defaultTrafficSource.key || '',
++      result_traffic_source_label: defaultTrafficSource.label || '',
++      result_lead_origin_key: '',
++      result_lead_origin_label: '',
++    },
++  ];
++};
++
++const setDetectionRuleTrafficSource = (rule, key) => {
++  rule.result_traffic_source_key = key;
++  rule.result_traffic_source_label = labelForAttributionKey(draftTrafficSources.value, key);
++};
++
++const setDetectionRuleLeadOrigin = (rule, key) => {
++  rule.result_lead_origin_key = key;
++  rule.result_lead_origin_label = labelForAttributionKey(draftLeadOrigins.value, key);
++};
++
+ const prepareAttributionDraft = (items, defaults, label) => {
+   const prepared = sanitizeAttributionItems(
+     items.map((item, index) => ({
+@@ -1023,6 +1116,24 @@ const prepareAttributionDraft = (items, defaults, label) => {
+   return prepared;
+ };
+ 
++const prepareDetectionRuleDraft = (rules, trafficSources, leadOrigins) => {
++  return sanitizeDetectionRules(
++    rules.map((rule, index) => ({
++      ...rule,
++      priority: index + 1,
++      value: String(rule.value || '').trim(),
++      result_traffic_source_label: labelForAttributionKey(
++        trafficSources,
++        rule.result_traffic_source_key
++      ) || rule.result_traffic_source_label,
++      result_lead_origin_label: labelForAttributionKey(
++        leadOrigins,
++        rule.result_lead_origin_key
++      ) || rule.result_lead_origin_label,
++    }))
++  ).filter(rule => rule.result_traffic_source_key || rule.result_lead_origin_key);
++};
++
+ const saveAttributionSettings = async () => {
+   isSavingAttributionSettings.value = true;
+   attributionSettingsError.value = '';
+@@ -1041,6 +1152,11 @@ const saveAttributionSettings = async () => {
+         DEFAULT_LEAD_ORIGINS,
+         'Lead Origins'
+       ),
++      detection_rules: prepareDetectionRuleDraft(
++        draftDetectionRules.value,
++        draftTrafficSources.value,
++        draftLeadOrigins.value
++      ),
+     });
+     const response = await CrmPipelineAPI.updateMarketingDashboardConfig({
+       crm_marketing_dashboard: nextConfig,
+@@ -2557,6 +2673,154 @@ onMounted(() => {
+                 </template>
+               </Draggable>
+             </section>
++
++            <section class="grid gap-3">
++              <div class="flex items-center justify-between gap-3">
++                <div>
++                  <h3 class="m-0 text-sm font-semibold text-n-slate-12">
++                    Auto Detection Rules
++                  </h3>
++                  <div class="mt-1 text-xs text-n-slate-10">
++                    {{ draftDetectionRules.length }} rules after built-in UTM/click-id matching
++                  </div>
++                </div>
++                <Button
++                  icon="i-lucide-plus"
++                  label="Add rule"
++                  size="xs"
++                  slate
++                  faded
++                  type="button"
++                  @click="addDetectionRule"
++                />
++              </div>
++
++              <div
++                v-if="!draftDetectionRules.length"
++                class="rounded-lg border border-dashed border-n-weak px-4 py-5 text-center text-sm text-n-slate-10"
++              >
++                No custom detection rules yet
++              </div>
++
++              <Draggable
++                v-else
++                v-model="draftDetectionRules"
++                :item-key="ruleItemKey"
++                handle=".js-detection-rule-drag-handle"
++                class="grid gap-2"
++              >
++                <template #item="{ element, index }">
++                  <div class="grid gap-3 rounded-lg border border-n-weak bg-n-solid-1 p-3">
++                    <div class="flex items-center justify-between gap-3">
++                      <div class="flex items-center gap-2">
++                        <button
++                          type="button"
++                          class="js-detection-rule-drag-handle grid h-8 w-8 cursor-grab place-items-center rounded-md text-n-slate-9 transition hover:bg-n-alpha-2 hover:text-n-slate-12"
++                          aria-label="Reorder detection rule"
++                          title="Reorder"
++                        >
++                          <i class="i-lucide-grip-vertical h-4 w-4" />
++                        </button>
++                        <span class="text-xs font-semibold uppercase text-n-slate-10">
++                          Rule {{ index + 1 }}
++                        </span>
++                      </div>
++                      <label class="inline-flex items-center gap-2 text-xs font-medium text-n-slate-10">
++                        <input
++                          v-model="element.active"
++                          class="h-4 w-4 rounded border-n-weak text-n-brand"
++                          type="checkbox"
++                        />
++                        Active
++                      </label>
++                    </div>
++
++                    <div class="grid gap-3 md:grid-cols-[1fr_0.8fr_1.2fr]">
++                      <label class="grid gap-1 text-xs font-medium text-n-slate-10">
++                        Field
++                        <select
++                          v-model="element.field"
++                          class="h-9 rounded-md border border-n-weak bg-n-background px-3 text-sm font-normal text-n-slate-12 outline-none transition focus:border-n-brand"
++                        >
++                          <option
++                            v-for="field in DETECTION_RULE_FIELDS"
++                            :key="field.value"
++                            :value="field.value"
++                          >
++                            {{ field.label }}
++                          </option>
++                        </select>
++                      </label>
++
++                      <label class="grid gap-1 text-xs font-medium text-n-slate-10">
++                        Operator
++                        <select
++                          v-model="element.operator"
++                          class="h-9 rounded-md border border-n-weak bg-n-background px-3 text-sm font-normal text-n-slate-12 outline-none transition focus:border-n-brand"
++                        >
++                          <option
++                            v-for="operator in DETECTION_RULE_OPERATORS"
++                            :key="operator.value"
++                            :value="operator.value"
++                          >
++                            {{ operator.label }}
++                          </option>
++                        </select>
++                      </label>
++
++                      <label class="grid gap-1 text-xs font-medium text-n-slate-10">
++                        Value
++                        <input
++                          v-model="element.value"
++                          class="h-9 rounded-md border border-n-weak bg-n-background px-3 text-sm font-normal text-n-slate-12 outline-none transition focus:border-n-brand disabled:opacity-60"
++                          :disabled="element.operator === 'exists'"
++                          :placeholder="element.operator === 'exists' ? 'Any value' : 'Match text'"
++                          type="text"
++                        />
++                      </label>
++                    </div>
++
++                    <div class="grid gap-3 md:grid-cols-2">
++                      <label class="grid gap-1 text-xs font-medium text-n-slate-10">
++                        Result Traffic Source
++                        <select
++                          class="h-9 rounded-md border border-n-weak bg-n-background px-3 text-sm font-normal text-n-slate-12 outline-none transition focus:border-n-brand"
++                          :value="element.result_traffic_source_key"
++                          @change="setDetectionRuleTrafficSource(element, $event.target.value)"
++                        >
++                          <option value="">Leave unresolved</option>
++                          <option
++                            v-for="source in activeAttributionItems(draftTrafficSources)"
++                            :key="source.key"
++                            :value="source.key"
++                          >
++                            {{ source.label }}
++                          </option>
++                        </select>
++                      </label>
++
++                      <label class="grid gap-1 text-xs font-medium text-n-slate-10">
++                        Result Lead Origin
++                        <select
++                          class="h-9 rounded-md border border-n-weak bg-n-background px-3 text-sm font-normal text-n-slate-12 outline-none transition focus:border-n-brand"
++                          :value="element.result_lead_origin_key"
++                          @change="setDetectionRuleLeadOrigin(element, $event.target.value)"
++                        >
++                          <option value="">Leave unresolved</option>
++                          <option
++                            v-for="origin in activeAttributionItems(draftLeadOrigins)"
++                            :key="origin.key"
++                            :value="origin.key"
++                          >
++                            {{ origin.label }}
++                          </option>
++                        </select>
++                      </label>
++                    </div>
++                  </div>
++                </template>
++              </Draggable>
++            </section>
+           </div>
+         </div>
+ 
+diff --git a/app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue b/app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue
+index 532c7fb..bb09155 100644
+--- a/app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue
++++ b/app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue
+@@ -126,6 +126,7 @@ const ATTRIBUTION_FIELDS = [
+   { key: 'needs_source_clarification', label: 'Needs clarification' },
+   { key: 'source_raw_snapshot', label: 'Source raw snapshot' },
+   { key: 'source_request', label: 'Source request' },
++  { key: 'first_message', label: 'First message' },
+   { key: 'utm_source', label: 'UTM source' },
+   { key: 'utm_medium', label: 'UTM medium' },
+   { key: 'utm_campaign', label: 'UTM campaign' },
+@@ -172,6 +173,57 @@ const DEFAULT_LEAD_ORIGINS = [
+   { key: 'call', label: 'Call', color: '#0F1923', is_active: true },
+   { key: 'other', label: 'Other', color: '#94A3B8', is_active: true },
+ ];
++const DETECTION_RULE_FIELDS = [
++  'gclid',
++  'fbclid',
++  'yclid',
++  'utm_source',
++  'utm_medium',
++  'utm_campaign',
++  'utm_content',
++  'utm_referrer',
++  'from',
++  'first_message',
++];
++const UTM_DETECTION_FIELDS = new Set(DETECTION_RULE_FIELDS.filter(field => field !== 'first_message'));
++const DETECTION_RULE_OPERATORS = ['contains', 'equals', 'exists'];
++const SOURCE_ALIASES = {
++  google: 'google_ads',
++  google_ads: 'google_ads',
++  adwords: 'google_ads',
++  meta: 'meta_ads',
++  meta_ads: 'meta_ads',
++  facebook_ads: 'meta_ads',
++  facebook: 'meta_ads',
++  fb: 'meta_ads',
++  instagram_ads: 'meta_ads',
++  instagram: 'meta_ads',
++  tiktok: 'tiktok_ads',
++  tik_tok: 'tiktok_ads',
++  tiktok_ads: 'tiktok_ads',
++  dubizzle: 'dubizzle',
++  website: 'website_organic',
++  website_organic: 'website_organic',
++  organic: 'website_organic',
++  referral: 'referral',
++  yandex: 'yandex',
++  yandex_ads: 'yandex',
++};
++const ORIGIN_ALIASES = {
++  website: 'website',
++  web: 'website',
++  site: 'website',
++  instagram: 'instagram',
++  ig: 'instagram',
++  facebook: 'facebook',
++  fb: 'facebook',
++  telegram: 'telegram_bot',
++  telegram_bot: 'telegram_bot',
++  whatsapp: 'whatsapp',
++  wa: 'whatsapp',
++  call: 'call',
++  phone: 'call',
++};
+ 
+ const MARKETING_KEYS = ATTRIBUTION_FIELDS.map(field => field.key);
+ const TRACKING_KEYS = [];
+@@ -378,9 +430,36 @@ const sanitizeAttributionItems = (items, defaults) => {
+     .map((item, index) => ({ ...item, sort_order: index + 1 }));
+ };
+ 
++const sanitizeDetectionRules = rules => {
++  const rawRules = Array.isArray(rules) ? rules : [];
++
++  return rawRules
++    .map((rule, index) => {
++      const field = DETECTION_RULE_FIELDS.includes(rule?.field) ? rule.field : 'first_message';
++      const operator = DETECTION_RULE_OPERATORS.includes(rule?.operator) ? rule.operator : 'contains';
++      const priority = Number.parseInt(rule?.priority, 10);
++
++      return {
++        id: rule?.id || `rule_${index + 1}`,
++        active: rule?.active !== false,
++        priority: Number.isFinite(priority) && priority > 0 ? priority : index + 1,
++        field,
++        operator,
++        value: String(rule?.value || ''),
++        result_traffic_source_key: attributionKeyFromLabel(rule?.result_traffic_source_key || ''),
++        result_traffic_source_label: String(rule?.result_traffic_source_label || '').trim(),
++        result_lead_origin_key: attributionKeyFromLabel(rule?.result_lead_origin_key || ''),
++        result_lead_origin_label: String(rule?.result_lead_origin_label || '').trim(),
++      };
++    })
++    .sort((a, b) => a.priority - b.priority)
++    .map((rule, index) => ({ ...rule, priority: index + 1 }));
++};
++
+ const sanitizeMarketingConfig = config => ({
+   traffic_sources: sanitizeAttributionItems(config?.traffic_sources, DEFAULT_TRAFFIC_SOURCES),
+   lead_origins: sanitizeAttributionItems(config?.lead_origins, DEFAULT_LEAD_ORIGINS),
++  detection_rules: sanitizeDetectionRules(config?.detection_rules),
+ });
+ 
+ const responseMarketingConfig = response => {
+@@ -427,6 +506,10 @@ const configuredLeadOrigins = computed(() => {
+   return sanitizeMarketingConfig(marketingConfig.value).lead_origins;
+ });
+ 
++const configuredDetectionRules = computed(() => {
++  return sanitizeMarketingConfig(marketingConfig.value).detection_rules;
++});
++
+ const activeAttributionOptions = (items, selectedKey, selectedLabel) => {
+   const activeItems = items.filter(item => item.is_active !== false);
+   const configuredSelected = items.find(item => item.key === selectedKey);
+@@ -480,6 +563,25 @@ const selectedLeadOriginDisplay = computed(() => {
+     'Unknown';
+ });
+ 
++const sourceDetectionMethod = computed(() => {
++  return dealForm.value.custom_attributes?.source_detection_method || 'unknown';
++});
++
++const sourceConfidence = computed(() => {
++  return dealForm.value.custom_attributes?.source_confidence || 'unknown';
++});
++
++const needsSourceClarification = computed(() => {
++  const value = dealForm.value.custom_attributes?.needs_source_clarification;
++  return value === true || value === 'true' || value === 1 || value === '1';
++});
++
++const detectionInfoRows = computed(() => [
++  { label: 'Detection method', value: sourceDetectionMethod.value },
++  { label: 'Confidence', value: sourceConfidence.value },
++  { label: 'Needs clarification', value: needsSourceClarification.value ? 'Yes' : 'No' },
++]);
++
+ const clientTypeValue = computed(() => {
+   return valueFromSources(attributeSources.value, ['client_type', 'customer_type', 'type']);
+ });
+@@ -785,6 +887,195 @@ const loadConversation = async () => {
+   }
+ };
+ 
++const normalizedToken = value => attributionKeyFromLabel(value);
++
++const activeItems = items => items.filter(item => item.is_active !== false);
++
++const itemByKeyOrLabel = (items, keyOrLabel, aliases = {}) => {
++  const token = normalizedToken(keyOrLabel);
++  if (!token) return null;
++
++  const aliasedKey = aliases[token] || token;
++  return activeItems(items).find(item => {
++    return item.key === aliasedKey || normalizedToken(item.label) === aliasedKey || item.key === token;
++  }) || null;
++};
++
++const configuredSourceFor = value => itemByKeyOrLabel(configuredTrafficSources.value, value, SOURCE_ALIASES);
++
++const configuredOriginFor = value => itemByKeyOrLabel(configuredLeadOrigins.value, value, ORIGIN_ALIASES);
++
++const valueForDetectionField = field => {
++  if (field === 'first_message') return firstMessageValue();
++  return valueFromSources(attributeSources.value, [field]);
++};
++
++const sortedConversationMessages = () => {
++  const messages = activeConversation.value?.messages || activeConversation.value?.conversation?.messages || [];
++  const list = Array.isArray(messages) ? messages : Object.values(messages || {});
++
++  return list
++    .filter(message => hasDisplayValue(message?.content || message?.text))
++    .sort((first, second) => {
++      const firstTime = new Date(first.created_at || first.createdAt || 0).getTime();
++      const secondTime = new Date(second.created_at || second.createdAt || 0).getTime();
++      if (Number.isFinite(firstTime) && Number.isFinite(secondTime) && firstTime !== secondTime) {
++        return firstTime - secondTime;
++      }
++      return Number(first.id || 0) - Number(second.id || 0);
++    });
++};
++
++const firstMessageValue = () => {
++  const storedValue = valueFromSources(attributeSources.value, ['first_message']);
++  if (hasDisplayValue(storedValue)) return storedValue;
++
++  const firstIncomingMessage = sortedConversationMessages().find(message => {
++    return message.message_type === 0 || message.message_type === 'incoming' || message.sender_type === 'Contact';
++  }) || sortedConversationMessages()[0];
++
++  return firstIncomingMessage?.content || firstIncomingMessage?.text || '';
++};
++
++const resultFromItems = (source, origin, method) => ({
++  traffic_source_key: source?.key || '',
++  traffic_source_label: source?.label || 'Unknown',
++  lead_origin_key: origin?.key || '',
++  lead_origin_label: origin?.label || 'Unknown',
++  source_detection_method: method,
++  source_confidence: method === 'unknown' ? 'unknown' : 'auto',
++  needs_source_clarification: !(source?.key && origin?.key),
++});
++
++const builtInClickOrUtmDetection = () => {
++  const gclid = valueForDetectionField('gclid');
++  if (hasDisplayValue(gclid)) {
++    return resultFromItems(configuredSourceFor('google_ads'), originFromFields(), 'utm');
++  }
++
++  const fbclid = valueForDetectionField('fbclid');
++  if (hasDisplayValue(fbclid)) {
++    return resultFromItems(configuredSourceFor('meta_ads'), originFromFields(), 'utm');
++  }
++
++  const yclid = valueForDetectionField('yclid');
++  if (hasDisplayValue(yclid)) {
++    return resultFromItems(configuredSourceFor('yandex'), originFromFields(), 'utm');
++  }
++
++  const utmSource = valueForDetectionField('utm_source');
++  const matchedSource = configuredSourceFor(utmSource);
++  if (matchedSource) return resultFromItems(matchedSource, originFromFields(), 'utm');
++
++  return null;
++};
++
++const originFromFields = () => {
++  const values = [
++    valueForDetectionField('from'),
++    valueForDetectionField('utm_referrer'),
++  ];
++
++  for (const value of values) {
++    const origin = configuredOriginFor(value);
++    if (origin) return origin;
++  }
++
++  return null;
++};
++
++const detectionRuleMatches = rule => {
++  if (rule.active === false) return false;
++
++  const sourceValue = String(valueForDetectionField(rule.field) || '').trim();
++  if (rule.operator === 'exists') return hasDisplayValue(sourceValue);
++
++  const targetValue = String(rule.value || '').trim();
++  if (!targetValue) return false;
++
++  const normalizedSource = sourceValue.toLowerCase();
++  const normalizedTarget = targetValue.toLowerCase();
++  if (rule.operator === 'equals') return normalizedSource === normalizedTarget;
++  return normalizedSource.includes(normalizedTarget);
++};
++
++const detectionResultFromRule = rule => {
++  const source = rule.result_traffic_source_key
++    ? configuredTrafficSources.value.find(item => item.key === rule.result_traffic_source_key)
++    : null;
++  const origin = rule.result_lead_origin_key
++    ? configuredLeadOrigins.value.find(item => item.key === rule.result_lead_origin_key)
++    : null;
++
++  return resultFromItems(
++    source || (rule.result_traffic_source_key ? {
++      key: rule.result_traffic_source_key,
++      label: rule.result_traffic_source_label || 'Unknown',
++    } : null),
++    origin || (rule.result_lead_origin_key ? {
++      key: rule.result_lead_origin_key,
++      label: rule.result_lead_origin_label || 'Unknown',
++    } : null),
++    rule.field === 'first_message' ? 'first_message_rule' : 'utm'
++  );
++};
++
++const customRuleDetection = () => {
++  const rules = configuredDetectionRules.value.filter(rule => rule.active !== false);
++  const utmRule = rules.find(rule => UTM_DETECTION_FIELDS.has(rule.field) && detectionRuleMatches(rule));
++  if (utmRule) return detectionResultFromRule(utmRule);
++
++  const firstMessageRule = rules.find(rule => rule.field === 'first_message' && detectionRuleMatches(rule));
++  return firstMessageRule ? detectionResultFromRule(firstMessageRule) : null;
++};
++
++const unknownDetectionResult = () => ({
++  traffic_source_key: '',
++  traffic_source_label: 'Unknown',
++  lead_origin_key: '',
++  lead_origin_label: 'Unknown',
++  source_detection_method: 'unknown',
++  source_confidence: 'unknown',
++  needs_source_clarification: true,
++});
++
++const detectedAttribution = () => {
++  return builtInClickOrUtmDetection() || customRuleDetection() || unknownDetectionResult();
++};
++
++const attributionPatchChanged = nextAttributes => {
++  const currentAttributes = dealForm.value.custom_attributes || {};
++  return [
++    'traffic_source_key',
++    'traffic_source_label',
++    'lead_origin_key',
++    'lead_origin_label',
++    'source_detection_method',
++    'source_confidence',
++    'needs_source_clarification',
++  ].some(key => currentAttributes[key] !== nextAttributes[key]);
++};
++
++const applyAutoAttribution = async () => {
++  if (!deal.value?.id) return;
++  if (dealForm.value.custom_attributes?.source_detection_method === 'manual') return;
++
++  const result = detectedAttribution();
++  const nextAttributes = {
++    ...(dealForm.value.custom_attributes || {}),
++    ...result,
++  };
++
++  if (!attributionPatchChanged(nextAttributes)) return;
++
++  const response = await CrmPipelineAPI.updateDeal(deal.value.id, {
++    deal: { custom_attributes: nextAttributes },
++  });
++
++  deal.value = response.data;
++  dealForm.value = buildDealForm(deal.value);
++};
++
+ const loadWorkspace = async () => {
+   if (!route.params.dealId) return;
+ 
+@@ -809,6 +1100,7 @@ const loadWorkspace = async () => {
+     applyFieldConfig(fieldResponse.data);
+     syncRequiredDraft();
+     await loadConversation();
++    await applyAutoAttribution();
+   } catch (error) {
+     setError(error);
+   } finally {
+@@ -1549,6 +1841,38 @@ onUnmounted(() => {
+               </span>
+             </div>
+ 
++            <div class="mt-3 rounded-lg border border-n-weak bg-n-alpha-1 p-3">
++              <div class="flex items-center justify-between gap-3">
++                <h4 class="m-0 text-xs font-semibold uppercase text-n-slate-10">
++                  Detection
++                </h4>
++                <span
++                  v-if="needsSourceClarification"
++                  class="rounded-md bg-n-amber-3 px-2 py-1 text-xs font-medium text-n-amber-11"
++                >
++                  Needs clarification
++                </span>
++              </div>
++              <div class="mt-2 divide-y divide-n-weak text-sm">
++                <div
++                  v-for="row in detectionInfoRows"
++                  :key="row.label"
++                  class="flex min-h-[2rem] items-center justify-between gap-3 py-1.5"
++                >
++                  <span class="text-n-slate-11">{{ row.label }}</span>
++                  <span class="min-w-0 max-w-[12rem] truncate text-right text-n-slate-12">
++                    {{ displayScalar(row.value) }}
++                  </span>
++                </div>
++              </div>
++              <div
++                v-if="needsSourceClarification"
++                class="mt-2 rounded-md bg-n-amber-2 px-3 py-2 text-xs text-n-amber-11"
++              >
++                Manager should clarify traffic source and lead origin manually.
++              </div>
++            </div>
++
+             <div class="mt-3 grid gap-3">
+               <label class="grid gap-1 text-sm font-medium text-n-slate-11">
+                 Traffic Source

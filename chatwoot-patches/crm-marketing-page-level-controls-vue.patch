@@ -1,0 +1,401 @@
+diff --git a/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue b/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue
+index 041cff7..6f171e2 100644
+--- a/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue
++++ b/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue
+@@ -167,9 +167,8 @@ const isManualSpendDrawerOpen = ref(false);
+ const isSavingManualSpend = ref(false);
+ const manualSpendError = ref('');
+ const editingManualSpendEntry = ref(null);
+-const selectedTrendSeriesKey = ref('all');
++const selectedSourceKey = ref('all');
+ const activeTrendIndex = ref(null);
+-const selectedMonthlySourceKey = ref('all');
+ const activeMonthlyIndex = ref(null);
+ 
+ const defaultManualSpendForm = () => ({
+@@ -983,7 +982,7 @@ const monthKeyFromValue = value => {
+   return dateKey ? dateKey.slice(0, 7) : '';
+ };
+ 
+-const monthlySourceMatches = (sourceKey, selectedKey = selectedMonthlySourceKey.value) => {
++const sourceMatches = (sourceKey, selectedKey = selectedSourceKey.value) => {
+   return selectedKey === 'all' || sourceKey === selectedKey;
+ };
+ 
+@@ -1004,7 +1003,7 @@ const monthlyChartRows = computed(() => {
+ 
+   monthlySpendRows.value.forEach(row => {
+     const sourceKey = classifySpendSource(row);
+-    if (!monthlySourceMatches(sourceKey)) return;
++    if (!sourceMatches(sourceKey)) return;
+ 
+     const monthlyRow = ensureMonth(row.month);
+     if (monthlyRow) monthlyRow.spend += amountValue(row.spend_aed);
+@@ -1014,7 +1013,7 @@ const monthlyChartRows = computed(() => {
+     if (!SUCCESSFUL_STAGE_TYPES.includes(dealStageType(deal))) return;
+ 
+     const sourceKey = classifyTrafficSource(deal);
+-    if (!monthlySourceMatches(sourceKey)) return;
++    if (!sourceMatches(sourceKey)) return;
+ 
+     const monthlyRow = ensureMonth(monthKeyFromValue(deal.created_at));
+     if (monthlyRow) monthlyRow.revenue += amountValue(deal.amount);
+@@ -1043,7 +1042,7 @@ const totalMonthlyRevenue = computed(() => {
+ 
+ const selectedMonthlySource = computed(() => {
+   return (
+-    marketingSourceSeries.value.find(series => series.key === selectedMonthlySourceKey.value) ||
++    marketingSourceSeries.value.find(series => series.key === selectedSourceKey.value) ||
+     marketingSourceSeries.value[0]
+   );
+ });
+@@ -1132,11 +1131,12 @@ const monthlyTooltipStyle = computed(() => {
+   };
+ });
+ 
+-const isMonthlySourceSelected = key => selectedMonthlySourceKey.value === key;
++const isSourceSelected = key => selectedSourceKey.value === key;
+ 
+-const selectMonthlySource = key => {
+-  selectedMonthlySourceKey.value = key;
++const selectSource = key => {
++  selectedSourceKey.value = key;
+   activeMonthlyIndex.value = null;
++  activeTrendIndex.value = null;
+ };
+ 
+ const draftHiddenMetrics = computed(() => {
+@@ -1701,7 +1701,7 @@ const leadTrendSeries = computed(() => {
+ 
+ const selectedTrendSeries = computed(() => {
+   return (
+-    leadTrendSeries.value.find(series => series.key === selectedTrendSeriesKey.value) ||
++    leadTrendSeries.value.find(series => series.key === selectedSourceKey.value) ||
+     leadTrendSeries.value[0]
+   );
+ });
+@@ -1712,8 +1712,8 @@ const selectedTrendAreaPath = computed(() => selectedTrendSeries.value?.areaPath
+ 
+ const leadTrendLayeredSeries = computed(() => {
+   return [...leadTrendSeries.value].sort((first, second) => {
+-    const firstSelected = first.key === selectedTrendSeriesKey.value;
+-    const secondSelected = second.key === selectedTrendSeriesKey.value;
++    const firstSelected = first.key === selectedSourceKey.value;
++    const secondSelected = second.key === selectedSourceKey.value;
+     if (firstSelected === secondSelected) return 0;
+     return firstSelected ? 1 : -1;
+   });
+@@ -1759,8 +1759,8 @@ const activeTrendSeriesPoints = computed(() => {
+     }))
+     .filter(series => series.point)
+     .sort((first, second) => {
+-      const firstSelected = first.key === selectedTrendSeriesKey.value;
+-      const secondSelected = second.key === selectedTrendSeriesKey.value;
++      const firstSelected = first.key === selectedSourceKey.value;
++      const secondSelected = second.key === selectedSourceKey.value;
+       if (firstSelected === secondSelected) return 0;
+       return firstSelected ? -1 : 1;
+     });
+@@ -1780,7 +1780,7 @@ const trendTooltipStyle = computed(() => {
+   };
+ });
+ 
+-const isTrendSeriesSelected = key => selectedTrendSeriesKey.value === key;
++const isTrendSeriesSelected = key => selectedSourceKey.value === key;
+ 
+ const trendSeriesStroke = series => {
+   return isTrendSeriesSelected(series.key) ? series.color : series.mutedColor;
+@@ -1788,7 +1788,7 @@ const trendSeriesStroke = series => {
+ 
+ const trendSeriesOpacity = series => {
+   if (isTrendSeriesSelected(series.key)) return 0.96;
+-  if (series.key === 'all') return selectedTrendSeriesKey.value === 'all' ? 0.96 : 0.46;
++  if (series.key === 'all') return selectedSourceKey.value === 'all' ? 0.96 : 0.46;
+   return 0.32;
+ };
+ 
+@@ -1798,10 +1798,6 @@ const trendSeriesWidth = series => {
+   return 1.75;
+ };
+ 
+-const toggleTrendSeries = key => {
+-  selectedTrendSeriesKey.value = key;
+-};
+-
+ const requestParams = page => {
+   const params = {
+     include_meta: true,
+@@ -1963,9 +1959,10 @@ onMounted(() => {
+ 
+ <template>
+   <section class="flex h-full min-h-0 flex-col bg-n-background">
+-    <header class="border-b border-n-weak px-8 py-6">
+-      <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+-        <div>
++    <header class="border-b border-n-weak px-8 py-5">
++      <div class="grid gap-4">
++        <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
++          <div>
+           <div class="flex items-center gap-3">
+             <h1 class="text-2xl font-semibold tracking-normal text-n-slate-12">
+               Marketing Analytics
+@@ -1984,10 +1981,9 @@ onMounted(() => {
+           <p class="mt-1 text-sm text-n-slate-10">
+             Pipeline funnel
+           </p>
+-        </div>
++          </div>
+ 
+-        <div class="flex flex-col items-end gap-2">
+-          <div class="flex flex-wrap items-center justify-end gap-2">
++          <div class="flex flex-wrap items-center gap-2 lg:justify-end">
+             <Button
+               v-if="isAdmin"
+               icon="i-lucide-plus"
+@@ -2004,7 +2000,11 @@ onMounted(() => {
+               faded
+               @click="openAttributionSettings"
+             />
+-            <div class="inline-flex h-9 rounded-md border border-n-weak bg-n-surface-2 p-0.5">
++          </div>
++        </div>
++
++        <div class="flex flex-col gap-2 xl:flex-row xl:items-center xl:justify-between">
++          <div class="inline-flex h-9 w-fit rounded-md border border-n-weak bg-n-surface-2 p-0.5">
+             <button
+               v-for="option in rangeOptions"
+               :key="option.value || 'all'"
+@@ -2019,11 +2019,11 @@ onMounted(() => {
+             >
+               {{ option.label }}
+             </button>
+-            </div>
+           </div>
+-          <div class="flex items-center justify-end gap-2">
+-            <label class="grid shrink-0 text-[11px] font-medium text-n-slate-10">
+-              <span class="sr-only">Date from</span>
++
++          <div class="flex flex-wrap items-center gap-2 xl:justify-end">
++            <label class="flex shrink-0 items-center gap-1.5 text-[11px] font-medium text-n-slate-10">
++              <span>Date from</span>
+               <span class="relative block">
+                 <input
+                   :value="formatDateInputValue(customDateFrom)"
+@@ -2044,8 +2044,8 @@ onMounted(() => {
+                 <i class="i-lucide-calendar pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-n-slate-10" />
+               </span>
+             </label>
+-            <label class="grid shrink-0 text-[11px] font-medium text-n-slate-10">
+-              <span class="sr-only">Date to</span>
++            <label class="flex shrink-0 items-center gap-1.5 text-[11px] font-medium text-n-slate-10">
++              <span>Date to</span>
+               <span class="relative block">
+                 <input
+                   :value="formatDateInputValue(customDateTo)"
+@@ -2077,6 +2077,34 @@ onMounted(() => {
+             />
+           </div>
+         </div>
++
++        <div class="flex min-w-0 items-center gap-2">
++          <span class="shrink-0 text-xs font-medium text-n-slate-10">
++            Source
++          </span>
++          <div
++            class="flex min-w-0 flex-1 gap-2 overflow-x-auto pb-1"
++            aria-label="Source filters"
++          >
++            <button
++              v-for="series in marketingSourceSeries"
++              :key="series.key"
++              type="button"
++              class="inline-flex h-8 shrink-0 items-center gap-2 rounded-md border px-3 text-xs font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B7EDEA] focus-visible:ring-offset-1"
++              :class="isSourceSelected(series.key)
++                ? 'border-[#0EA5A0] bg-[#E0F5F4] text-[#0F1923] shadow-sm'
++                : 'border-n-weak bg-n-background text-n-slate-10 hover:border-[#C7EFED] hover:bg-[#F2FBFA] hover:text-n-slate-12'"
++              :aria-pressed="isSourceSelected(series.key)"
++              @click="selectSource(series.key)"
++            >
++              <span
++                class="h-2 w-2 rounded-full"
++                :style="{ backgroundColor: isSourceSelected(series.key) ? series.color : series.mutedColor }"
++              />
++              {{ series.label }}
++            </button>
++          </div>
++        </div>
+       </div>
+     </header>
+ 
+@@ -2117,10 +2145,10 @@ onMounted(() => {
+           </button>
+         </div>
+ 
+-        <section class="grid gap-4 rounded-lg border border-n-weak bg-n-solid-1 p-5 shadow-[0_12px_32px_rgba(15,25,35,0.05)]">
+-          <div class="grid gap-4 xl:grid-cols-[1fr_auto] xl:items-start">
+-            <div>
+-              <div class="flex flex-wrap items-center gap-2">
++        <section class="grid gap-3 rounded-lg border border-n-weak bg-n-solid-1 p-4 shadow-[0_12px_32px_rgba(15,25,35,0.05)]">
++          <div class="flex flex-wrap items-start justify-between gap-3">
++            <div class="min-w-0">
++              <div class="flex min-w-0 flex-wrap items-center gap-2">
+                 <h2 class="text-sm font-semibold text-n-slate-12">
+                   Spend & Revenue by Month
+                 </h2>
+@@ -2131,58 +2159,18 @@ onMounted(() => {
+               <div class="mt-1 text-xs text-n-slate-10">
+                 Monthly AED spend and successful deal revenue
+               </div>
+-              <div class="mt-3 grid gap-2 sm:grid-cols-2">
+-                <div class="rounded-lg border border-[#D8EEEC] bg-[#F8FBFA] px-3 py-2">
+-                  <div class="text-[10px] font-semibold uppercase text-[#0C8A86]">
+-                    Spend
+-                  </div>
+-                  <div class="mt-1 text-sm font-semibold text-n-slate-12">
+-                    {{ formatAmount(totalMonthlySpend) }}
+-                  </div>
+-                </div>
+-                <div class="rounded-lg border border-n-weak bg-n-background px-3 py-2">
+-                  <div class="text-[10px] font-semibold uppercase text-n-slate-10">
+-                    Revenue
+-                  </div>
+-                  <div class="mt-1 text-sm font-semibold text-n-slate-12">
+-                    {{ formatAmount(totalMonthlyRevenue) }}
+-                  </div>
+-                </div>
+-              </div>
+             </div>
+ 
+-            <div class="flex flex-wrap gap-2 xl:justify-end">
+-              <button
+-                v-for="series in marketingSourceSeries"
+-                :key="series.key"
+-                type="button"
+-                class="inline-flex h-8 items-center gap-2 rounded-full border px-3 text-xs font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B7EDEA] focus-visible:ring-offset-1"
+-                :class="isMonthlySourceSelected(series.key)
+-                  ? 'border-[#0EA5A0] bg-[#E0F5F4] text-[#0F1923] shadow-sm'
+-                  : 'border-n-weak bg-n-alpha-1 text-n-slate-10 hover:border-[#C7EFED] hover:bg-[#F2FBFA] hover:text-n-slate-12'"
+-                :aria-pressed="isMonthlySourceSelected(series.key)"
+-                @click="selectMonthlySource(series.key)"
+-              >
+-                <span
+-                  class="h-2 w-2 rounded-full"
+-                  :style="{ backgroundColor: isMonthlySourceSelected(series.key) ? series.color : series.mutedColor }"
+-                />
+-                {{ series.label }}
+-              </button>
+-            </div>
+-          </div>
+-
+-          <div
+-            v-if="monthlyBarMetrics.length"
+-            class="relative min-h-[280px] overflow-hidden rounded-xl border border-[#D8EEEC] bg-gradient-to-b from-white to-[#F8FBFA] p-4 shadow-inner"
+-          >
+-            <div class="mb-2 flex flex-wrap items-center gap-4 text-[11px] font-medium text-n-slate-10">
++            <div class="flex flex-wrap items-center gap-3 text-xs text-n-slate-10">
+               <span class="inline-flex items-center gap-2">
+                 <span
+                   class="h-2 w-2 rounded-sm"
+                   :style="{ backgroundColor: MONTHLY_SPEND_COLOR }"
+                 />
+                 Spend
++                <strong class="font-semibold text-n-slate-12">
++                  {{ formatAmount(totalMonthlySpend) }}
++                </strong>
+               </span>
+               <span class="inline-flex items-center gap-2">
+                 <span
+@@ -2190,12 +2178,20 @@ onMounted(() => {
+                   :style="{ backgroundColor: MONTHLY_REVENUE_COLOR }"
+                 />
+                 Revenue
++                <strong class="font-semibold text-n-slate-12">
++                  {{ formatAmount(totalMonthlyRevenue) }}
++                </strong>
+               </span>
+             </div>
++          </div>
+ 
++          <div
++            v-if="monthlyBarMetrics.length"
++            class="relative min-h-[280px] overflow-hidden rounded-xl border border-[#D8EEEC] bg-gradient-to-b from-white to-[#F8FBFA] p-4 shadow-inner"
++          >
+             <div
+               v-if="activeMonthlyRow"
+-              class="pointer-events-none absolute top-12 z-10 hidden min-w-[210px] rounded-lg border border-[#D8EEEC] bg-white/95 px-3 py-2 text-xs shadow-[0_16px_36px_rgba(15,25,35,0.14)] backdrop-blur sm:block"
++              class="pointer-events-none absolute top-4 z-10 hidden min-w-[210px] rounded-lg border border-[#D8EEEC] bg-white/95 px-3 py-2 text-xs shadow-[0_16px_36px_rgba(15,25,35,0.14)] backdrop-blur sm:block"
+               :style="monthlyTooltipStyle"
+             >
+               <div class="mb-2 flex items-center justify-between gap-4">
+@@ -2451,10 +2447,10 @@ onMounted(() => {
+           </div>
+         </section>
+ 
+-        <section class="grid gap-4 rounded-lg border border-n-weak bg-n-solid-1 p-5 shadow-[0_12px_32px_rgba(15,25,35,0.05)]">
+-          <div class="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
++        <section class="grid gap-3 rounded-lg border border-n-weak bg-n-solid-1 p-4 shadow-[0_12px_32px_rgba(15,25,35,0.05)]">
++          <div class="flex flex-wrap items-start justify-between gap-3">
+             <div class="min-w-0">
+-              <div class="flex flex-wrap items-center gap-3">
++              <div class="flex min-w-0 flex-wrap items-center gap-2">
+                 <h2 class="text-sm font-semibold text-n-slate-12">
+                   Lead Trend
+                 </h2>
+@@ -2465,44 +2461,21 @@ onMounted(() => {
+               <div class="mt-1 text-xs text-n-slate-10">
+                 New leads by source over time
+               </div>
+-              <div class="mt-3 flex flex-wrap gap-2">
+-                <div class="rounded-md border border-[#C7EFED] bg-[#F2FBFA] px-3 py-2">
+-                  <div class="text-[10px] font-semibold uppercase text-[#0C8A86]">
+-                    Total
+-                  </div>
+-                  <div class="text-sm font-semibold text-n-slate-12">
+-                    {{ formatNumber(totalLeadTrendCount) }}
+-                  </div>
+-                </div>
+-                <div class="rounded-md border border-n-weak bg-n-alpha-1 px-3 py-2">
+-                  <div class="text-[10px] font-semibold uppercase text-n-slate-10">
+-                    Peak day
+-                  </div>
+-                  <div class="text-sm font-semibold text-n-slate-12">
+-                    {{ formatNumber(peakLeadTrendCount) }}
+-                  </div>
+-                </div>
+-              </div>
+             </div>
+ 
+-            <div class="flex flex-wrap gap-2 xl:justify-end">
+-              <button
+-                v-for="series in marketingSourceSeries"
+-                :key="series.key"
+-                type="button"
+-                class="inline-flex h-8 items-center gap-2 rounded-full border px-3 text-xs font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B7EDEA] focus-visible:ring-offset-1"
+-                :class="isTrendSeriesSelected(series.key)
+-                  ? 'border-[#0EA5A0] bg-[#E0F5F4] text-[#0F1923] shadow-sm'
+-                  : 'border-n-weak bg-n-alpha-1 text-n-slate-10 hover:border-[#C7EFED] hover:bg-[#F2FBFA] hover:text-n-slate-12'"
+-                :aria-pressed="isTrendSeriesSelected(series.key)"
+-                @click="toggleTrendSeries(series.key)"
+-              >
+-                <span
+-                  class="h-2 w-2 rounded-full"
+-                  :style="{ backgroundColor: isTrendSeriesSelected(series.key) ? series.color : series.mutedColor }"
+-                />
+-                {{ series.label }}
+-              </button>
++            <div class="flex flex-wrap items-center gap-3 text-xs text-n-slate-10">
++              <span>
++                Total
++                <strong class="ml-1 font-semibold text-n-slate-12">
++                  {{ formatNumber(totalLeadTrendCount) }}
++                </strong>
++              </span>
++              <span>
++                Peak day
++                <strong class="ml-1 font-semibold text-n-slate-12">
++                  {{ formatNumber(peakLeadTrendCount) }}
++                </strong>
++              </span>
+             </div>
+           </div>
+ 

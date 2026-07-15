@@ -1,0 +1,45 @@
+diff --git a/app/controllers/api/v1/accounts/crm/marketing_dashboard_controller.rb b/app/controllers/api/v1/accounts/crm/marketing_dashboard_controller.rb
+index 1abf793..5de6860 100644
+--- a/app/controllers/api/v1/accounts/crm/marketing_dashboard_controller.rb
++++ b/app/controllers/api/v1/accounts/crm/marketing_dashboard_controller.rb
+@@ -141,7 +141,15 @@ class Api::V1::Accounts::Crm::MarketingDashboardController < Api::V1::Accounts::
+   def dashboard_config_params
+     params.require(:crm_marketing_dashboard).permit(
+       widgets: [:key, :visible, :position],
+-      traffic_sources: [:key, :label, :color, :is_active, :sort_order],
++      traffic_sources: [
++        :key,
++        :label,
++        :color,
++        :is_active,
++        :sort_order,
++        :lead_origin_key,
++        :lead_origin_label
++      ],
+       lead_origins: [:key, :label, :color, :is_active, :sort_order],
+       detection_rules: [
+         :id,
+@@ -249,13 +257,22 @@ class Api::V1::Accounts::Crm::MarketingDashboardController < Api::V1::Accounts::
+ 
+       fallback = fallback_by_key[key] || {}
+       sort_order = value_for(item, :sort_order).to_i
+-      {
++      normalized_item = {
+         key: key,
+         label: label,
+         color: normalized_color(value_for(item, :color), fallback[:color]),
+         is_active: value_for(item, :is_active).nil? ? true : boolean_value(value_for(item, :is_active)),
+         sort_order: sort_order.positive? ? sort_order : index + 1
+       }
++
++      lead_origin_key = attribution_key(value_for(item, :lead_origin_key))
++      lead_origin_label = value_for(item, :lead_origin_label).to_s.strip
++      if lead_origin_key.present? || lead_origin_label.present?
++        normalized_item[:lead_origin_key] = lead_origin_key
++        normalized_item[:lead_origin_label] = lead_origin_label
++      end
++
++      normalized_item
+     end
+ 
+     return default_attribution_items(defaults) if items.blank?
