@@ -1,0 +1,39 @@
+diff --git a/app/controllers/api/v1/accounts/crm/marketing_dashboard_controller.rb b/app/controllers/api/v1/accounts/crm/marketing_dashboard_controller.rb
+index f93aa72..842188f 100644
+--- a/app/controllers/api/v1/accounts/crm/marketing_dashboard_controller.rb
++++ b/app/controllers/api/v1/accounts/crm/marketing_dashboard_controller.rb
+@@ -1,15 +1,17 @@
+ class Api::V1::Accounts::Crm::MarketingDashboardController < Api::V1::Accounts::BaseController
+   CONFIG_KEY = 'crm_marketing_dashboard'.freeze
+   DEFAULT_WIDGETS = [
+-    { key: 'spend', visible: true },
+-    { key: 'new_leads', visible: true },
++    { key: 'leads', visible: true },
++    { key: 'qualified_leads', visible: true },
+     { key: 'successful_deals', visible: true },
+-    { key: 'successful_deals_amount', visible: true },
+-    { key: 'lost', visible: true },
+-    { key: 'spam_percent', visible: true },
+-    { key: 'reserved_amount', visible: false },
+-    { key: 'rental_amount', visible: false },
+-    { key: 'done_amount', visible: false }
++    { key: 'successful_deal_amount', visible: true },
++    { key: 'spend', visible: true },
++    { key: 'cpl', visible: true },
++    { key: 'cplq', visible: true },
++    { key: 'lead_to_qualified', visible: true },
++    { key: 'qualified_to_successful', visible: true },
++    { key: 'pipeline_roas', visible: true },
++    { key: 'completed_roas', visible: true }
+   ].freeze
+   ALLOWED_WIDGET_KEYS = DEFAULT_WIDGETS.map { |widget| widget[:key] }.freeze
+   DEFAULT_TRAFFIC_SOURCES = [
+@@ -200,7 +202,7 @@ class Api::V1::Accounts::Crm::MarketingDashboardController < Api::V1::Accounts::
+         position: value_for(widget, :position).to_i
+       }
+     end
+-    return default_widgets if widgets_by_key.blank?
++    return default_widgets if (ALLOWED_WIDGET_KEYS - widgets_by_key.keys).any?
+ 
+     widgets = DEFAULT_WIDGETS.map.with_index do |widget, index|
+       key = widget[:key]

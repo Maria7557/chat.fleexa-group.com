@@ -1,0 +1,399 @@
+diff --git a/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue b/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue
+index 0ca993f..8e95d09 100644
+--- a/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue
++++ b/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue
+@@ -18,7 +18,11 @@ import {
+ 
+ const PAGE_SIZE = 200;
+ const SUCCESSFUL_STAGE_TYPES = ['reserved', 'rental', 'closed_won'];
++const COMPLETED_STAGE_TYPES = ['closed_won'];
+ const LOST_STAGE_TYPES = ['closed_lost'];
++const QUALIFIED_STATUS = 'qualified';
++const UNQUALIFIED_LOST_REASON_CATEGORIES = ['invalid', 'eligibility'];
++const EMPTY_METRIC_VALUE = '--';
+ const AED_FORMATTER = new Intl.NumberFormat('en-AE', {
+   style: 'currency',
+   currency: 'AED',
+@@ -30,15 +34,17 @@ const COMPACT_AED_FORMATTER = new Intl.NumberFormat('en-AE', {
+ });
+ 
+ const KPI_WIDGETS = [
+-  { key: 'spend', label: 'Spend', visible: true },
+-  { key: 'new_leads', label: 'Leads', visible: true },
++  { key: 'leads', label: 'Leads', visible: true },
++  { key: 'qualified_leads', label: 'Qualified Leads', visible: true },
+   { key: 'successful_deals', label: 'Successful Deals', visible: true },
+-  { key: 'successful_deals_amount', label: 'Successful Deals Amount', visible: true },
+-  { key: 'lost', label: 'Lost', visible: true },
+-  { key: 'spam_percent', label: 'Spam %', visible: true },
+-  { key: 'reserved_amount', label: 'Reserved Amount', visible: false },
+-  { key: 'rental_amount', label: 'Rental Amount', visible: false },
+-  { key: 'done_amount', label: 'Done Amount', visible: false },
++  { key: 'successful_deal_amount', label: 'Successful Deal Amount', visible: true },
++  { key: 'spend', label: 'Spend', visible: true },
++  { key: 'cpl', label: 'CPL', visible: true },
++  { key: 'cplq', label: 'CPLQ', visible: true },
++  { key: 'lead_to_qualified', label: 'Lead → Qualified', visible: true },
++  { key: 'qualified_to_successful', label: 'Qualified → Successful', visible: true },
++  { key: 'pipeline_roas', label: 'Pipeline ROAS', visible: true },
++  { key: 'completed_roas', label: 'Completed ROAS', visible: true },
+ ];
+ const KPI_WIDGET_KEYS = KPI_WIDGETS.map(widget => widget.key);
+ const DEFAULT_VISIBLE_WIDGET_KEYS = KPI_WIDGETS.filter(widget => widget.visible).map(widget => widget.key);
+@@ -201,6 +207,25 @@ const formatCompactAmount = value => `AED ${COMPACT_AED_FORMATTER.format(amountV
+ 
+ const formatNumber = value => new Intl.NumberFormat('en-US').format(value || 0);
+ 
++const hasPositiveDenominator = value => amountValue(value) > 0;
++
++const formatCostPer = (spend, count) => {
++  if (!hasPositiveDenominator(count)) return EMPTY_METRIC_VALUE;
++  return formatAmount(amountValue(spend) / amountValue(count));
++};
++
++const formatConversionRate = (numerator, denominator) => {
++  if (!hasPositiveDenominator(denominator)) return EMPTY_METRIC_VALUE;
++  return formatPercent((amountValue(numerator) / amountValue(denominator)) * 100);
++};
++
++const formatRoas = (value, spend) => {
++  if (!hasPositiveDenominator(spend)) return EMPTY_METRIC_VALUE;
++
++  const ratio = amountValue(value) / amountValue(spend);
++  return `${ratio.toFixed(ratio >= 10 ? 1 : 2)}x`;
++};
++
+ const formatDate = value => {
+   if (!value) return '--';
+ 
+@@ -649,8 +674,9 @@ const sanitizeDashboardConfig = config => {
+     if (KPI_WIDGET_KEYS.includes(key)) memo[key] = widget;
+     return memo;
+   }, {});
++  const hasCompleteWidgetSet = KPI_WIDGET_KEYS.every(key => widgetsByKey[key]);
+ 
+-  const widgets = Object.keys(widgetsByKey).length
++  const widgets = hasCompleteWidgetSet
+     ? KPI_WIDGETS.map((widget, index) => {
+       const storedWidget = widgetsByKey[widget.key] || {};
+       const position = Number.parseInt(storedWidget.position, 10);
+@@ -678,59 +704,71 @@ const sanitizeDashboardConfig = config => {
+ };
+ 
+ const metricRegistry = computed(() => ({
+-  spend: {
+-    key: 'spend',
+-    label: 'Spend',
+-    value: formatAmount(spendAmount.value),
+-    detail: 'Ad spend in selected period',
+-  },
+-  new_leads: {
+-    key: 'new_leads',
++  leads: {
++    key: 'leads',
+     label: 'Leads',
+-    value: formatNumber(totalDeals.value),
++    value: formatNumber(selectedEconomics.value.leads),
+     detail: 'CRM deals created in selected period',
+   },
++  qualified_leads: {
++    key: 'qualified_leads',
++    label: 'Qualified Leads',
++    value: formatNumber(selectedEconomics.value.qualifiedLeads),
++    detail: 'qualification_status = qualified',
++  },
+   successful_deals: {
+     key: 'successful_deals',
+     label: 'Successful Deals',
+-    value: formatNumber(countForStageTypes(SUCCESSFUL_STAGE_TYPES)),
+-    detail: 'Reserved + Rental + Done',
++    value: formatNumber(selectedEconomics.value.successfulDeals),
++    detail: 'Reserved + Rental + Won',
+   },
+-  successful_deals_amount: {
+-    key: 'successful_deals_amount',
+-    label: 'Successful Deals Amount',
+-    value: formatAmount(revenueForStageTypes(SUCCESSFUL_STAGE_TYPES)),
+-    detail: 'Reserved + Rental + Done value',
++  successful_deal_amount: {
++    key: 'successful_deal_amount',
++    label: 'Successful Deal Amount',
++    value: formatAmount(selectedEconomics.value.successfulDealAmount),
++    detail: 'Pipeline value for successful deals',
+   },
+-  lost: {
+-    key: 'lost',
+-    label: 'Lost',
+-    value: formatNumber(countForStageTypes(LOST_STAGE_TYPES)),
+-    detail: 'Closed lost / cancelled',
++  spend: {
++    key: 'spend',
++    label: 'Spend',
++    value: formatAmount(selectedEconomics.value.spend),
++    detail: 'marketing_spend_daily in selected period',
+   },
+-  spam_percent: {
+-    key: 'spam_percent',
+-    label: 'Spam %',
+-    value: formatPercent(spamRate.value),
+-    detail: `${formatNumber(spamDealsCount.value)} spam conversations`,
++  cpl: {
++    key: 'cpl',
++    label: 'CPL',
++    value: formatCostPer(selectedEconomics.value.spend, selectedEconomics.value.leads),
++    detail: 'Spend / Leads',
+   },
+-  reserved_amount: {
+-    key: 'reserved_amount',
+-    label: 'Reserved Amount',
+-    value: formatAmount(revenueForStageTypes(['reserved'])),
+-    detail: 'Reserved stage value',
++  cplq: {
++    key: 'cplq',
++    label: 'CPLQ',
++    value: formatCostPer(selectedEconomics.value.spend, selectedEconomics.value.qualifiedLeads),
++    detail: 'Spend / Qualified Leads',
+   },
+-  rental_amount: {
+-    key: 'rental_amount',
+-    label: 'Rental Amount',
+-    value: formatAmount(revenueForStageTypes(['rental'])),
+-    detail: 'Rental stage value',
++  lead_to_qualified: {
++    key: 'lead_to_qualified',
++    label: 'Lead → Qualified',
++    value: formatConversionRate(selectedEconomics.value.qualifiedLeads, selectedEconomics.value.leads),
++    detail: 'Qualified Leads / Leads',
+   },
+-  done_amount: {
+-    key: 'done_amount',
+-    label: 'Done Amount',
+-    value: formatAmount(revenueForStageTypes(['closed_won'])),
+-    detail: 'Done stage value',
++  qualified_to_successful: {
++    key: 'qualified_to_successful',
++    label: 'Qualified → Successful',
++    value: formatConversionRate(selectedEconomics.value.successfulDeals, selectedEconomics.value.qualifiedLeads),
++    detail: 'Successful Deals / Qualified Leads',
++  },
++  pipeline_roas: {
++    key: 'pipeline_roas',
++    label: 'Pipeline ROAS',
++    value: formatRoas(selectedEconomics.value.pipelineValue, selectedEconomics.value.spend),
++    detail: 'Pipeline Value / Spend',
++  },
++  completed_roas: {
++    key: 'completed_roas',
++    label: 'Completed ROAS',
++    value: formatRoas(selectedEconomics.value.completedValue, selectedEconomics.value.spend),
++    detail: 'Completed Deal Value / Spend',
+   },
+ }));
+ 
+@@ -847,6 +885,111 @@ const sourceMatches = (sourceKey, selectedKey = selectedSourceKey.value) => {
+   return selectedKey === 'all' || sourceKey === selectedKey;
+ };
+ 
++const dealCustomAttributeValue = (deal, key) => normalizedAttributes(deal?.custom_attributes)[key];
++
++const dealIsQualified = deal => {
++  return normalizeText(dealCustomAttributeValue(deal, 'qualification_status')) === QUALIFIED_STATUS;
++};
++
++const dealIsSuccessful = deal => SUCCESSFUL_STAGE_TYPES.includes(dealStageType(deal));
++
++const dealIsCompleted = deal => COMPLETED_STAGE_TYPES.includes(dealStageType(deal));
++
++const dealIsLost = deal => LOST_STAGE_TYPES.includes(dealStageType(deal));
++
++const dealIsUnqualifiedLost = deal => {
++  if (!dealIsLost(deal)) return false;
++
++  const category = normalizeText(dealCustomAttributeValue(deal, 'lost_reason_category'));
++  return UNQUALIFIED_LOST_REASON_CATEGORIES.includes(category);
++};
++
++const amountForDeals = sourceDeals => {
++  return sourceDeals.reduce((sum, deal) => sum + amountValue(deal.amount), 0);
++};
++
++const spendAmountForSource = sourceKey => {
++  return monthlySpendRows.value
++    .filter(row => classifySpendSource(row) === sourceKey)
++    .reduce((sum, row) => sum + amountValue(row.spend_aed), 0);
++};
++
++const economicsSummaryForDeals = (sourceDeals, spend) => {
++  const successfulDeals = sourceDeals.filter(dealIsSuccessful);
++  const completedDeals = sourceDeals.filter(dealIsCompleted);
++  const qualifiedDeals = sourceDeals.filter(dealIsQualified);
++  const lostDeals = sourceDeals.filter(dealIsLost);
++  const unqualifiedLostDeals = sourceDeals.filter(dealIsUnqualifiedLost);
++  const pipelineValue = amountForDeals(successfulDeals);
++  const completedValue = amountForDeals(completedDeals);
++
++  return {
++    leads: sourceDeals.length,
++    qualifiedLeads: qualifiedDeals.length,
++    successfulDeals: successfulDeals.length,
++    successfulDealAmount: pipelineValue,
++    pipelineValue,
++    completedValue,
++    spend: amountValue(spend),
++    lost: lostDeals.length,
++    unqualifiedLost: unqualifiedLostDeals.length,
++  };
++};
++
++const selectedDeals = computed(() => {
++  return deals.value.filter(deal => sourceMatches(classifyTrafficSource(deal)));
++});
++
++const selectedSpendAmount = computed(() => {
++  if (selectedSourceKey.value === 'all') return amountValue(spendAmount.value);
++  return spendAmountForSource(selectedSourceKey.value);
++});
++
++const selectedEconomics = computed(() => {
++  return economicsSummaryForDeals(selectedDeals.value, selectedSpendAmount.value);
++});
++
++const sourceLabelForKey = key => {
++  return marketingSourceSeries.value.find(series => series.key === key)?.label ||
++    fallbackSourceLabelForKey(key);
++};
++
++const sourceEconomicsRows = computed(() => {
++  const sourceKeys = new Set();
++
++  deals.value.forEach(deal => {
++    sourceKeys.add(classifyTrafficSource(deal));
++  });
++  monthlySpendRows.value.forEach(row => {
++    sourceKeys.add(classifySpendSource(row));
++  });
++  marketingSourceSeries.value.forEach(series => {
++    if (series.key !== 'all') sourceKeys.add(series.key);
++  });
++
++  return [...sourceKeys]
++    .filter(key => key && key !== 'all' && sourceMatches(key))
++    .map(key => {
++      const sourceDeals = deals.value.filter(deal => classifyTrafficSource(deal) === key);
++      const summary = economicsSummaryForDeals(sourceDeals, spendAmountForSource(key));
++
++      return {
++        key,
++        source: sourceLabelForKey(key),
++        ...summary,
++      };
++    })
++    .filter(row => {
++      if (selectedSourceKey.value !== 'all') return true;
++      return row.leads || row.spend || row.successfulDeals || row.lost || row.unqualifiedLost;
++    })
++    .sort((first, second) => {
++      if (second.leads !== first.leads) return second.leads - first.leads;
++      if (second.spend !== first.spend) return second.spend - first.spend;
++      return first.source.localeCompare(second.source);
++    });
++});
++
+ const monthlyChartRows = computed(() => {
+   const rowsByMonth = {};
+   const ensureMonth = month => {
+@@ -2155,6 +2298,94 @@ onMounted(() => {
+           </button>
+         </div>
+ 
++        <section class="grid gap-3 rounded-lg border border-n-weak bg-n-solid-1 p-4 shadow-[0_12px_32px_rgba(15,25,35,0.05)]">
++          <div class="flex flex-wrap items-start justify-between gap-3">
++            <div>
++              <h2 class="text-sm font-semibold text-n-slate-12">
++                Source Economics
++              </h2>
++              <div class="mt-1 text-xs text-n-slate-10">
++                Created-deal cohort by selected source
++              </div>
++            </div>
++            <span class="rounded-full bg-[#E0F5F4] px-2 py-0.5 text-[10px] font-semibold text-[#0C8A86]">
++              {{ selectedTrendSeriesLabel }}
++            </span>
++          </div>
++
++          <div v-if="sourceEconomicsRows.length" class="overflow-x-auto">
++            <table class="min-w-full border-separate border-spacing-0 text-left text-sm">
++              <thead class="text-xs uppercase text-n-slate-10">
++                <tr>
++                  <th class="border-b border-n-weak py-2 pr-4 font-medium">Source</th>
++                  <th class="border-b border-n-weak py-2 pr-4 text-right font-medium">Leads</th>
++                  <th class="border-b border-n-weak py-2 pr-4 text-right font-medium">Qualified Leads</th>
++                  <th class="border-b border-n-weak py-2 pr-4 text-right font-medium">Successful Deals</th>
++                  <th class="border-b border-n-weak py-2 pr-4 text-right font-medium">Successful Deal Amount</th>
++                  <th class="border-b border-n-weak py-2 pr-4 text-right font-medium">Spend</th>
++                  <th class="border-b border-n-weak py-2 pr-4 text-right font-medium">CPL</th>
++                  <th class="border-b border-n-weak py-2 pr-4 text-right font-medium">CPLQ</th>
++                  <th class="border-b border-n-weak py-2 pr-4 text-right font-medium">Pipeline ROAS</th>
++                  <th class="border-b border-n-weak py-2 pr-4 text-right font-medium">Completed ROAS</th>
++                  <th class="border-b border-n-weak py-2 pr-4 text-right font-medium">Lost</th>
++                  <th class="border-b border-n-weak py-2 text-right font-medium">Unqualified Share</th>
++                </tr>
++              </thead>
++              <tbody>
++                <tr
++                  v-for="row in sourceEconomicsRows"
++                  :key="row.key"
++                  class="text-n-slate-12"
++                >
++                  <td class="whitespace-nowrap border-b border-n-weak py-3 pr-4 font-medium">
++                    {{ row.source }}
++                  </td>
++                  <td class="whitespace-nowrap border-b border-n-weak py-3 pr-4 text-right">
++                    {{ formatNumber(row.leads) }}
++                  </td>
++                  <td class="whitespace-nowrap border-b border-n-weak py-3 pr-4 text-right">
++                    {{ formatNumber(row.qualifiedLeads) }}
++                  </td>
++                  <td class="whitespace-nowrap border-b border-n-weak py-3 pr-4 text-right">
++                    {{ formatNumber(row.successfulDeals) }}
++                  </td>
++                  <td class="whitespace-nowrap border-b border-n-weak py-3 pr-4 text-right">
++                    {{ formatAmount(row.successfulDealAmount) }}
++                  </td>
++                  <td class="whitespace-nowrap border-b border-n-weak py-3 pr-4 text-right">
++                    {{ formatAmount(row.spend) }}
++                  </td>
++                  <td class="whitespace-nowrap border-b border-n-weak py-3 pr-4 text-right">
++                    {{ formatCostPer(row.spend, row.leads) }}
++                  </td>
++                  <td class="whitespace-nowrap border-b border-n-weak py-3 pr-4 text-right">
++                    {{ formatCostPer(row.spend, row.qualifiedLeads) }}
++                  </td>
++                  <td class="whitespace-nowrap border-b border-n-weak py-3 pr-4 text-right">
++                    {{ formatRoas(row.pipelineValue, row.spend) }}
++                  </td>
++                  <td class="whitespace-nowrap border-b border-n-weak py-3 pr-4 text-right">
++                    {{ formatRoas(row.completedValue, row.spend) }}
++                  </td>
++                  <td class="whitespace-nowrap border-b border-n-weak py-3 pr-4 text-right">
++                    {{ formatNumber(row.lost) }}
++                  </td>
++                  <td class="whitespace-nowrap border-b border-n-weak py-3 text-right">
++                    {{ formatConversionRate(row.unqualifiedLost, row.leads) }}
++                  </td>
++                </tr>
++              </tbody>
++            </table>
++          </div>
++
++          <div
++            v-else
++            class="grid min-h-[112px] place-items-center rounded-lg border border-dashed border-n-weak bg-n-background px-4 text-center text-sm text-n-slate-10"
++          >
++            No source economics in selected period
++          </div>
++        </section>
++
+         <section class="grid gap-3 rounded-lg border border-n-weak bg-n-solid-1 p-4 shadow-[0_12px_32px_rgba(15,25,35,0.05)]">
+           <div class="flex flex-wrap items-start justify-between gap-3">
+             <div class="min-w-0">
