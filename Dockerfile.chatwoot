@@ -30,6 +30,7 @@ COPY chatwoot-patches/crm-marketing-attribution-settings-board-vue.patch /tmp/cr
 COPY chatwoot-patches/crm-marketing-economics-foundation-vue.patch /tmp/crm-marketing-economics-foundation-vue.patch
 COPY chatwoot-patches/crm-marketing-economics-kpi-layer-vue.patch /tmp/crm-marketing-economics-kpi-layer-vue.patch
 COPY chatwoot-patches/crm-marketing-loss-analysis-vue.patch /tmp/crm-marketing-loss-analysis-vue.patch
+COPY chatwoot-patches/crm-marketing-demo-readiness-vue.patch /tmp/crm-marketing-demo-readiness-vue.patch
 
 RUN cd /app && \
     git apply /tmp/crm-pipeline-vue.patch && \
@@ -60,6 +61,7 @@ RUN cd /app && \
     git apply /tmp/crm-marketing-economics-foundation-vue.patch && \
     git apply /tmp/crm-marketing-economics-kpi-layer-vue.patch && \
     git apply /tmp/crm-marketing-loss-analysis-vue.patch && \
+    git apply /tmp/crm-marketing-demo-readiness-vue.patch && \
     HUSKY=0 pnpm install --frozen-lockfile && \
     (node node_modules/esbuild/install.js 2>/dev/null || true)
 
@@ -121,6 +123,7 @@ COPY chatwoot-patches/crm-marketing-attribution-settings-board-vue.patch /tmp/cr
 COPY chatwoot-patches/crm-marketing-economics-foundation-vue.patch /tmp/crm-marketing-economics-foundation-vue.patch
 COPY chatwoot-patches/crm-marketing-economics-kpi-layer-vue.patch /tmp/crm-marketing-economics-kpi-layer-vue.patch
 COPY chatwoot-patches/crm-marketing-loss-analysis-vue.patch /tmp/crm-marketing-loss-analysis-vue.patch
+COPY chatwoot-patches/crm-marketing-demo-readiness-vue.patch /tmp/crm-marketing-demo-readiness-vue.patch
 
 RUN cd /app && \
     git apply /tmp/patch.patch && \
@@ -171,4 +174,5 @@ RUN cd /app && \
     git apply /tmp/crm-marketing-attribution-settings-board-vue.patch && \
     git apply /tmp/crm-marketing-economics-foundation-vue.patch && \
     git apply /tmp/crm-marketing-economics-kpi-layer-vue.patch && \
-    git apply /tmp/crm-marketing-loss-analysis-vue.patch
+    git apply /tmp/crm-marketing-loss-analysis-vue.patch && \
+    git apply /tmp/crm-marketing-demo-readiness-vue.patch

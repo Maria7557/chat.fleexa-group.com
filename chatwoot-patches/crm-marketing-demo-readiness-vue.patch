@@ -1,0 +1,128 @@
+diff --git a/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue b/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue
+index 1c896f8..cbc9137 100644
+--- a/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue
++++ b/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue
+@@ -130,11 +130,19 @@ const SOURCE_KEY_ALIASES = {
+   googleads: 'google_ads',
+   google_ad: 'google_ads',
+   google_ads: 'google_ads',
++  google_search: 'google_ads',
++  googlesearch: 'google_ads',
++  google_search_leads: 'google_ads',
++  googlesearchleads: 'google_ads',
+   googleadwords: 'google_ads',
+   adwords: 'google_ads',
+   meta: 'meta_ads',
+   metaads: 'meta_ads',
+   meta_ads: 'meta_ads',
++  meta_paid_social: 'meta_ads',
++  metapaidsocial: 'meta_ads',
++  paid_social: 'meta_ads',
++  paidsocial: 'meta_ads',
+   facebook: 'meta_ads',
+   facebookads: 'meta_ads',
+   fb: 'meta_ads',
+@@ -146,6 +154,16 @@ const SOURCE_KEY_ALIASES = {
+   yandex: 'yandex',
+   yandexads: 'yandex',
+   yandex_ads: 'yandex',
++  dubizzle_ads: 'dubizzle',
++  dubizzleads: 'dubizzle',
++  telegram_ads: 'referral',
++  telegramads: 'referral',
++  blogger_ugc: 'other',
++  bloggerugc: 'other',
++  ugc_bloger_ig: 'other',
++  ugcblogerig: 'other',
++  ugc_blogger_ig: 'other',
++  ugcbloggerig: 'other',
+ };
+ const MONTHLY_CHART_WIDTH = 720;
+ const MONTHLY_CHART_HEIGHT = 260;
+@@ -413,10 +431,10 @@ const buildStageRow = (stage, count, label) => {
+ const stageRows = computed(() => {
+   const forwardRows = forwardStages.value.map(stage => {
+     const reachedCount = deals.value.filter(deal => dealReachedStage(deal, stage)).length;
+-    return buildStageRow(stage, reachedCount, 'of new deals');
++    return buildStageRow(stage, reachedCount, 'of created deals');
+   });
+   const lostRows = lostStages.value.map(stage => {
+-    return buildStageRow(stage, stageCount(stage.id), 'lost of new deals');
++    return buildStageRow(stage, stageCount(stage.id), 'lost of created deals');
+   });
+ 
+   return [...forwardRows, ...lostRows];
+@@ -729,25 +747,25 @@ const metricRegistry = computed(() => ({
+     key: 'qualified_leads',
+     label: 'Qualified Leads',
+     value: formatNumber(selectedEconomics.value.qualifiedLeads),
+-    detail: 'qualification_status = qualified',
++    detail: 'Deals marked qualified',
+   },
+   successful_deals: {
+     key: 'successful_deals',
+     label: 'Successful Deals',
+     value: formatNumber(selectedEconomics.value.successfulDeals),
+-    detail: 'Reserved + Rental + Won',
++    detail: 'Reserved, rental, or won',
+   },
+   successful_deal_amount: {
+     key: 'successful_deal_amount',
+     label: 'Successful Deal Amount',
+     value: formatAmount(selectedEconomics.value.successfulDealAmount),
+-    detail: 'Pipeline value for successful deals',
++    detail: 'Reserved + rental + won value',
+   },
+   spend: {
+     key: 'spend',
+     label: 'Spend',
+     value: formatAmount(selectedEconomics.value.spend),
+-    detail: 'marketing_spend_daily in selected period',
++    detail: 'Marketing spend in selected period',
+   },
+   cpl: {
+     key: 'cpl',
+@@ -1144,7 +1162,9 @@ const conversionRows = computed(() => [
+     numerator: selectedEconomics.value.qualifiedLeads,
+     denominator: selectedEconomics.value.leads,
+     value: formatConversionRate(selectedEconomics.value.qualifiedLeads, selectedEconomics.value.leads),
+-    detail: `${formatNumber(selectedEconomics.value.qualifiedLeads)} / ${formatNumber(selectedEconomics.value.leads)} leads`,
++    detail: selectedEconomics.value.leads
++      ? `${formatNumber(selectedEconomics.value.qualifiedLeads)} / ${formatNumber(selectedEconomics.value.leads)} leads`
++      : 'No leads in selected cohort',
+   },
+   {
+     key: 'qualified_to_successful',
+@@ -1152,7 +1172,9 @@ const conversionRows = computed(() => [
+     numerator: selectedEconomics.value.successfulDeals,
+     denominator: selectedEconomics.value.qualifiedLeads,
+     value: formatConversionRate(selectedEconomics.value.successfulDeals, selectedEconomics.value.qualifiedLeads),
+-    detail: `${formatNumber(selectedEconomics.value.successfulDeals)} / ${formatNumber(selectedEconomics.value.qualifiedLeads)} qualified`,
++    detail: selectedEconomics.value.qualifiedLeads
++      ? `${formatNumber(selectedEconomics.value.successfulDeals)} / ${formatNumber(selectedEconomics.value.qualifiedLeads)} qualified`
++      : 'No qualified leads yet',
+   },
+ ]);
+ 
+@@ -2365,7 +2387,7 @@ onMounted(() => {
+             </span>
+           </div>
+           <p class="mt-1 text-sm text-n-slate-10">
+-            Pipeline funnel
++            Stage Reach
+           </p>
+           </div>
+ 
+@@ -3251,10 +3273,10 @@ onMounted(() => {
+           <div class="flex items-center justify-between gap-3">
+             <div>
+               <h2 class="text-sm font-semibold text-n-slate-12">
+-                Funnel
++                Stage Reach
+               </h2>
+               <div class="mt-1 text-xs text-n-slate-10">
+-                Reached stage from new deals
++                Best-effort stage reach for created deals
+               </div>
+             </div>
+             <span class="text-xs text-n-slate-10">
