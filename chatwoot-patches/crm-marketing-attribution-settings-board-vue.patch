@@ -1,5 +1,5 @@
 diff --git a/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue b/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue
-index a8a217a..2f15e5e 100644
+index a8a217a..7f65e27 100644
 --- a/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue
 +++ b/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue
 @@ -161,6 +161,9 @@ const attributionSettingsError = ref('');
@@ -264,7 +264,7 @@ index a8a217a..2f15e5e 100644
            <div
              v-if="attributionSettingsError"
              class="mb-4 rounded-lg border border-n-ruby-5 bg-n-ruby-3 px-3 py-2 text-sm text-n-ruby-11"
-@@ -2594,254 +2773,427 @@ onMounted(() => {
+@@ -2594,254 +2773,426 @@ onMounted(() => {
              {{ attributionSettingsError }}
            </div>
  
@@ -290,10 +290,9 @@ index a8a217a..2f15e5e 100644
 +          <div class="flex h-full min-h-0 flex-col gap-3">
 +            <div class="flex flex-none flex-wrap items-center gap-2">
 +              <label class="relative min-w-[16rem] flex-1">
-+                <i class="i-lucide-search pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-n-slate-9" />
 +                <input
 +                  v-model="attributionSettingsSearch"
-+                  class="h-9 w-full rounded-lg border border-n-weak bg-n-background pl-9 pr-3 text-sm text-n-slate-12 outline-none transition focus:border-n-brand"
++                  class="h-9 w-full rounded-lg border border-n-weak bg-n-background px-3 text-sm text-n-slate-12 outline-none transition focus:border-n-brand"
 +                  type="text"
 +                  placeholder="Search sources, origins, rules..."
 +                />
@@ -565,7 +564,7 @@ index a8a217a..2f15e5e 100644
 +
 +                      <div class="mt-2 flex flex-wrap items-center gap-1.5">
 +                        <select
-+                          class="h-7 min-w-[9rem] rounded-md border border-dashed border-n-weak bg-n-background px-2 text-[11px] text-n-slate-11 outline-none transition focus:border-n-brand"
++                          class="h-9 min-w-[9rem] rounded-md border border-dashed border-n-weak bg-n-background px-2 text-sm leading-5 text-n-slate-11 outline-none transition focus:border-n-brand"
 +                          :value="leadOriginKeyForSource(element)"
 +                          @change="setTrafficSourceLeadOrigin(element, $event.target.value)"
 +                        >
@@ -580,7 +579,7 @@ index a8a217a..2f15e5e 100644
 +                        </select>
 +                        <button
 +                          type="button"
-+                          class="inline-flex h-7 items-center gap-1 rounded-md px-2 text-[11px] font-medium text-n-brand transition hover:bg-n-alpha-2"
++                          class="inline-flex h-8 items-center gap-1 rounded-md px-2 text-xs font-medium text-n-brand transition hover:bg-n-alpha-2"
 +                          @click="addRuleForSource(element)"
 +                        >
 +                          <i class="i-lucide-plus h-3.5 w-3.5" />
@@ -588,7 +587,7 @@ index a8a217a..2f15e5e 100644
 +                        </button>
 +                        <button
 +                          type="button"
-+                          class="ml-auto grid h-7 w-7 place-items-center rounded-md text-n-slate-9 transition hover:bg-n-ruby-3 hover:text-n-ruby-11"
++                          class="ml-auto grid h-8 w-8 place-items-center rounded-md text-n-slate-9 transition hover:bg-n-ruby-3 hover:text-n-ruby-11"
 +                          aria-label="Remove mapping"
 +                          @click="removeAttributionMapping(element)"
 +                        >
@@ -809,7 +808,7 @@ index a8a217a..2f15e5e 100644
 +
 +                    <div class="mt-2 grid gap-1.5 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
 +                      <select
-+                        class="h-7 rounded-md border border-n-weak bg-n-background px-2 text-[11px] text-n-slate-12 outline-none transition focus:border-n-brand"
++                        class="h-9 rounded-md border border-n-weak bg-n-background px-2 text-sm leading-5 text-n-slate-12 outline-none transition focus:border-n-brand"
 +                        :value="rule.result_traffic_source_key"
 +                        @change="setDetectionRuleTrafficSource(rule, $event.target.value)"
 +                      >
@@ -823,7 +822,7 @@ index a8a217a..2f15e5e 100644
 +                        </option>
 +                      </select>
 +                      <select
-+                        class="h-7 rounded-md border border-n-weak bg-n-background px-2 text-[11px] text-n-slate-12 outline-none transition focus:border-n-brand"
++                        class="h-9 rounded-md border border-n-weak bg-n-background px-2 text-sm leading-5 text-n-slate-12 outline-none transition focus:border-n-brand"
 +                        :value="rule.result_lead_origin_key"
 +                        @change="setDetectionRuleLeadOrigin(rule, $event.target.value)"
 +                      >
@@ -838,7 +837,7 @@ index a8a217a..2f15e5e 100644
 +                      </select>
 +                      <select
 +                        v-model="rule.field"
-+                        class="h-7 rounded-md border border-n-weak bg-n-background px-2 text-[11px] text-n-slate-12 outline-none transition focus:border-n-brand"
++                        class="h-9 rounded-md border border-n-weak bg-n-background px-2 text-sm leading-5 text-n-slate-12 outline-none transition focus:border-n-brand"
 +                      >
 +                        <option
 +                          v-for="field in DETECTION_RULE_FIELDS"
@@ -851,7 +850,7 @@ index a8a217a..2f15e5e 100644
 +                      <div class="grid gap-1.5 sm:grid-cols-[6rem_minmax(0,1fr)]">
 +                        <select
 +                          v-model="rule.operator"
-+                          class="h-7 rounded-md border border-n-weak bg-n-background px-2 text-[11px] text-n-slate-12 outline-none transition focus:border-n-brand"
++                          class="h-9 rounded-md border border-n-weak bg-n-background px-2 text-sm leading-5 text-n-slate-12 outline-none transition focus:border-n-brand"
 +                        >
 +                          <option
 +                            v-for="operator in DETECTION_RULE_OPERATORS"
@@ -864,13 +863,13 @@ index a8a217a..2f15e5e 100644
 +                        <input
 +                          v-if="rule.operator !== 'exists'"
 +                          v-model="rule.value"
-+                          class="h-7 rounded-md border border-n-weak bg-n-background px-2 text-[11px] text-n-slate-12 outline-none transition focus:border-n-brand"
++                          class="h-9 rounded-md border border-n-weak bg-n-background px-2 text-sm leading-5 text-n-slate-12 outline-none transition focus:border-n-brand"
 +                          placeholder="Match text"
 +                          type="text"
 +                        />
 +                        <div
 +                          v-else
-+                          class="inline-flex h-7 items-center rounded-md border border-dashed border-n-weak px-2 text-[11px] text-n-slate-10"
++                          class="inline-flex h-9 items-center rounded-md border border-dashed border-n-weak px-2 text-sm leading-5 text-n-slate-10"
 +                        >
 +                          Any value
 +                        </div>
