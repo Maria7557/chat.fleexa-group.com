@@ -24,6 +24,7 @@ COPY chatwoot-patches/crm-marketing-source-visibility-analytics-vue.patch /tmp/c
 COPY chatwoot-patches/crm-marketing-attribution-settings-native-vue.patch /tmp/crm-marketing-attribution-settings-native-vue.patch
 COPY chatwoot-patches/crm-marketing-page-level-controls-vue.patch /tmp/crm-marketing-page-level-controls-vue.patch
 COPY chatwoot-patches/crm-marketing-reuse-chatwoot-date-filter-vue.patch /tmp/crm-marketing-reuse-chatwoot-date-filter-vue.patch
+COPY chatwoot-patches/crm-marketing-remove-legacy-attribution-vue.patch /tmp/crm-marketing-remove-legacy-attribution-vue.patch
 
 RUN cd /app && \
     git apply /tmp/crm-pipeline-vue.patch && \
@@ -48,6 +49,7 @@ RUN cd /app && \
     git apply /tmp/crm-marketing-attribution-settings-native-vue.patch && \
     git apply /tmp/crm-marketing-page-level-controls-vue.patch && \
     git apply /tmp/crm-marketing-reuse-chatwoot-date-filter-vue.patch && \
+    git apply /tmp/crm-marketing-remove-legacy-attribution-vue.patch && \
     HUSKY=0 pnpm install --frozen-lockfile && \
     (node node_modules/esbuild/install.js 2>/dev/null || true)
 
@@ -101,6 +103,7 @@ COPY chatwoot-patches/crm-marketing-source-visibility-analytics-vue.patch /tmp/c
 COPY chatwoot-patches/crm-marketing-attribution-settings-native-vue.patch /tmp/crm-marketing-attribution-settings-native-vue.patch
 COPY chatwoot-patches/crm-marketing-page-level-controls-vue.patch /tmp/crm-marketing-page-level-controls-vue.patch
 COPY chatwoot-patches/crm-marketing-reuse-chatwoot-date-filter-vue.patch /tmp/crm-marketing-reuse-chatwoot-date-filter-vue.patch
+COPY chatwoot-patches/crm-marketing-remove-legacy-attribution-vue.patch /tmp/crm-marketing-remove-legacy-attribution-vue.patch
 
 RUN cd /app && \
     git apply /tmp/patch.patch && \
@@ -143,4 +146,5 @@ RUN cd /app && \
     git apply /tmp/crm-marketing-source-visibility-analytics-vue.patch && \
     git apply /tmp/crm-marketing-attribution-settings-native-vue.patch && \
     git apply /tmp/crm-marketing-page-level-controls-vue.patch && \
-    git apply /tmp/crm-marketing-reuse-chatwoot-date-filter-vue.patch
+    git apply /tmp/crm-marketing-reuse-chatwoot-date-filter-vue.patch && \
+    git apply /tmp/crm-marketing-remove-legacy-attribution-vue.patch

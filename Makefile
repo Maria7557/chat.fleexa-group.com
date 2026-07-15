@@ -221,6 +221,7 @@ crm-vue-copy: ensure-env
 	$(COMPOSE) cp chatwoot-patches/crm-marketing-attribution-settings-native-vue.patch rails:/tmp/crm-marketing-attribution-settings-native-vue.patch
 	$(COMPOSE) cp chatwoot-patches/crm-marketing-page-level-controls-vue.patch rails:/tmp/crm-marketing-page-level-controls-vue.patch
 	$(COMPOSE) cp chatwoot-patches/crm-marketing-reuse-chatwoot-date-filter-vue.patch rails:/tmp/crm-marketing-reuse-chatwoot-date-filter-vue.patch
+	$(COMPOSE) cp chatwoot-patches/crm-marketing-remove-legacy-attribution-vue.patch rails:/tmp/crm-marketing-remove-legacy-attribution-vue.patch
 	@echo "CRM Vue patch copied to Rails container"
 
 crm-vue-check: crm-vue-copy
@@ -246,6 +247,7 @@ crm-vue-check: crm-vue-copy
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply --check /tmp/crm-marketing-attribution-settings-native-vue.patch"
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply --check /tmp/crm-marketing-page-level-controls-vue.patch"
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply --check /tmp/crm-marketing-reuse-chatwoot-date-filter-vue.patch"
+	$(COMPOSE) exec rails sh -lc "cd /app && git apply --check /tmp/crm-marketing-remove-legacy-attribution-vue.patch"
 	@echo "CRM Vue patch validated"
 
 crm-vue-patch: crm-vue-copy
@@ -271,6 +273,7 @@ crm-vue-patch: crm-vue-copy
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply /tmp/crm-marketing-attribution-settings-native-vue.patch"
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply /tmp/crm-marketing-page-level-controls-vue.patch"
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply /tmp/crm-marketing-reuse-chatwoot-date-filter-vue.patch"
+	$(COMPOSE) exec rails sh -lc "cd /app && git apply /tmp/crm-marketing-remove-legacy-attribution-vue.patch"
 	@echo "CRM Vue patch applied"
 
 crm-assets-build-host:
@@ -326,6 +329,7 @@ crm-assets-build-host:
 	git apply "$(CURDIR)/chatwoot-patches/crm-marketing-attribution-settings-native-vue.patch"; \
 	git apply "$(CURDIR)/chatwoot-patches/crm-marketing-page-level-controls-vue.patch"; \
 	git apply "$(CURDIR)/chatwoot-patches/crm-marketing-reuse-chatwoot-date-filter-vue.patch"; \
+	git apply "$(CURDIR)/chatwoot-patches/crm-marketing-remove-legacy-attribution-vue.patch"; \
 	perl -0pi -e "s/import \\{ colors \\} from '\\.\\/theme\\/colors';/const { colors } = require('.\\/theme\\/colors.js');/; s/import \\{ icons \\} from '\\.\\/theme\\/icons';/const { icons } = require('.\\/theme\\/icons.js');/" tailwind.config.js; \
 	perl -0pi -e "s/export const colors =/const colors =/; s/\\n\\};\\s*\\z/\\n};\\nmodule.exports = { colors };\\n/s" theme/colors.js; \
 	perl -0pi -e "s/export const icons =/const icons =/; s/\\n\\};\\s*\\z/\\n};\\nmodule.exports = { icons };\\n/s" theme/icons.js; \
@@ -362,6 +366,9 @@ crm-assets-build-host:
 	grep -n "selectedSourceKey" app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue; \
 	grep -n "WootDatePicker" app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue; \
 	grep -n "selectedDateRange" app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue; \
+	grep -n "traffic_source_label" app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue; \
+	grep -n "Traffic source label" app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue; \
+	if grep -nE "source_request|first_touch_source|first_touch_entry_point|source_raw_snapshot" app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue app/javascript/dashboard/routes/dashboard/crm/Pipeline.vue app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue; then exit 1; fi; \
 	grep -n "trafficSourceDisplay" app/javascript/dashboard/routes/dashboard/crm/Pipeline.vue; \
 	grep -n "fleexa.crm.pipeline.list_columns.v3" app/javascript/dashboard/routes/dashboard/crm/Pipeline.vue; \
 	grep -n "Source Attribution" app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue; \
@@ -501,6 +508,9 @@ crm-assets-install-local: ensure-env
 	docker exec "$$install_container" sh -lc "grep -n 'selectedSourceKey' /app/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue"; \
 	docker exec "$$install_container" sh -lc "grep -n 'WootDatePicker' /app/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue"; \
 	docker exec "$$install_container" sh -lc "grep -n 'selectedDateRange' /app/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue"; \
+	docker exec "$$install_container" sh -lc "grep -n 'traffic_source_label' /app/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue"; \
+	docker exec "$$install_container" sh -lc "grep -n 'Traffic source label' /app/app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue"; \
+	docker exec "$$install_container" sh -lc "if grep -nE 'source_request|first_touch_source|first_touch_entry_point|source_raw_snapshot' /app/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue /app/app/javascript/dashboard/routes/dashboard/crm/Pipeline.vue /app/app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue; then exit 1; fi"; \
 	docker exec "$$install_container" sh -lc "grep -n 'leadTrendLayeredSeries' /app/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue"; \
 	docker exec "$$install_container" sh -lc "grep -n 'fleexa_visible_config' /app/app/views/layouts/vueapp.html.erb"; \
 	docker exec "$$install_container" sh -lc "grep -n 'Chat Fleexa' /app/public/manifest.json"; \
@@ -568,6 +578,9 @@ crm-assets-refresh-local: crm-assets-build-host crm-assets-install-local
 	$(COMPOSE) exec -T rails sh -lc "grep -n 'selectedSourceKey' /app/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue"; \
 	$(COMPOSE) exec -T rails sh -lc "grep -n 'WootDatePicker' /app/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue"; \
 	$(COMPOSE) exec -T rails sh -lc "grep -n 'selectedDateRange' /app/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue"; \
+	$(COMPOSE) exec -T rails sh -lc "grep -n 'traffic_source_label' /app/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue"; \
+	$(COMPOSE) exec -T rails sh -lc "grep -n 'Traffic source label' /app/app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue"; \
+	$(COMPOSE) exec -T rails sh -lc "if grep -nE 'source_request|first_touch_source|first_touch_entry_point|source_raw_snapshot' /app/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue /app/app/javascript/dashboard/routes/dashboard/crm/Pipeline.vue /app/app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue; then exit 1; fi"; \
 	$(COMPOSE) exec -T rails sh -lc "grep -n 'leadTrendLayeredSeries' /app/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue"; \
 	$(COMPOSE) exec -T rails sh -lc "grep -n 'fleexa_visible_config' /app/app/views/layouts/vueapp.html.erb"; \
 	$(COMPOSE) exec -T rails sh -lc "grep -n 'Chat Fleexa' /app/public/manifest.json"; \

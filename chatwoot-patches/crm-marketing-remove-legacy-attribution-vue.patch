@@ -1,0 +1,351 @@
+diff --git a/app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue b/app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue
+index 46a74f8..621eb2f 100644
+--- a/app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue
++++ b/app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue
+@@ -116,33 +116,14 @@ const FIELD_GROUP_KEYS = {
+ };
+ 
+ const ATTRIBUTION_FIELDS = [
+-  { key: 'first_touch_source_key', label: 'First touch source key' },
+-  { key: 'first_touch_source_label', label: 'First touch source label' },
+-  { key: 'first_touch_entry_point_key', label: 'First touch entry point key' },
+-  { key: 'first_touch_entry_point_label', label: 'First touch entry point label' },
++  { key: 'traffic_source_key', label: 'Traffic source key' },
++  { key: 'traffic_source_label', label: 'Traffic source label' },
++  { key: 'lead_origin_key', label: 'Lead origin key' },
++  { key: 'lead_origin_label', label: 'Lead origin label' },
+   { key: 'source_detection_method', label: 'Source detection method' },
+   { key: 'source_confidence', label: 'Source confidence' },
+   { key: 'source_override_by', label: 'Source override by' },
+   { key: 'needs_source_clarification', label: 'Needs clarification' },
+-  { key: 'source_raw_snapshot', label: 'Source raw snapshot' },
+-  { key: 'source_request', label: 'Source request' },
+-  { key: 'first_message', label: 'First message' },
+-  { key: 'utm_source', label: 'UTM source' },
+-  { key: 'utm_medium', label: 'UTM medium' },
+-  { key: 'utm_campaign', label: 'UTM campaign' },
+-  { key: 'utm_content', label: 'UTM content' },
+-  { key: 'utm_term', label: 'UTM term' },
+-  { key: 'utm_referrer', label: 'UTM referrer' },
+-  { key: 'from', label: 'From' },
+-  { key: 'gclientid', label: 'GClient ID' },
+-  { key: '_ym_uid', label: 'YM UID' },
+-  { key: '_ym_counter', label: 'YM counter' },
+-  { key: 'gclid', label: 'GCLID' },
+-  { key: 'yclid', label: 'YCLID' },
+-  { key: 'fbclid', label: 'FBCLID' },
+-  { key: 'ga_utm', label: 'GA UTM' },
+-  { key: 'landing_url', label: 'Landing URL' },
+-  { key: 'landing_page', label: 'Landing page' },
+ ];
+ 
+ const MANUAL_ATTRIBUTION_KEYS = [
+@@ -267,6 +248,7 @@ const activeStageId = computed(() => {
+ const visibleFields = computed(() => {
+   return [...fieldDefinitions.value]
+     .filter(field => field.is_active !== false)
++    .filter(field => !isLegacyAttributionKey(field.key))
+     .sort((a, b) => a.position - b.position);
+ });
+ 
+@@ -358,6 +340,19 @@ const normalizedAttributes = source => {
+   return source;
+ };
+ 
++const isLegacyAttributionKey = key => {
++  const normalizedKey = String(key || '').trim().toLowerCase();
++  if (normalizedKey.startsWith('first_touch_')) return true;
++
++  const legacyKeys = [
++    ['source', 'request'].join('_'),
++    ['source', 'requect'].join('_'),
++    ['source', 'raw', 'snapshot'].join('_'),
++  ];
++
++  return legacyKeys.includes(normalizedKey);
++};
++
+ const displayScalar = value => {
+   if (!hasDisplayValue(value)) return 'Not Available';
+   if (value === true) return 'Yes';
+@@ -622,7 +617,11 @@ const clientAttributeKeys = new Set([
+ 
+ const visibleClientAttributes = computed(() => {
+   return Object.entries(contactAttributes.value)
+-    .filter(([key, value]) => !clientAttributeKeys.has(key) && hasDisplayValue(value))
++    .filter(([key, value]) => {
++      return !clientAttributeKeys.has(key) &&
++        !isLegacyAttributionKey(key) &&
++        hasDisplayValue(value);
++    })
+     .map(([key, value]) => ({
+       key,
+       label: humanizeKey(key),
+@@ -1918,7 +1917,7 @@ onUnmounted(() => {
+             v-if="!hasMarketingData"
+             class="rounded-lg border border-dashed border-n-weak px-4 py-6 text-center text-sm text-n-slate-10"
+           >
+-            No raw attribution fields yet
++            No attribution fields yet
+           </div>
+ 
+           <template v-else>
+diff --git a/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue b/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue
+index 490758b..b1cc430 100644
+--- a/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue
++++ b/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue
+@@ -436,27 +436,6 @@ const normalizedAttributes = source => {
+   return source;
+ };
+ 
+-const dealAttributeSources = deal => [
+-  normalizedAttributes(deal),
+-  normalizedAttributes(deal?.custom_attributes),
+-  normalizedAttributes(deal?.contact?.custom_attributes),
+-  normalizedAttributes(deal?.contact?.additional_attributes),
+-  normalizedAttributes(deal?.conversation?.custom_attributes),
+-  normalizedAttributes(deal?.conversation?.additional_attributes),
+-];
+-
+-const valueFromDealSources = (deal, keys) => {
+-  const sources = dealAttributeSources(deal);
+-
+-  for (const source of sources) {
+-    for (const key of keys) {
+-      if (hasValue(source[key])) return source[key];
+-    }
+-  }
+-
+-  return '';
+-};
+-
+ const rawSourceKeyFromText = value => {
+   return String(value || '')
+     .trim()
+@@ -513,48 +492,6 @@ const sourceSnapshotFromDeal = deal => {
+     };
+   }
+ 
+-  const firstTouchSource = valueFromDealSources(deal, [
+-    'first_touch_source_label',
+-    'first_touch_source_key',
+-  ]);
+-  const firstTouchSourceKey = sourceKeyFromText(firstTouchSource);
+-  if (firstTouchSourceKey) {
+-    return {
+-      key: firstTouchSourceKey,
+-      label: String(firstTouchSource || '').trim() ||
+-        configuredSourceFromKey(firstTouchSourceKey)?.label ||
+-        fallbackSourceLabelForKey(firstTouchSourceKey),
+-      needsClarification: dealNeedsSourceClarification(deal),
+-    };
+-  }
+-
+-  if (hasValue(valueFromDealSources(deal, ['gclid', 'gclientid']))) {
+-    return {
+-      key: 'google_ads',
+-      label: configuredSourceFromKey('google_ads')?.label || 'Google Ads',
+-      needsClarification: dealNeedsSourceClarification(deal),
+-    };
+-  }
+-
+-  if (hasValue(valueFromDealSources(deal, ['fbclid']))) {
+-    return {
+-      key: 'meta_ads',
+-      label: configuredSourceFromKey('meta_ads')?.label || 'Meta Ads',
+-      needsClarification: dealNeedsSourceClarification(deal),
+-    };
+-  }
+-
+-  const utmSourceKey = sourceKeyFromText(valueFromDealSources(deal, ['utm_source']));
+-  if (utmSourceKey && utmSourceKey !== UNKNOWN_SOURCE_KEY) {
+-    return {
+-      key: utmSourceKey,
+-      label: configuredSourceFromKey(utmSourceKey)?.label ||
+-        String(valueFromDealSources(deal, ['utm_source']) || '').trim() ||
+-        fallbackSourceLabelForKey(utmSourceKey),
+-      needsClarification: dealNeedsSourceClarification(deal),
+-    };
+-  }
+-
+   if (dealNeedsSourceClarification(deal)) {
+     return {
+       key: NEEDS_CLARIFICATION_SOURCE_KEY,
+diff --git a/app/javascript/dashboard/routes/dashboard/crm/Pipeline.vue b/app/javascript/dashboard/routes/dashboard/crm/Pipeline.vue
+index c4c27f1..ec196e5 100644
+--- a/app/javascript/dashboard/routes/dashboard/crm/Pipeline.vue
++++ b/app/javascript/dashboard/routes/dashboard/crm/Pipeline.vue
+@@ -34,7 +34,6 @@ const buildDealForm = stageId => ({
+   rental_start: '',
+   rental_end: '',
+   budget: '',
+-  source_request: '',
+   assigned_to: currentUser.value?.id ? String(currentUser.value.id) : '',
+ });
+ 
+@@ -56,7 +55,6 @@ const DEFAULT_LIST_COLUMN_KEYS = [
+   'created_at',
+   'title',
+   'stage',
+-  'source_request',
+   'traffic_source',
+   'lead_origin',
+   'selected_car',
+@@ -261,27 +259,6 @@ const defaultStageId = computed(() => {
+   return activeStageId.value || orderedStages.value[0]?.id || '';
+ });
+ 
+-const sourceRequestField = computed(() => {
+-  return fieldDefinitions.value.find(field => field.key === 'source_request') ||
+-    fieldDefinitions.value.find(field => field.key === 'source_requect');
+-});
+-
+-const sourceRequestOptions = computed(() => {
+-  const options = sourceRequestField.value?.options || [];
+-  return options.map(option => ({ value: String(option), label: String(option) }));
+-});
+-
+-const sourceRequestColumnLabel = computed(() => {
+-  const label = String(sourceRequestField.value?.label || '').trim();
+-  const normalized = label.toLowerCase().replace(/[_-]+/g, ' ');
+-
+-  if (normalized.includes('source') && normalized.includes('request')) {
+-    return label;
+-  }
+-
+-  return 'Source Request';
+-});
+-
+ const listColumnDefinitions = computed(() => [
+   {
+     key: 'conversation_created_at',
+@@ -311,13 +288,6 @@ const listColumnDefinitions = computed(() => [
+     headerClass: 'w-[12rem]',
+     cellClass: 'w-[12rem]',
+   },
+-  {
+-    key: 'source_request',
+-    label: sourceRequestColumnLabel.value,
+-    width: '13rem',
+-    headerClass: 'w-[13rem]',
+-    cellClass: 'w-[13rem] text-n-slate-11',
+-  },
+   {
+     key: 'traffic_source',
+     label: 'Traffic Source',
+@@ -557,7 +527,7 @@ const hasDisplayValue = value => {
+ 
+ const canonicalFilterFieldKey = field => {
+   const key = field.key.toString();
+-  return key === 'source_requect' ? 'source_request' : key;
++  return key;
+ };
+ 
+ const fieldActualValueCount = field => {
+@@ -573,8 +543,7 @@ const fieldActualValueCount = field => {
+ 
+ const fieldFilterPriority = field => {
+   const options = Array.isArray(field.options) ? field.options.length : 0;
+-  const sourceRequestCompatibilityBonus = field.key === 'source_requect' ? 10000 : 0;
+-  return sourceRequestCompatibilityBonus + fieldActualValueCount(field) * 100 + options;
++  return fieldActualValueCount(field) * 100 + options;
+ };
+ 
+ const filterFieldDefinitions = computed(() => {
+@@ -853,7 +822,6 @@ const setQueryFieldFilter = (filters, key, value, rangePart = 'value') => {
+ 
+ const hydrateLegacyFieldQuery = (filters, query) => {
+   const legacyFieldMap = {
+-    source_request: 'source_requect',
+     car_type: 'car_type',
+     client_status: 'client_status',
+     language: 'language',
+@@ -1124,8 +1092,7 @@ const isNewDealPristine = computed(() => {
+     !form.requested_car.trim() &&
+     !form.rental_start &&
+     !form.rental_end &&
+-    !String(form.budget).trim() &&
+-    !form.source_request;
++    !String(form.budget).trim();
+ });
+ 
+ const setError = error => {
+@@ -1430,7 +1397,6 @@ const dealPayloadFromForm = () => {
+     amount: form.budget || null,
+     custom_attributes: {
+       requested_car: requestedCar,
+-      source_request: form.source_request || '',
+       language: selectedClientLanguage.value,
+       client_type: selectedClientType.value,
+     },
+@@ -1552,21 +1518,13 @@ const trafficSourceDisplay = deal => {
+   return attributionValue(deal, [
+     'traffic_source_label',
+     'traffic_source_key',
+-    'first_touch_source_label',
+-    'first_touch_source_key',
+-  ]) || sourceRequestValue(deal) || 'Unknown';
++  ]) || 'Unknown';
+ };
+ 
+ const leadOriginDisplay = deal => {
+   return attributionValue(deal, [
+     'lead_origin_label',
+     'lead_origin_key',
+-    'first_touch_entry_point_label',
+-    'first_touch_entry_point_key',
+-    'landing_url',
+-    'landing_page',
+-    'utm_campaign',
+-    'from',
+   ]) || 'Unknown';
+ };
+ 
+@@ -1610,12 +1568,6 @@ const contactName = deal => deal.contact?.name || deal.client_name || '';
+ const dealTitle = deal => deal.title || contactName(deal) || `Deal #${deal.id}`;
+ const phoneNumber = deal => deal.contact?.phone_number || deal.client_phone;
+ const contactAvatar = deal => deal.contact?.thumbnail || deal.contact?.avatar_url || '';
+-const sourceRequestValue = deal => {
+-  return deal.custom_attributes?.source_request ||
+-    deal.custom_attributes?.source_requect ||
+-    '';
+-};
+-
+ const selectedCarValue = deal => {
+   return deal.car_model ||
+     deal.custom_attributes?.selected_car ||
+@@ -2376,10 +2328,6 @@ watch(
+                   {{ formatDateTime(deal.created_at) || EMPTY_TABLE_VALUE }}
+                 </span>
+ 
+-                <span v-else-if="column.key === 'source_request'" class="block truncate">
+-                  {{ tableValue(sourceRequestValue(deal)) }}
+-                </span>
+-
+                 <span
+                   v-else-if="column.key === 'traffic_source'"
+                   class="inline-flex max-w-full items-center gap-1.5 rounded-md border px-2 py-1 text-xs font-medium"
+@@ -2915,23 +2863,6 @@ watch(
+               />
+             </label>
+ 
+-            <label class="grid gap-1.5 text-xs font-medium text-n-slate-11">
+-              Source Request
+-              <select
+-                v-model="newDealForm.source_request"
+-                class="h-10 rounded-md border border-n-weak bg-n-background px-3 text-sm text-n-slate-12 outline-none focus:border-n-brand"
+-              >
+-                <option value="">Select source</option>
+-                <option
+-                  v-for="item in sourceRequestOptions"
+-                  :key="item.value"
+-                  :value="item.value"
+-                >
+-                  {{ item.label }}
+-                </option>
+-              </select>
+-            </label>
+-
+             <label class="grid gap-1.5 text-xs font-medium text-n-slate-11">
+               Assigned to
+               <select
