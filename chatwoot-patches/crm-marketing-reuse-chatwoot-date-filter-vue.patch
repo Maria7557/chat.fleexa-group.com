@@ -1,5 +1,5 @@
 diff --git a/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue b/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue
-index 6f171e2..490758b 100644
+index 82090bf..490758b 100644
 --- a/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue
 +++ b/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue
 @@ -1,11 +1,20 @@
@@ -51,16 +51,20 @@ index 6f171e2..490758b 100644
  const isLoading = ref(false);
  const errorMessage = ref('');
  const dashboardConfig = ref(null);
-@@ -163,6 +162,8 @@ const draftTrafficSources = ref([]);
+@@ -162,10 +161,9 @@ const attributionSettingsError = ref('');
+ const draftTrafficSources = ref([]);
  const draftLeadOrigins = ref([]);
  const draftDetectionRules = ref([]);
+-const attributionSettingsSearch = ref('');
+-const showAttributionIssuesOnly = ref(false);
+-const showAttributionLegend = ref(false);
  const { isAdmin } = useAdmin();
 +const route = useRoute();
 +const router = useRouter();
  const isManualSpendDrawerOpen = ref(false);
  const isSavingManualSpend = ref(false);
  const manualSpendError = ref('');
-@@ -238,56 +239,12 @@ const formatPercent = value => {
+@@ -241,56 +239,12 @@ const formatPercent = value => {
    return `${parsed.toFixed(parsed >= 10 ? 0 : 1)}%`;
  };
  
@@ -117,7 +121,7 @@ index 6f171e2..490758b 100644
  const stageCount = stageId => {
    return deals.value.filter(deal => String(deal.stage_id) === String(stageId)).length;
  };
-@@ -451,13 +408,8 @@ const trendDateKeyFromValue = value => {
+@@ -454,13 +408,8 @@ const trendDateKeyFromValue = value => {
    return trendDateKeyFromDate(date);
  };
  
@@ -133,7 +137,7 @@ index 6f171e2..490758b 100644
  
  const trendDateKeysBetween = (fromKey, toKey) => {
    const fromDate = trendDateFromKey(fromKey);
-@@ -479,37 +431,6 @@ const displayTrendDateKey = key => {
+@@ -482,37 +431,6 @@ const displayTrendDateKey = key => {
    return year && month && day ? `${day}/${month}/${year}` : '';
  };
  
@@ -171,7 +175,220 @@ index 6f171e2..490758b 100644
  const normalizedAttributes = source => {
    if (!source || Array.isArray(source) || typeof source !== 'object') return {};
    return source;
-@@ -1563,14 +1484,10 @@ const dealDateKeys = computed(() => {
+@@ -1225,9 +1143,6 @@ const openAttributionSettings = () => {
+   draftTrafficSources.value = cloneAttributionItems(config.traffic_sources);
+   draftLeadOrigins.value = cloneAttributionItems(config.lead_origins);
+   draftDetectionRules.value = config.detection_rules.map(rule => ({ ...rule }));
+-  attributionSettingsSearch.value = '';
+-  showAttributionIssuesOnly.value = false;
+-  showAttributionLegend.value = false;
+   attributionSettingsError.value = '';
+   isAttributionSettingsOpen.value = true;
+ };
+@@ -1265,24 +1180,6 @@ const addLeadOrigin = () => {
+   ];
+ };
+ 
+-const addDetectionRule = () => {
+-  draftDetectionRules.value = [
+-    ...draftDetectionRules.value,
+-    {
+-      id: ruleId(),
+-      active: true,
+-      priority: draftDetectionRules.value.length + 1,
+-      field: 'first_message',
+-      operator: 'contains',
+-      value: '',
+-      result_traffic_source_key: '',
+-      result_traffic_source_label: '',
+-      result_lead_origin_key: '',
+-      result_lead_origin_label: '',
+-    },
+-  ];
+-};
+-
+ const addAttributionMapping = () => {
+   addTrafficSource();
+ };
+@@ -1294,22 +1191,6 @@ const removeAttributionMapping = source => {
+   );
+ };
+ 
+-const setDetectionRuleTrafficSource = (rule, key) => {
+-  rule.result_traffic_source_key = key;
+-  rule.result_traffic_source_label = labelForAttributionKey(draftTrafficSources.value, key);
+-
+-  if (!key) {
+-    setDetectionRuleLeadOrigin(rule, '');
+-    return;
+-  }
+-
+-  const source = draftTrafficSources.value.find(item => item.key === key);
+-  const leadOriginKey = leadOriginKeyForSource(source);
+-  if (leadOriginKey) {
+-    setDetectionRuleLeadOrigin(rule, leadOriginKey);
+-  }
+-};
+-
+ const rulesForTrafficSource = source => {
+   return draftDetectionRules.value.filter(rule => rule.result_traffic_source_key === source.key);
+ };
+@@ -1372,154 +1253,6 @@ const ruleSummary = rule => {
+   return `${fieldLabelForRule(rule)} ${operatorLabelForRule(rule).toLowerCase()} ${ruleValueLabel(rule)}`;
+ };
+ 
+-const normalizedAttributionSearch = computed(() => {
+-  return String(attributionSettingsSearch.value || '').trim().toLowerCase();
+-});
+-
+-const sourceRulePreview = source => {
+-  const rule = rulesForTrafficSource(source)[0];
+-  return rule ? ruleSummary(rule) : 'Choose rule...';
+-};
+-
+-const sourceRuleCount = source => rulesForTrafficSource(source).length;
+-
+-const connectionCountForSource = source => {
+-  return leadOriginKeyForSource(source) ? 1 : 0;
+-};
+-
+-const sourceConnectionLabel = source => {
+-  const count = connectionCountForSource(source);
+-  return `${count} ${count === 1 ? 'origin' : 'origins'}`;
+-};
+-
+-const leadOriginMappings = origin => {
+-  return draftTrafficSources.value.filter(source => leadOriginKeyForSource(source) === origin.key);
+-};
+-
+-const leadOriginCountLabel = origin => {
+-  const count = leadOriginMappings(origin).length;
+-  return `${count} ${count === 1 ? 'source' : 'sources'}`;
+-};
+-
+-const ruleUsageCount = rule => {
+-  return rule.result_traffic_source_key ? 1 : 0;
+-};
+-
+-const ruleUsageLabel = rule => {
+-  const count = ruleUsageCount(rule);
+-  return `used by ${count} ${count === 1 ? 'mapping' : 'mappings'}`;
+-};
+-
+-const ruleTypeLabel = rule => {
+-  if (['gclid', 'fbclid', 'yclid'].includes(rule.field)) return 'Click ID';
+-  if (rule.field.startsWith('utm_')) return 'UTM';
+-  if (rule.field === 'first_message') return 'Message';
+-  if (rule.field === 'from') return 'Channel';
+-  return 'Rule';
+-};
+-
+-const sourceHasIssue = source => {
+-  return !leadOriginKeyForSource(source) || !sourceRuleCount(source);
+-};
+-
+-const originHasIssue = origin => {
+-  return origin.is_active !== false && !leadOriginMappings(origin).length;
+-};
+-
+-const ruleHasIssue = rule => {
+-  if (!rule.result_traffic_source_key) return true;
+-  if (!rule.result_lead_origin_key) return true;
+-  if (rule.operator !== 'exists' && !String(rule.value || '').trim()) return true;
+-  return false;
+-};
+-
+-const matchesAttributionSearch = (...values) => {
+-  if (!normalizedAttributionSearch.value) return true;
+-  return values
+-    .flatMap(value => (Array.isArray(value) ? value : [value]))
+-    .some(value => String(value || '').toLowerCase().includes(normalizedAttributionSearch.value));
+-};
+-
+-const sourceVisibleInBoard = source => {
+-  const matches = matchesAttributionSearch(
+-    source.label,
+-    source.key,
+-    leadOriginKeyForSource(source),
+-    source.lead_origin_label,
+-    rulesForTrafficSource(source).map(rule => ruleSummary(rule))
+-  );
+-  if (!matches) return false;
+-  if (!showAttributionIssuesOnly.value) return true;
+-  return sourceHasIssue(source);
+-};
+-
+-const leadOriginVisibleInBoard = origin => {
+-  const mappings = leadOriginMappings(origin);
+-  const matches = matchesAttributionSearch(
+-    origin.label,
+-    origin.key,
+-    mappings.map(source => source.label),
+-    mappings.map(source => sourceRulePreview(source))
+-  );
+-  if (!matches) return false;
+-  if (!showAttributionIssuesOnly.value) return true;
+-  return originHasIssue(origin) || mappings.some(source => sourceHasIssue(source));
+-};
+-
+-const ruleVisibleInBoard = rule => {
+-  const trafficSource = draftTrafficSources.value.find(
+-    source => source.key === rule.result_traffic_source_key
+-  );
+-  const leadOrigin = draftLeadOrigins.value.find(
+-    origin => origin.key === rule.result_lead_origin_key
+-  );
+-  const matches = matchesAttributionSearch(
+-    ruleSummary(rule),
+-    fieldLabelForRule(rule),
+-    operatorLabelForRule(rule),
+-    rule.value,
+-    trafficSource?.label,
+-    leadOrigin?.label
+-  );
+-  if (!matches) return false;
+-  if (!showAttributionIssuesOnly.value) return true;
+-  return ruleHasIssue(rule);
+-};
+-
+-const filteredTrafficSources = computed(() => {
+-  return draftTrafficSources.value.filter(sourceVisibleInBoard);
+-});
+-
+-const filteredLeadOrigins = computed(() => {
+-  return draftLeadOrigins.value.filter(leadOriginVisibleInBoard);
+-});
+-
+-const filteredDetectionRules = computed(() => {
+-  return draftDetectionRules.value.filter(ruleVisibleInBoard);
+-});
+-
+-const attributionIssueCount = computed(() => {
+-  return draftTrafficSources.value.filter(sourceHasIssue).length +
+-    draftLeadOrigins.value.filter(originHasIssue).length +
+-    draftDetectionRules.value.filter(ruleHasIssue).length;
+-});
+-
+-const fallbackPriorityLabels = computed(() => {
+-  const activeRules = draftDetectionRules.value.filter(rule => rule.active !== false);
+-  const priority = [];
+-  const paidRule = activeRules.find(rule => rule.field.startsWith('utm_') || ['gclid', 'fbclid', 'yclid'].includes(rule.field));
+-  const messageRule = activeRules.find(rule => rule.field === 'first_message');
+-
+-  if (paidRule) priority.push(ruleSummary(paidRule));
+-  else priority.push('UTM / click id present');
+-
+-  if (messageRule) priority.push(ruleSummary(messageRule));
+-  else priority.push('First message rule');
+-
+-  priority.push('No automatic rule — ask manager');
+-  return priority;
+-});
+-
+ const prepareAttributionDraft = (items, defaults, label, leadOrigins = []) => {
+   const prepared = sanitizeAttributionItems(
+     items.map((item, index) => ({
+@@ -1751,14 +1484,10 @@ const dealDateKeys = computed(() => {
  });
  
  const trendDateKeys = computed(() => {
@@ -189,20 +406,20 @@ index 6f171e2..490758b 100644
  
    return trendDateKeysBetween(fromKey, toKey);
  });
-@@ -1805,16 +1722,12 @@ const requestParams = page => {
+@@ -1993,16 +1722,12 @@ const requestParams = page => {
      per_page: PAGE_SIZE,
    };
  
 -  if (selectedRange.value) {
 -    params.created_at_preset = selectedRange.value;
--  }
--
--  if (customDateFrom.value) {
--    params.created_at_from = customDateFrom.value;
 +  if (analyticsDateFrom.value) {
 +    params.created_at_from = analyticsDateFrom.value;
    }
  
+-  if (customDateFrom.value) {
+-    params.created_at_from = customDateFrom.value;
+-  }
+-
 -  if (customDateTo.value) {
 -    params.created_at_to = customDateTo.value;
 +  if (analyticsDateTo.value) {
@@ -210,20 +427,20 @@ index 6f171e2..490758b 100644
    }
  
    return params;
-@@ -1823,16 +1736,12 @@ const requestParams = page => {
+@@ -2011,16 +1736,12 @@ const requestParams = page => {
  const spendRequestParams = () => {
    const params = {};
  
 -  if (selectedRange.value) {
 -    params.spend_date_preset = selectedRange.value;
--  }
--
--  if (customDateFrom.value) {
--    params.spend_date_from = customDateFrom.value;
 +  if (analyticsDateFrom.value) {
 +    params.spend_date_from = analyticsDateFrom.value;
    }
  
+-  if (customDateFrom.value) {
+-    params.spend_date_from = customDateFrom.value;
+-  }
+-
 -  if (customDateTo.value) {
 -    params.spend_date_to = customDateTo.value;
 +  if (analyticsDateTo.value) {
@@ -231,7 +448,7 @@ index 6f171e2..490758b 100644
    }
  
    return params;
-@@ -1895,18 +1804,42 @@ const fetchAnalytics = async () => {
+@@ -2083,18 +1804,42 @@ const fetchAnalytics = async () => {
    }
  };
  
@@ -251,8 +468,13 @@ index 6f171e2..490758b 100644
 +  });
 +
 +  router.replace({ query: { ...route.query, ...params } });
-+};
-+
+ };
+ 
+-const updateCustomDates = ({ from = customDateFrom.value, to = customDateTo.value } = {}) => {
+-  customDateFrom.value = normalizeDateInputValue(from);
+-  customDateTo.value = normalizeDateInputValue(to);
+-  selectedRange.value = '';
+-  fetchAnalytics();
 +const initializeDateRangeFromURL = () => {
 +  const urlParams = parseReportURLParams(route.query);
 +
@@ -266,13 +488,8 @@ index 6f171e2..490758b 100644
 +      new Date(urlParams.to * 1000),
 +    ];
 +  }
- };
- 
--const updateCustomDates = ({ from = customDateFrom.value, to = customDateTo.value } = {}) => {
--  customDateFrom.value = normalizeDateInputValue(from);
--  customDateTo.value = normalizeDateInputValue(to);
--  selectedRange.value = '';
--  fetchAnalytics();
++};
++
 +const onDateRangeChange = value => {
 +  const [startDate, endDate, rangeType] = value;
 +  analyticsDateRange.value = [startDate, endDate];
@@ -284,7 +501,7 @@ index 6f171e2..490758b 100644
  };
  
  const refreshMarketingAnalytics = async () => {
-@@ -1952,6 +1885,8 @@ const clearActiveMonthlyPoint = () => {
+@@ -2140,6 +1885,8 @@ const clearActiveMonthlyPoint = () => {
  };
  
  onMounted(() => {
@@ -293,7 +510,7 @@ index 6f171e2..490758b 100644
    fetchDashboardConfig();
    refreshMarketingAnalytics();
  });
-@@ -2003,79 +1938,12 @@ onMounted(() => {
+@@ -2191,79 +1938,12 @@ onMounted(() => {
            </div>
          </div>
  
@@ -379,3 +596,691 @@ index 6f171e2..490758b 100644
          </div>
  
          <div class="flex min-w-0 items-center gap-2">
+@@ -2917,17 +2597,26 @@ onMounted(() => {
+       class="fixed inset-0 z-50 bg-n-slate-12/40"
+       @click.self="closeAttributionSettings"
+     >
+-      <aside class="ml-auto flex h-full w-full max-w-[1420px] flex-col border-l border-n-weak bg-n-background shadow-xl">
++      <aside class="ml-auto flex h-full w-full max-w-[980px] flex-col border-l border-n-weak bg-n-background shadow-xl">
+         <header class="flex flex-wrap items-center justify-between gap-3 border-b border-n-weak px-5 py-4">
+           <div class="min-w-0">
+             <h2 class="text-base font-semibold text-n-slate-12">
+               Attribution Settings
+             </h2>
+             <div class="mt-1 text-xs text-n-slate-10">
+-              Understand how incoming leads receive a marketing source
++              Source mappings used in deal Marketing tabs
+             </div>
+           </div>
+           <div class="flex items-center gap-2">
++            <Button
++              icon="i-lucide-plus"
++              label="Add mapping"
++              size="sm"
++              slate
++              faded
++              type="button"
++              @click="addAttributionMapping"
++            />
+             <button
+               type="button"
+               class="h-8 rounded-md bg-n-brand px-3 text-sm font-medium text-white transition hover:bg-n-brand/90 disabled:cursor-not-allowed disabled:opacity-60"
+@@ -2947,7 +2636,7 @@ onMounted(() => {
+           </div>
+         </header>
+ 
+-        <div class="min-h-0 flex-1 overflow-y-auto bg-n-alpha-1/30 px-5 py-4">
++        <div class="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+           <div
+             v-if="attributionSettingsError"
+             class="mb-4 rounded-lg border border-n-ruby-5 bg-n-ruby-3 px-3 py-2 text-sm text-n-ruby-11"
+@@ -2955,425 +2644,254 @@ onMounted(() => {
+             {{ attributionSettingsError }}
+           </div>
+ 
+-          <div class="grid gap-4">
+-            <div class="flex flex-wrap items-center gap-3">
+-              <label class="relative min-w-[18rem] flex-1">
+-                <i class="i-lucide-search pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-n-slate-9" />
+-                <input
+-                  v-model="attributionSettingsSearch"
+-                  class="h-10 w-full rounded-lg border border-n-weak bg-n-background pl-9 pr-3 text-sm text-n-slate-12 outline-none transition focus:border-n-brand"
+-                  type="text"
+-                  placeholder="Search sources, origins, rules..."
+-                />
+-              </label>
+-              <button
+-                type="button"
+-                class="inline-flex h-10 items-center gap-2 rounded-lg border border-n-weak bg-n-background px-3 text-sm font-medium text-n-slate-11 transition hover:bg-n-alpha-2"
+-                @click="showAttributionIssuesOnly = !showAttributionIssuesOnly"
+-              >
+-                <i class="i-lucide-filter h-4 w-4" />
+-                Show issues only
+-                <span class="rounded-md bg-n-amber-3 px-1.5 py-0.5 text-xs font-semibold text-n-amber-11">
+-                  {{ attributionIssueCount }}
+-                </span>
+-              </button>
+-              <button
+-                type="button"
+-                class="ml-auto inline-flex h-10 items-center gap-1.5 rounded-lg px-2 text-sm text-n-slate-10 transition hover:bg-n-alpha-2 hover:text-n-slate-12"
+-                @click="showAttributionLegend = !showAttributionLegend"
+-              >
+-                <i class="i-lucide-info h-4 w-4" />
+-                Legend
+-              </button>
+-            </div>
+-
+-            <div
+-              v-if="showAttributionLegend"
+-              class="rounded-lg border border-n-weak bg-n-background px-3 py-3 text-xs text-n-slate-10"
+-            >
+-              <div class="flex flex-wrap items-center gap-4">
+-                <span class="inline-flex items-center gap-1.5">
+-                  <span class="inline-block h-2.5 w-2.5 rounded-full bg-n-brand" />
+-                  Active mapping
+-                </span>
+-                <span class="inline-flex items-center gap-1.5">
+-                  <i class="i-lucide-triangle-alert h-3.5 w-3.5 text-n-amber-10" />
+-                  Needs origin or rule
+-                </span>
+-                <span class="inline-flex items-center gap-1.5">
+-                  <span class="rounded border border-n-weak bg-n-alpha-1 px-1.5 py-0.5 font-mono text-[10px] uppercase">
+-                    UTM
+-                  </span>
+-                  Rule type
+-                </span>
+-              </div>
+-            </div>
+-
+-            <div class="grid gap-4 xl:grid-cols-3">
+-              <section class="space-y-3">
+-                <div class="flex items-end justify-between gap-3 px-1">
+-                  <div>
+-                    <div class="text-[11px] font-semibold uppercase tracking-[0.14em] text-n-slate-9">
+-                      Traffic Sources
+-                    </div>
+-                    <div class="mt-1 text-xs text-n-slate-10">
+-                      {{ activeCountFor(draftTrafficSources) }} active
+-                    </div>
+-                  </div>
+-                  <Button
+-                    icon="i-lucide-plus"
+-                    label="Add source"
+-                    size="xs"
+-                    slate
+-                    ghost
+-                    type="button"
+-                    @click="addAttributionMapping"
+-                  />
+-                </div>
+-
++          <section class="overflow-hidden rounded-lg border border-n-weak bg-n-solid-1">
++            <div class="overflow-x-auto">
++              <table class="min-w-[920px] w-full table-fixed border-collapse text-sm">
++                <colgroup>
++                  <col class="w-[4.5rem]" />
++                  <col class="w-[15rem]" />
++                  <col class="w-[13rem]" />
++                  <col />
++                  <col class="w-[7.5rem]" />
++                </colgroup>
++                <thead class="border-b border-n-weak bg-n-alpha-1 text-left text-[11px] font-semibold uppercase text-n-slate-10">
++                  <tr>
++                    <th class="px-3 py-2">Active</th>
++                    <th class="px-3 py-2">Traffic Source</th>
++                    <th class="px-3 py-2">Lead Origin</th>
++                    <th class="px-3 py-2">Auto Detection Rules</th>
++                    <th class="px-3 py-2 text-right">Actions</th>
++                  </tr>
++                </thead>
+                 <Draggable
+                   v-model="draftTrafficSources"
+                   :item-key="settingItemKey"
+                   handle=".js-attribution-drag-handle"
+-                  :disabled="Boolean(normalizedAttributionSearch) || showAttributionIssuesOnly"
+-                  class="grid gap-3"
++                  tag="tbody"
++                  class="divide-y divide-n-weak"
+                 >
+                   <template #item="{ element }">
+-                    <article
+-                      v-if="sourceVisibleInBoard(element)"
+-                      class="rounded-xl border border-n-weak bg-n-background p-3 shadow-sm"
+-                      :class="{ 'border-n-amber-5': sourceHasIssue(element) }"
+-                    >
+-                      <div class="flex items-start gap-2">
+-                        <span
+-                          class="mt-1 h-3 w-3 shrink-0 rounded-full border border-white shadow-sm"
+-                          :style="{ backgroundColor: element.color }"
+-                        />
+-                        <div class="min-w-0 flex-1">
+-                          <div class="flex items-center gap-1.5">
+-                            <input
+-                              v-model="element.label"
+-                              class="min-w-0 flex-1 rounded-md border border-transparent bg-transparent px-1 py-0.5 text-sm font-medium text-n-slate-12 outline-none transition hover:border-n-weak focus:border-n-brand focus:bg-n-alpha-1"
+-                              type="text"
+-                            />
+-                            <i
+-                              v-if="sourceHasIssue(element)"
+-                              class="i-lucide-triangle-alert h-4 w-4 shrink-0 text-n-amber-10"
+-                            />
+-                          </div>
+-                          <div class="mt-0.5 text-[11px] text-n-slate-9">
+-                            {{ element.key }}
+-                          </div>
+-                        </div>
+-                        <div class="flex items-center gap-1">
+-                          <span class="text-[11px] text-n-slate-9">
+-                            {{ sourceConnectionLabel(element) }}
+-                          </span>
++                    <tr class="align-middle">
++                      <td class="px-3 py-2">
++                        <label class="inline-flex h-8 items-center">
+                           <input
+                             v-model="element.is_active"
+                             class="h-4 w-4 rounded border-n-weak text-n-brand"
+                             type="checkbox"
+-                            aria-label="Toggle source active state"
++                            aria-label="Toggle mapping active state"
+                           />
++                        </label>
++                      </td>
++                      <td class="px-3 py-2">
++                        <div class="flex min-w-0 items-center gap-2">
++                          <input
++                            v-model="element.color"
++                            class="h-6 w-6 shrink-0 cursor-pointer rounded border border-n-weak bg-n-background p-0.5"
++                            type="color"
++                            aria-label="Traffic source color"
++                          />
++                          <input
++                            v-model="element.label"
++                            class="h-8 min-w-0 flex-1 rounded-md border border-transparent bg-transparent px-2 text-sm font-medium text-n-slate-12 outline-none transition hover:border-n-weak hover:bg-n-background focus:border-n-brand focus:bg-n-background"
++                            type="text"
++                            aria-label="Traffic source label"
++                          />
++                          <span class="max-w-24 shrink-0 truncate text-[11px] text-n-slate-9">
++                            {{ element.key }}
++                          </span>
++                        </div>
++                      </td>
++                      <td class="px-3 py-2">
++                        <div class="flex min-w-0 items-center gap-2">
++                          <select
++                            class="h-8 min-w-0 flex-1 rounded-md border border-n-weak bg-n-background px-2 text-sm text-n-slate-12 outline-none transition focus:border-n-brand"
++                            :value="leadOriginKeyForSource(element)"
++                            @change="setTrafficSourceLeadOrigin(element, $event.target.value)"
++                          >
++                            <option value="">Ask manager</option>
++                            <option
++                              v-for="origin in activeAttributionItems(draftLeadOrigins)"
++                              :key="origin.key"
++                              :value="origin.key"
++                            >
++                              {{ origin.label }}
++                            </option>
++                          </select>
++                          <span
++                            v-if="!leadOriginKeyForSource(element)"
++                            class="shrink-0 rounded-md bg-n-amber-3 px-1.5 py-0.5 text-[11px] font-medium text-n-amber-11"
++                          >
++                            Needs source
++                          </span>
++                        </div>
++                      </td>
++                      <td class="px-3 py-2">
++                        <div class="flex min-w-0 items-center gap-1.5 overflow-x-auto py-0.5">
++                          <span
++                            v-if="!rulesForTrafficSource(element).length"
++                            class="inline-flex h-7 shrink-0 items-center rounded-md border border-dashed border-n-weak px-2 text-xs text-n-slate-10"
++                          >
++                            Manual only
++                          </span>
++                          <span
++                            v-for="rule in rulesForTrafficSource(element)"
++                            :key="rule.id"
++                            class="inline-flex h-7 shrink-0 items-center gap-1 rounded-md border border-n-weak bg-n-background px-1.5"
++                            :title="ruleSummary(rule)"
++                          >
++                            <input
++                              v-model="rule.active"
++                              class="h-3.5 w-3.5 rounded border-n-weak text-n-brand"
++                              type="checkbox"
++                              aria-label="Toggle rule active state"
++                            />
++                            <select
++                              v-model="rule.field"
++                              class="h-6 w-24 rounded border-0 bg-transparent px-1 text-xs text-n-slate-12 outline-none focus:bg-n-alpha-1"
++                              aria-label="Rule field"
++                            >
++                              <option
++                                v-for="field in DETECTION_RULE_FIELDS"
++                                :key="field.value"
++                                :value="field.value"
++                              >
++                                {{ field.label }}
++                              </option>
++                            </select>
++                            <select
++                              v-model="rule.operator"
++                              class="h-6 w-[4.5rem] rounded border-0 bg-transparent px-1 text-xs text-n-slate-12 outline-none focus:bg-n-alpha-1"
++                              aria-label="Rule operator"
++                            >
++                              <option
++                                v-for="operator in DETECTION_RULE_OPERATORS"
++                                :key="operator.value"
++                                :value="operator.value"
++                              >
++                                {{ operator.label }}
++                              </option>
++                            </select>
++                            <input
++                              v-if="rule.operator !== 'exists'"
++                              v-model="rule.value"
++                              class="h-6 w-20 rounded border-0 bg-transparent px-1 text-xs text-n-slate-12 outline-none placeholder:text-n-slate-9 focus:bg-n-alpha-1"
++                              placeholder="Match text"
++                              type="text"
++                              aria-label="Rule value"
++                            />
++                            <span
++                              v-else
++                              class="rounded bg-n-alpha-2 px-1.5 py-0.5 text-xs text-n-slate-10"
++                            >
++                              exists
++                            </span>
++                            <button
++                              type="button"
++                              class="grid h-6 w-6 place-items-center rounded text-n-slate-9 hover:bg-n-alpha-2 hover:text-n-ruby-10"
++                              aria-label="Remove rule"
++                              @click="removeDetectionRule(rule)"
++                            >
++                              <i class="i-lucide-x h-3.5 w-3.5" />
++                            </button>
++                          </span>
++                          <button
++                            type="button"
++                            class="inline-flex h-7 shrink-0 items-center gap-1 rounded-md px-2 text-xs font-medium text-n-brand transition hover:bg-n-alpha-2"
++                            @click="addRuleForSource(element)"
++                          >
++                            <i class="i-lucide-plus h-3.5 w-3.5" />
++                            Add rule
++                          </button>
++                        </div>
++                      </td>
++                      <td class="px-3 py-2">
++                        <div class="flex items-center justify-end gap-1">
+                           <button
+                             type="button"
+-                            class="grid h-8 w-8 place-items-center rounded-md text-n-slate-9 transition hover:bg-n-alpha-2 hover:text-n-slate-12"
++                            class="js-attribution-drag-handle grid h-8 w-8 cursor-grab place-items-center rounded-md text-n-slate-9 transition hover:bg-n-alpha-2 hover:text-n-slate-12"
+                             aria-label="Reorder mapping"
+                             title="Reorder"
+                           >
+-                            <i class="js-attribution-drag-handle i-lucide-grip-vertical h-4 w-4 cursor-grab" />
++                            <i class="i-lucide-grip-vertical h-4 w-4" />
+                           </button>
+-                        </div>
+-                      </div>
+-
+-                      <div class="mt-3 flex flex-wrap items-center gap-2">
+-                        <select
+-                          class="h-8 min-w-[11rem] rounded-md border border-dashed border-n-weak bg-n-background px-2 text-xs text-n-slate-11 outline-none transition focus:border-n-brand"
+-                          :value="leadOriginKeyForSource(element)"
+-                          @change="setTrafficSourceLeadOrigin(element, $event.target.value)"
+-                        >
+-                          <option value="">Connect origin</option>
+-                          <option
+-                            v-for="origin in activeAttributionItems(draftLeadOrigins)"
+-                            :key="origin.key"
+-                            :value="origin.key"
++                          <button
++                            type="button"
++                            class="grid h-8 w-8 place-items-center rounded-md text-n-slate-9 transition hover:bg-n-ruby-3 hover:text-n-ruby-11"
++                            aria-label="Remove mapping"
++                            title="Remove mapping"
++                            @click="removeAttributionMapping(element)"
+                           >
+-                            {{ origin.label }}
+-                          </option>
+-                        </select>
+-                        <button
+-                          type="button"
+-                          class="inline-flex h-8 items-center gap-1 rounded-md px-2 text-xs font-medium text-n-brand transition hover:bg-n-alpha-2"
+-                          @click="addRuleForSource(element)"
+-                        >
+-                          <i class="i-lucide-plus h-3.5 w-3.5" />
+-                          Add rule
+-                        </button>
+-                        <button
+-                          type="button"
+-                          class="ml-auto grid h-8 w-8 place-items-center rounded-md text-n-slate-9 transition hover:bg-n-ruby-3 hover:text-n-ruby-11"
+-                          aria-label="Remove mapping"
+-                          @click="removeAttributionMapping(element)"
+-                        >
+-                          <i class="i-lucide-trash-2 h-4 w-4" />
+-                        </button>
+-                      </div>
+-                    </article>
++                            <i class="i-lucide-trash-2 h-4 w-4" />
++                          </button>
++                        </div>
++                      </td>
++                    </tr>
+                   </template>
+                 </Draggable>
+-              </section>
+-
+-              <section class="space-y-3">
+-                <div class="flex items-end justify-between gap-3 px-1">
+-                  <div>
+-                    <div class="text-[11px] font-semibold uppercase tracking-[0.14em] text-n-slate-9">
+-                      Lead Origins
+-                    </div>
+-                    <div class="mt-1 text-xs text-n-slate-10">
+-                      {{ activeCountFor(draftLeadOrigins) }} active
+-                    </div>
+-                  </div>
+-                  <Button
+-                    icon="i-lucide-plus"
+-                    label="Add origin"
+-                    size="xs"
+-                    slate
+-                    ghost
+-                    type="button"
+-                    @click="addLeadOrigin"
+-                  />
+-                </div>
+-
+-                <article
+-                  v-for="origin in filteredLeadOrigins"
+-                  :key="origin.key"
+-                  class="rounded-xl border border-n-weak bg-n-background p-3 shadow-sm"
+-                  :class="{ 'border-n-amber-5': originHasIssue(origin) }"
+-                >
+-                  <div class="flex items-start gap-2">
+-                    <span
+-                      class="mt-1 h-3 w-3 shrink-0 rounded-full border border-white shadow-sm"
+-                      :style="{ backgroundColor: origin.color }"
+-                    />
+-                    <div class="min-w-0 flex-1">
+-                      <div class="flex items-center gap-1.5">
+-                        <input
+-                          v-model="origin.label"
+-                          class="min-w-0 flex-1 rounded-md border border-transparent bg-transparent px-1 py-0.5 text-sm font-medium text-n-slate-12 outline-none transition hover:border-n-weak focus:border-n-brand focus:bg-n-alpha-1"
+-                          type="text"
+-                        />
+-                        <i
+-                          v-if="originHasIssue(origin)"
+-                          class="i-lucide-triangle-alert h-4 w-4 shrink-0 text-n-amber-10"
+-                        />
+-                      </div>
+-                      <div class="mt-0.5 text-[11px] text-n-slate-9">
+-                        {{ origin.key }}
+-                      </div>
+-                    </div>
+-                    <div class="flex items-center gap-1">
+-                      <span class="text-[11px] text-n-slate-9">
+-                        {{ leadOriginCountLabel(origin) }}
+-                      </span>
+-                      <input
+-                        v-model="origin.is_active"
+-                        class="h-4 w-4 rounded border-n-weak text-n-brand"
+-                        type="checkbox"
+-                        aria-label="Toggle origin active state"
+-                      />
+-                    </div>
+-                  </div>
+-
+-                  <div class="mt-3 space-y-2">
+-                    <div
+-                      v-if="!leadOriginMappings(origin).length"
+-                      class="rounded-md border border-dashed border-n-weak px-3 py-2 text-xs text-n-slate-10"
+-                    >
+-                      No connected sources yet
+-                    </div>
+-                    <div
+-                      v-for="source in leadOriginMappings(origin)"
+-                      :key="source.key"
+-                      class="flex items-center gap-2 rounded-md bg-n-alpha-1 px-2.5 py-2 text-xs"
+-                    >
+-                      <span
+-                        class="h-2.5 w-2.5 shrink-0 rounded-full"
+-                        :style="{ backgroundColor: source.color }"
+-                      />
+-                      <span class="truncate text-n-slate-11">{{ source.label }}</span>
+-                      <i class="i-lucide-chevron-right h-3.5 w-3.5 shrink-0 text-n-slate-8" />
+-                      <span
+-                        class="truncate"
+-                        :class="sourceRuleCount(source) ? 'text-n-slate-10' : 'text-n-amber-10'"
+-                      >
+-                        {{ sourceRulePreview(source) }}
+-                      </span>
+-                      <span
+-                        v-if="sourceRuleCount(source) > 1"
+-                        class="rounded-md bg-n-background px-1.5 py-0.5 text-[11px] text-n-slate-9"
+-                      >
+-                        +{{ sourceRuleCount(source) - 1 }}
+-                      </span>
+-                      <button
+-                        type="button"
+-                        class="ml-auto grid h-6 w-6 place-items-center rounded text-n-slate-9 transition hover:bg-n-ruby-3 hover:text-n-ruby-11"
+-                        aria-label="Remove source from origin"
+-                        @click="setTrafficSourceLeadOrigin(source, '')"
+-                      >
+-                        <i class="i-lucide-trash-2 h-3.5 w-3.5" />
+-                      </button>
+-                    </div>
+-                  </div>
+-                </article>
+-              </section>
+-
+-              <section class="space-y-3">
+-                <div class="flex items-end justify-between gap-3 px-1">
+-                  <div>
+-                    <div class="text-[11px] font-semibold uppercase tracking-[0.14em] text-n-slate-9">
+-                      Detection Rules
+-                    </div>
+-                    <div class="mt-1 text-xs text-n-slate-10">
+-                      {{ draftDetectionRules.length }} configured
+-                    </div>
+-                  </div>
+-                </div>
+-
+-                <article
+-                  v-for="rule in filteredDetectionRules"
+-                  :key="rule.id"
+-                  class="rounded-xl border border-n-weak bg-n-background p-3 shadow-sm"
+-                  :class="{ 'border-n-amber-5': ruleHasIssue(rule) }"
+-                >
+-                  <div class="flex items-start gap-2">
+-                    <span class="rounded-md border border-n-weak bg-n-alpha-1 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wide text-n-slate-10">
+-                      {{ ruleTypeLabel(rule) }}
+-                    </span>
+-                    <div class="min-w-0 flex-1">
+-                      <div class="truncate text-sm font-medium text-n-slate-12">
+-                        {{ ruleSummary(rule) }}
+-                      </div>
+-                      <div class="mt-0.5 text-[11px] text-n-slate-9">
+-                        {{ ruleUsageLabel(rule) }}
+-                      </div>
+-                    </div>
+-                    <div class="flex items-center gap-1">
+-                      <input
+-                        v-model="rule.active"
+-                        class="h-4 w-4 rounded border-n-weak text-n-brand"
+-                        type="checkbox"
+-                        aria-label="Toggle rule active state"
+-                      />
+-                      <button
+-                        type="button"
+-                        class="grid h-8 w-8 place-items-center rounded-md text-n-slate-9 transition hover:bg-n-ruby-3 hover:text-n-ruby-11"
+-                        aria-label="Remove rule"
+-                        @click="removeDetectionRule(rule)"
+-                      >
+-                        <i class="i-lucide-trash-2 h-4 w-4" />
+-                      </button>
+-                    </div>
+-                  </div>
+-
+-                  <div class="mt-3 grid gap-2 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+-                    <select
+-                      class="h-8 rounded-md border border-n-weak bg-n-background px-2 text-xs text-n-slate-12 outline-none transition focus:border-n-brand"
+-                      :value="rule.result_traffic_source_key"
+-                      @change="setDetectionRuleTrafficSource(rule, $event.target.value)"
+-                    >
+-                      <option value="">Choose source</option>
+-                      <option
+-                        v-for="source in activeAttributionItems(draftTrafficSources)"
+-                        :key="source.key"
+-                        :value="source.key"
+-                      >
+-                        {{ source.label }}
+-                      </option>
+-                    </select>
+-                    <select
+-                      class="h-8 rounded-md border border-n-weak bg-n-background px-2 text-xs text-n-slate-12 outline-none transition focus:border-n-brand"
+-                      :value="rule.result_lead_origin_key"
+-                      @change="setDetectionRuleLeadOrigin(rule, $event.target.value)"
+-                    >
+-                      <option value="">Choose origin</option>
+-                      <option
+-                        v-for="origin in activeAttributionItems(draftLeadOrigins)"
+-                        :key="origin.key"
+-                        :value="origin.key"
+-                      >
+-                        {{ origin.label }}
+-                      </option>
+-                    </select>
+-                    <select
+-                      v-model="rule.field"
+-                      class="h-8 rounded-md border border-n-weak bg-n-background px-2 text-xs text-n-slate-12 outline-none transition focus:border-n-brand"
+-                    >
+-                      <option
+-                        v-for="field in DETECTION_RULE_FIELDS"
+-                        :key="field.value"
+-                        :value="field.value"
+-                      >
+-                        {{ field.label }}
+-                      </option>
+-                    </select>
+-                    <div class="grid gap-2 sm:grid-cols-[7rem_minmax(0,1fr)]">
+-                      <select
+-                        v-model="rule.operator"
+-                        class="h-8 rounded-md border border-n-weak bg-n-background px-2 text-xs text-n-slate-12 outline-none transition focus:border-n-brand"
+-                      >
+-                        <option
+-                          v-for="operator in DETECTION_RULE_OPERATORS"
+-                          :key="operator.value"
+-                          :value="operator.value"
+-                        >
+-                          {{ operator.label }}
+-                        </option>
+-                      </select>
+-                      <input
+-                        v-if="rule.operator !== 'exists'"
+-                        v-model="rule.value"
+-                        class="h-8 rounded-md border border-n-weak bg-n-background px-2 text-xs text-n-slate-12 outline-none transition focus:border-n-brand"
+-                        placeholder="Match text"
+-                        type="text"
+-                      />
+-                      <div
+-                        v-else
+-                        class="inline-flex h-8 items-center rounded-md border border-dashed border-n-weak px-2 text-xs text-n-slate-10"
+-                      >
+-                        Any value
+-                      </div>
+-                    </div>
+-                  </div>
+-                </article>
+-
+-                <button
+-                  type="button"
+-                  class="inline-flex h-9 w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-n-weak bg-n-background text-sm text-n-slate-10 transition hover:bg-n-alpha-2 hover:text-n-slate-12"
+-                  @click="addDetectionRule"
+-                >
+-                  <i class="i-lucide-plus h-3.5 w-3.5" />
+-                  Add rule
+-                </button>
+-              </section>
++              </table>
+             </div>
+-
+-            <div class="rounded-lg border border-n-weak bg-n-background px-3 py-2.5">
+-              <div class="flex flex-wrap items-center gap-2 text-xs text-n-slate-10">
+-                <span class="font-semibold uppercase tracking-[0.14em] text-n-slate-9">Fallback Priority</span>
+-                <template
+-                  v-for="(label, index) in fallbackPriorityLabels"
+-                  :key="`${label}-${index}`"
+-                >
+-                  <span class="rounded-md border border-n-weak bg-n-alpha-1 px-2 py-1 text-xs text-n-slate-11">
+-                    {{ label }}
+-                  </span>
+-                  <i
+-                    v-if="index < fallbackPriorityLabels.length - 1"
+-                    class="i-lucide-chevron-right h-3.5 w-3.5 text-n-slate-8"
++          </section>
++
++          <section class="mt-3 overflow-hidden rounded-lg border border-n-weak bg-n-solid-1">
++            <div class="flex items-center justify-between gap-3 border-b border-n-weak bg-n-alpha-1 px-3 py-2">
++              <div class="text-xs font-semibold text-n-slate-12">
++                Lead origin options
++                <span class="ml-1 font-normal text-n-slate-10">
++                  {{ activeCountFor(draftLeadOrigins) }} active
++                </span>
++              </div>
++              <Button
++                icon="i-lucide-plus"
++                label="Add origin"
++                size="xs"
++                slate
++                ghost
++                type="button"
++                @click="addLeadOrigin"
++              />
++            </div>
++            <div class="divide-y divide-n-weak">
++              <div
++                v-for="origin in draftLeadOrigins"
++                :key="origin.key"
++                class="grid min-h-10 items-center gap-2 px-3 py-2 sm:grid-cols-[72px_minmax(0,1fr)_72px]"
++              >
++                <label class="inline-flex items-center gap-2 text-xs text-n-slate-10">
++                  <input
++                    v-model="origin.is_active"
++                    class="h-4 w-4 rounded border-n-weak text-n-brand"
++                    type="checkbox"
++                  />
++                  Active
++                </label>
++                <div class="flex min-w-0 items-center gap-2">
++                  <input
++                    v-model="origin.color"
++                    class="h-7 w-7 shrink-0 cursor-pointer rounded border border-n-weak bg-n-background p-0.5"
++                    type="color"
++                    aria-label="Lead origin color"
+                   />
+-                </template>
++                  <input
++                    v-model="origin.label"
++                    class="h-8 min-w-0 flex-1 rounded-md border border-transparent bg-transparent px-2 text-sm text-n-slate-12 outline-none transition hover:border-n-weak hover:bg-n-background focus:border-n-brand focus:bg-n-background"
++                    type="text"
++                    aria-label="Lead origin label"
++                  />
++                </div>
++                <span class="truncate text-right text-[11px] text-n-slate-9">
++                  {{ origin.key }}
++                </span>
+               </div>
+             </div>
++          </section>
++
++          <div class="mt-3 rounded-lg border border-n-weak bg-n-alpha-1 px-3 py-2 text-xs text-n-slate-10">
++            <span class="font-semibold text-n-slate-11">Fallback:</span>
++            <span class="ml-1">1. UTM / click id</span>
++            <span class="mx-1 text-n-slate-8">→</span>
++            <span>2. First message rule</span>
++            <span class="mx-1 text-n-slate-8">→</span>
++            <span>3. Ask manager</span>
+           </div>
+         </div>
+       </aside>
