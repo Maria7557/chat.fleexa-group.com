@@ -1,0 +1,178 @@
+diff --git a/app/controllers/api/v1/accounts/crm/marketing_dashboard_controller.rb b/app/controllers/api/v1/accounts/crm/marketing_dashboard_controller.rb
+index 9380401..e9dfe46 100644
+--- a/app/controllers/api/v1/accounts/crm/marketing_dashboard_controller.rb
++++ b/app/controllers/api/v1/accounts/crm/marketing_dashboard_controller.rb
+@@ -12,6 +12,24 @@ class Api::V1::Accounts::Crm::MarketingDashboardController < Api::V1::Accounts::
+     { key: 'done_amount', visible: false }
+   ].freeze
+   ALLOWED_WIDGET_KEYS = DEFAULT_WIDGETS.map { |widget| widget[:key] }.freeze
++  DEFAULT_TRAFFIC_SOURCES = [
++    { key: 'google_ads', label: 'Google Ads', color: '#0EA5A0', is_active: true },
++    { key: 'meta_ads', label: 'Meta Ads', color: '#2E6F95', is_active: true },
++    { key: 'tiktok_ads', label: 'TikTok Ads', color: '#875B7B', is_active: true },
++    { key: 'dubizzle', label: 'Dubizzle', color: '#F59E0B', is_active: true },
++    { key: 'website_organic', label: 'Website Organic', color: '#0C8A86', is_active: true },
++    { key: 'referral', label: 'Referral', color: '#64748B', is_active: true },
++    { key: 'other', label: 'Other', color: '#94A3B8', is_active: true }
++  ].freeze
++  DEFAULT_LEAD_ORIGINS = [
++    { key: 'website', label: 'Website', color: '#0EA5A0', is_active: true },
++    { key: 'instagram', label: 'Instagram', color: '#C13584', is_active: true },
++    { key: 'facebook', label: 'Facebook', color: '#1877F2', is_active: true },
++    { key: 'telegram_bot', label: 'Telegram Bot', color: '#229ED9', is_active: true },
++    { key: 'whatsapp', label: 'WhatsApp', color: '#25D366', is_active: true },
++    { key: 'call', label: 'Call', color: '#0F1923', is_active: true },
++    { key: 'other', label: 'Other', color: '#94A3B8', is_active: true }
++  ].freeze
+ 
+   before_action :check_read_authorization, only: [:show, :spend, :monthly_spend]
+   before_action :check_write_authorization, only: [
+@@ -89,7 +107,8 @@ class Api::V1::Accounts::Crm::MarketingDashboardController < Api::V1::Accounts::
+   end
+ 
+   def update
+-    config = normalized_config(dashboard_config_params.to_h)
++    incoming_config = dashboard_config_params.to_h
++    config = normalized_config(stored_config_hash.deep_merge(incoming_config))
+     settings = (Current.account.settings || {}).to_h
+     Current.account.update!(settings: settings.merge(CONFIG_KEY => config))
+ 
+@@ -102,13 +121,37 @@ class Api::V1::Accounts::Crm::MarketingDashboardController < Api::V1::Accounts::
+     (Current.account.settings || {})[CONFIG_KEY]
+   end
+ 
++  def stored_config_hash
++    stored_config.is_a?(Hash) ? stored_config : {}
++  end
++
+   def dashboard_config_params
+-    params.require(:crm_marketing_dashboard).permit(widgets: [:key, :visible, :position])
++    params.require(:crm_marketing_dashboard).permit(
++      widgets: [:key, :visible, :position],
++      traffic_sources: [:key, :label, :color, :is_active, :sort_order],
++      lead_origins: [:key, :label, :color, :is_active, :sort_order]
++    )
+   end
+ 
+   def normalized_config(raw_config)
+-    raw_widgets = raw_config.is_a?(Hash) ? Array(raw_config['widgets'] || raw_config[:widgets]) : []
+-    return default_config if raw_widgets.blank?
++    raw_config = raw_config.is_a?(Hash) ? raw_config : {}
++
++    {
++      widgets: normalized_widgets(raw_config['widgets'] || raw_config[:widgets]),
++      traffic_sources: normalized_attribution_items(
++        raw_config['traffic_sources'] || raw_config[:traffic_sources],
++        DEFAULT_TRAFFIC_SOURCES
++      ),
++      lead_origins: normalized_attribution_items(
++        raw_config['lead_origins'] || raw_config[:lead_origins],
++        DEFAULT_LEAD_ORIGINS
++      )
++    }
++  end
++
++  def normalized_widgets(raw_widgets)
++    raw_widgets = Array(raw_widgets)
++    return default_widgets if raw_widgets.blank?
+ 
+     widgets_by_key = raw_widgets.each_with_object({}) do |widget, memo|
+       key = value_for(widget, :key).to_s
+@@ -119,7 +162,7 @@ class Api::V1::Accounts::Crm::MarketingDashboardController < Api::V1::Accounts::
+         position: value_for(widget, :position).to_i
+       }
+     end
+-    return default_config if widgets_by_key.blank?
++    return default_widgets if widgets_by_key.blank?
+ 
+     widgets = DEFAULT_WIDGETS.map.with_index do |widget, index|
+       key = widget[:key]
+@@ -139,24 +182,77 @@ class Api::V1::Accounts::Crm::MarketingDashboardController < Api::V1::Accounts::
+       }
+     end
+ 
+-    {
+-      widgets: widgets.sort_by { |widget| [widget[:position], default_position(widget[:key])] }
+-                      .map.with_index { |widget, index| widget.merge(position: index + 1) }
+-    }
++    widgets.sort_by { |widget| [widget[:position], default_position(widget[:key])] }
++           .map.with_index { |widget, index| widget.merge(position: index + 1) }
+   end
+ 
+   def default_config
+     {
+-      widgets: DEFAULT_WIDGETS.map.with_index do |widget, index|
+-        {
+-          key: widget[:key],
+-          visible: widget[:visible],
+-          position: index + 1
+-        }
+-      end
++      widgets: default_widgets,
++      traffic_sources: default_attribution_items(DEFAULT_TRAFFIC_SOURCES),
++      lead_origins: default_attribution_items(DEFAULT_LEAD_ORIGINS)
+     }
+   end
+ 
++  def default_widgets
++    DEFAULT_WIDGETS.map.with_index do |widget, index|
++      {
++        key: widget[:key],
++        visible: widget[:visible],
++        position: index + 1
++      }
++    end
++  end
++
++  def default_attribution_items(defaults)
++    defaults.map.with_index do |item, index|
++      item.merge(sort_order: index + 1)
++    end
++  end
++
++  def normalized_attribution_items(raw_items, defaults)
++    raw_items = Array(raw_items)
++    return default_attribution_items(defaults) if raw_items.blank?
++
++    fallback_by_key = default_attribution_items(defaults).index_by { |item| item[:key] }
++    items = raw_items.each_with_index.filter_map do |item, index|
++      label = value_for(item, :label).to_s.strip
++      key = attribution_key(value_for(item, :key).presence || label)
++      next if key.blank? || label.blank?
++
++      fallback = fallback_by_key[key] || {}
++      sort_order = value_for(item, :sort_order).to_i
++      {
++        key: key,
++        label: label,
++        color: normalized_color(value_for(item, :color), fallback[:color]),
++        is_active: value_for(item, :is_active).nil? ? true : boolean_value(value_for(item, :is_active)),
++        sort_order: sort_order.positive? ? sort_order : index + 1
++      }
++    end
++
++    return default_attribution_items(defaults) if items.blank?
++
++    items.uniq { |item| item[:key] }
++         .sort_by { |item| item[:sort_order] }
++         .map.with_index { |item, index| item.merge(sort_order: index + 1) }
++  end
++
++  def attribution_key(value)
++    value.to_s
++         .strip
++         .downcase
++         .gsub(/[^a-z0-9]+/, '_')
++         .gsub(/\A_+|_+\z/, '')
++  end
++
++  def normalized_color(value, fallback)
++    color = value.to_s.strip
++    return color if color.match?(/\A#[0-9a-fA-F]{6}\z/)
++
++    fallback.presence || '#94A3B8'
++  end
++
+   def default_position(key)
+     ALLOWED_WIDGET_KEYS.index(key) || ALLOWED_WIDGET_KEYS.length
+   end

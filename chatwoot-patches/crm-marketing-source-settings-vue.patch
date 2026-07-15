@@ -1,0 +1,877 @@
+diff --git a/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue b/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue
+index 7b0b7e7..88ffe68 100644
+--- a/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue
++++ b/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue
+@@ -46,6 +46,24 @@ const KPI_WIDGET_POSITION = KPI_WIDGET_KEYS.reduce((memo, key, index) => {
+   memo[key] = index + 1;
+   return memo;
+ }, {});
++const DEFAULT_TRAFFIC_SOURCES = [
++  { key: 'google_ads', label: 'Google Ads', color: '#0EA5A0', is_active: true },
++  { key: 'meta_ads', label: 'Meta Ads', color: '#2E6F95', is_active: true },
++  { key: 'tiktok_ads', label: 'TikTok Ads', color: '#875B7B', is_active: true },
++  { key: 'dubizzle', label: 'Dubizzle', color: '#F59E0B', is_active: true },
++  { key: 'website_organic', label: 'Website Organic', color: '#0C8A86', is_active: true },
++  { key: 'referral', label: 'Referral', color: '#64748B', is_active: true },
++  { key: 'other', label: 'Other', color: '#94A3B8', is_active: true },
++];
++const DEFAULT_LEAD_ORIGINS = [
++  { key: 'website', label: 'Website', color: '#0EA5A0', is_active: true },
++  { key: 'instagram', label: 'Instagram', color: '#C13584', is_active: true },
++  { key: 'facebook', label: 'Facebook', color: '#1877F2', is_active: true },
++  { key: 'telegram_bot', label: 'Telegram Bot', color: '#229ED9', is_active: true },
++  { key: 'whatsapp', label: 'WhatsApp', color: '#25D366', is_active: true },
++  { key: 'call', label: 'Call', color: '#0F1923', is_active: true },
++  { key: 'other', label: 'Other', color: '#94A3B8', is_active: true },
++];
+ 
+ const TREND_CHART_WIDTH = 720;
+ const TREND_CHART_HEIGHT = 240;
+@@ -96,6 +114,11 @@ const dashboardConfig = ref(null);
+ const draftWidgetKeys = ref([...DEFAULT_VISIBLE_WIDGET_KEYS]);
+ const isDashboardCustomizerOpen = ref(false);
+ const isSavingDashboardConfig = ref(false);
++const isAttributionSettingsOpen = ref(false);
++const isSavingAttributionSettings = ref(false);
++const attributionSettingsError = ref('');
++const draftTrafficSources = ref([]);
++const draftLeadOrigins = ref([]);
+ const { isAdmin } = useAdmin();
+ const isManualSpendDrawerOpen = ref(false);
+ const isSavingManualSpend = ref(false);
+@@ -535,37 +558,97 @@ const normalizeWidgetVisible = value => {
+   return undefined;
+ };
+ 
++const attributionKeyFromLabel = value => {
++  return String(value || '')
++    .trim()
++    .toLowerCase()
++    .replace(/[^a-z0-9]+/g, '_')
++    .replace(/^_+|_+$/g, '');
++};
++
++const defaultAttributionItems = defaults => {
++  return defaults.map((item, index) => ({
++    ...item,
++    sort_order: index + 1,
++  }));
++};
++
++const normalizeColor = (value, fallback = '#94A3B8') => {
++  const color = String(value || '').trim();
++  return /^#[0-9a-f]{6}$/i.test(color) ? color : fallback;
++};
++
++const sanitizeAttributionItems = (items, defaults) => {
++  const rawItems = Array.isArray(items) ? items : [];
++  if (!rawItems.length) return defaultAttributionItems(defaults);
++
++  const fallbackByKey = defaultAttributionItems(defaults).reduce((memo, item) => {
++    memo[item.key] = item;
++    return memo;
++  }, {});
++
++  const sanitized = rawItems
++    .map((item, index) => {
++      const label = String(item?.label || '').trim();
++      const key = attributionKeyFromLabel(item?.key || label);
++      if (!key || !label) return null;
++
++      const fallback = fallbackByKey[key] || {};
++      const sortOrder = Number.parseInt(item?.sort_order, 10);
++      return {
++        key,
++        label,
++        color: normalizeColor(item?.color, fallback.color),
++        is_active: item?.is_active !== false,
++        sort_order: Number.isFinite(sortOrder) && sortOrder > 0 ? sortOrder : index + 1,
++      };
++    })
++    .filter(Boolean);
++
++  if (!sanitized.length) return defaultAttributionItems(defaults);
++
++  const seen = new Set();
++  return sanitized
++    .filter(item => {
++      if (seen.has(item.key)) return false;
++      seen.add(item.key);
++      return true;
++    })
++    .sort((a, b) => a.sort_order - b.sort_order)
++    .map((item, index) => ({ ...item, sort_order: index + 1 }));
++};
++
+ const defaultDashboardConfig = () => ({
+   widgets: KPI_WIDGETS.map((widget, index) => ({
+     key: widget.key,
+     visible: widget.visible,
+     position: index + 1,
+   })),
++  traffic_sources: defaultAttributionItems(DEFAULT_TRAFFIC_SOURCES),
++  lead_origins: defaultAttributionItems(DEFAULT_LEAD_ORIGINS),
+ });
+ 
+ const sanitizeDashboardConfig = config => {
+   const rawWidgets = Array.isArray(config?.widgets) ? config.widgets : [];
+-  if (!rawWidgets.length) return defaultDashboardConfig();
+-
+   const widgetsByKey = rawWidgets.reduce((memo, widget) => {
+     const key = String(widget?.key || '');
+     if (KPI_WIDGET_KEYS.includes(key)) memo[key] = widget;
+     return memo;
+   }, {});
+ 
+-  if (!Object.keys(widgetsByKey).length) return defaultDashboardConfig();
++  const widgets = Object.keys(widgetsByKey).length
++    ? KPI_WIDGETS.map((widget, index) => {
++      const storedWidget = widgetsByKey[widget.key] || {};
++      const position = Number.parseInt(storedWidget.position, 10);
++      const visible = normalizeWidgetVisible(storedWidget.visible);
+ 
+-  const widgets = KPI_WIDGETS.map((widget, index) => {
+-    const storedWidget = widgetsByKey[widget.key] || {};
+-    const position = Number.parseInt(storedWidget.position, 10);
+-    const visible = normalizeWidgetVisible(storedWidget.visible);
+-
+-    return {
+-      key: widget.key,
+-      visible: visible ?? widget.visible,
+-      position: Number.isFinite(position) && position > 0 ? position : index + 1,
+-    };
+-  });
++      return {
++        key: widget.key,
++        visible: visible ?? widget.visible,
++        position: Number.isFinite(position) && position > 0 ? position : index + 1,
++      };
++    })
++    : defaultDashboardConfig().widgets;
+ 
+   return {
+     widgets: widgets
+@@ -574,6 +657,8 @@ const sanitizeDashboardConfig = config => {
+         return a.position - b.position;
+       })
+       .map((widget, index) => ({ ...widget, position: index + 1 })),
++    traffic_sources: sanitizeAttributionItems(config?.traffic_sources, DEFAULT_TRAFFIC_SOURCES),
++    lead_origins: sanitizeAttributionItems(config?.lead_origins, DEFAULT_LEAD_ORIGINS),
+   };
+ };
+ 
+@@ -859,6 +944,117 @@ const resetDraftDashboard = () => {
+   draftWidgetKeys.value = [...DEFAULT_VISIBLE_WIDGET_KEYS];
+ };
+ 
++const cloneAttributionItems = items => items.map(item => ({ ...item }));
++
++const settingItemKey = item => item.key;
++
++const activeCountFor = items => items.filter(item => item.is_active !== false).length;
++
++const nextCustomAttributionKey = (items, prefix) => {
++  const keys = new Set(items.map(item => item.key));
++  let index = items.length + 1;
++  let key = `${prefix}_${index}`;
++
++  while (keys.has(key)) {
++    index += 1;
++    key = `${prefix}_${index}`;
++  }
++
++  return key;
++};
++
++const openAttributionSettings = () => {
++  if (!isAdmin.value) return;
++
++  const config = sanitizeDashboardConfig(dashboardConfig.value);
++  draftTrafficSources.value = cloneAttributionItems(config.traffic_sources);
++  draftLeadOrigins.value = cloneAttributionItems(config.lead_origins);
++  attributionSettingsError.value = '';
++  isAttributionSettingsOpen.value = true;
++};
++
++const closeAttributionSettings = () => {
++  if (isSavingAttributionSettings.value) return;
++
++  isAttributionSettingsOpen.value = false;
++  attributionSettingsError.value = '';
++};
++
++const addTrafficSource = () => {
++  draftTrafficSources.value = [
++    ...draftTrafficSources.value,
++    {
++      key: nextCustomAttributionKey(draftTrafficSources.value, 'custom_source'),
++      label: 'New Source',
++      color: '#0EA5A0',
++      is_active: true,
++      sort_order: draftTrafficSources.value.length + 1,
++    },
++  ];
++};
++
++const addLeadOrigin = () => {
++  draftLeadOrigins.value = [
++    ...draftLeadOrigins.value,
++    {
++      key: nextCustomAttributionKey(draftLeadOrigins.value, 'custom_origin'),
++      label: 'New Origin',
++      color: '#0EA5A0',
++      is_active: true,
++      sort_order: draftLeadOrigins.value.length + 1,
++    },
++  ];
++};
++
++const prepareAttributionDraft = (items, defaults, label) => {
++  const prepared = sanitizeAttributionItems(
++    items.map((item, index) => ({
++      ...item,
++      label: String(item.label || '').trim(),
++      sort_order: index + 1,
++    })),
++    defaults
++  );
++
++  if (!prepared.length) {
++    throw new Error(`${label} needs at least one item`);
++  }
++
++  return prepared;
++};
++
++const saveAttributionSettings = async () => {
++  isSavingAttributionSettings.value = true;
++  attributionSettingsError.value = '';
++  errorMessage.value = '';
++
++  try {
++    const nextConfig = sanitizeDashboardConfig({
++      ...dashboardConfig.value,
++      traffic_sources: prepareAttributionDraft(
++        draftTrafficSources.value,
++        DEFAULT_TRAFFIC_SOURCES,
++        'Traffic Sources'
++      ),
++      lead_origins: prepareAttributionDraft(
++        draftLeadOrigins.value,
++        DEFAULT_LEAD_ORIGINS,
++        'Lead Origins'
++      ),
++    });
++    const response = await CrmPipelineAPI.updateMarketingDashboardConfig({
++      crm_marketing_dashboard: nextConfig,
++    });
++    dashboardConfig.value = sanitizeDashboardConfig(responseDashboardConfig(response));
++    isAttributionSettingsOpen.value = false;
++  } catch (error) {
++    attributionSettingsError.value =
++      error?.response?.data?.error || error?.message || 'Failed to save attribution settings';
++  } finally {
++    isSavingAttributionSettings.value = false;
++  }
++};
++
+ const responseDashboardConfig = response => {
+   return response?.data?.crm_marketing_dashboard || response?.data || null;
+ };
+@@ -877,7 +1073,10 @@ const saveDashboardConfig = async () => {
+   errorMessage.value = '';
+ 
+   try {
+-    const nextConfig = buildDashboardConfig(draftWidgetKeys.value);
++    const nextConfig = sanitizeDashboardConfig({
++      ...dashboardConfig.value,
++      ...buildDashboardConfig(draftWidgetKeys.value),
++    });
+     const response = await CrmPipelineAPI.updateMarketingDashboardConfig({
+       crm_marketing_dashboard: nextConfig,
+     });
+@@ -1437,6 +1636,15 @@ onMounted(() => {
+               size="sm"
+               @click="openAddManualSpend"
+             />
++            <Button
++              v-if="isAdmin"
++              icon="i-lucide-sliders-horizontal"
++              label="Attribution Settings"
++              size="sm"
++              slate
++              faded
++              @click="openAttributionSettings"
++            />
+             <div class="inline-flex h-9 rounded-md border border-n-weak bg-n-surface-2 p-0.5">
+             <button
+               v-for="option in rangeOptions"
+@@ -2184,6 +2392,194 @@ onMounted(() => {
+       </div>
+     </main>
+ 
++    <div
++      v-if="isAttributionSettingsOpen"
++      class="fixed inset-0 z-50 bg-n-slate-12/40"
++      @click.self="closeAttributionSettings"
++    >
++      <aside class="ml-auto flex h-full w-full max-w-[640px] flex-col border-l border-n-weak bg-n-background shadow-xl">
++        <header class="flex items-center justify-between border-b border-n-weak px-5 py-4">
++          <div>
++            <h2 class="text-base font-semibold text-n-slate-12">
++              Attribution Settings
++            </h2>
++            <div class="mt-1 text-xs text-n-slate-10">
++              Account-specific values used in deal Marketing tabs
++            </div>
++          </div>
++          <button
++            type="button"
++            class="grid h-8 w-8 place-items-center rounded-md text-n-slate-10 transition hover:bg-n-alpha-2 hover:text-n-slate-12"
++            aria-label="Close attribution settings"
++            @click="closeAttributionSettings"
++          >
++            <i class="i-lucide-x h-4 w-4" />
++          </button>
++        </header>
++
++        <div class="min-h-0 flex-1 overflow-y-auto px-5 py-4">
++          <div
++            v-if="attributionSettingsError"
++            class="mb-4 rounded-lg border border-n-ruby-5 bg-n-ruby-3 px-3 py-2 text-sm text-n-ruby-11"
++          >
++            {{ attributionSettingsError }}
++          </div>
++
++          <div class="grid gap-6">
++            <section class="grid gap-3">
++              <div class="flex items-center justify-between gap-3">
++                <div>
++                  <h3 class="m-0 text-sm font-semibold text-n-slate-12">
++                    Traffic Sources
++                  </h3>
++                  <div class="mt-1 text-xs text-n-slate-10">
++                    {{ activeCountFor(draftTrafficSources) }} active sources
++                  </div>
++                </div>
++                <Button
++                  icon="i-lucide-plus"
++                  label="Add source"
++                  size="xs"
++                  slate
++                  faded
++                  type="button"
++                  @click="addTrafficSource"
++                />
++              </div>
++
++              <Draggable
++                v-model="draftTrafficSources"
++                :item-key="settingItemKey"
++                handle=".js-attribution-drag-handle"
++                class="grid gap-2"
++              >
++                <template #item="{ element }">
++                  <div class="grid gap-3 rounded-lg border border-n-weak bg-n-solid-1 p-3 sm:grid-cols-[32px_minmax(0,1fr)_80px_auto] sm:items-center">
++                    <button
++                      type="button"
++                      class="js-attribution-drag-handle grid h-8 w-8 cursor-grab place-items-center rounded-md text-n-slate-9 transition hover:bg-n-alpha-2 hover:text-n-slate-12"
++                      aria-label="Reorder traffic source"
++                      title="Reorder"
++                    >
++                      <i class="i-lucide-grip-vertical h-4 w-4" />
++                    </button>
++                    <label class="grid gap-1 text-xs font-medium text-n-slate-10">
++                      Label
++                      <input
++                        v-model="element.label"
++                        class="h-9 rounded-md border border-n-weak bg-n-background px-3 text-sm font-normal text-n-slate-12 outline-none transition focus:border-n-brand"
++                        type="text"
++                      />
++                    </label>
++                    <label class="grid gap-1 text-xs font-medium text-n-slate-10">
++                      Color
++                      <input
++                        v-model="element.color"
++                        class="h-9 w-full rounded-md border border-n-weak bg-n-background px-2"
++                        type="color"
++                      />
++                    </label>
++                    <label class="inline-flex items-center gap-2 text-xs font-medium text-n-slate-10">
++                      <input
++                        v-model="element.is_active"
++                        class="h-4 w-4 rounded border-n-weak text-n-brand"
++                        type="checkbox"
++                      />
++                      Active
++                    </label>
++                  </div>
++                </template>
++              </Draggable>
++            </section>
++
++            <section class="grid gap-3">
++              <div class="flex items-center justify-between gap-3">
++                <div>
++                  <h3 class="m-0 text-sm font-semibold text-n-slate-12">
++                    Lead Origins
++                  </h3>
++                  <div class="mt-1 text-xs text-n-slate-10">
++                    {{ activeCountFor(draftLeadOrigins) }} active origins
++                  </div>
++                </div>
++                <Button
++                  icon="i-lucide-plus"
++                  label="Add origin"
++                  size="xs"
++                  slate
++                  faded
++                  type="button"
++                  @click="addLeadOrigin"
++                />
++              </div>
++
++              <Draggable
++                v-model="draftLeadOrigins"
++                :item-key="settingItemKey"
++                handle=".js-attribution-drag-handle"
++                class="grid gap-2"
++              >
++                <template #item="{ element }">
++                  <div class="grid gap-3 rounded-lg border border-n-weak bg-n-solid-1 p-3 sm:grid-cols-[32px_minmax(0,1fr)_80px_auto] sm:items-center">
++                    <button
++                      type="button"
++                      class="js-attribution-drag-handle grid h-8 w-8 cursor-grab place-items-center rounded-md text-n-slate-9 transition hover:bg-n-alpha-2 hover:text-n-slate-12"
++                      aria-label="Reorder lead origin"
++                      title="Reorder"
++                    >
++                      <i class="i-lucide-grip-vertical h-4 w-4" />
++                    </button>
++                    <label class="grid gap-1 text-xs font-medium text-n-slate-10">
++                      Label
++                      <input
++                        v-model="element.label"
++                        class="h-9 rounded-md border border-n-weak bg-n-background px-3 text-sm font-normal text-n-slate-12 outline-none transition focus:border-n-brand"
++                        type="text"
++                      />
++                    </label>
++                    <label class="grid gap-1 text-xs font-medium text-n-slate-10">
++                      Color
++                      <input
++                        v-model="element.color"
++                        class="h-9 w-full rounded-md border border-n-weak bg-n-background px-2"
++                        type="color"
++                      />
++                    </label>
++                    <label class="inline-flex items-center gap-2 text-xs font-medium text-n-slate-10">
++                      <input
++                        v-model="element.is_active"
++                        class="h-4 w-4 rounded border-n-weak text-n-brand"
++                        type="checkbox"
++                      />
++                      Active
++                    </label>
++                  </div>
++                </template>
++              </Draggable>
++            </section>
++          </div>
++        </div>
++
++        <footer class="flex flex-wrap items-center justify-end gap-2 border-t border-n-weak px-5 py-4">
++          <button
++            type="button"
++            class="rounded-md px-3 py-2 text-sm font-medium text-n-slate-11 transition hover:bg-n-alpha-2 hover:text-n-slate-12"
++            @click="closeAttributionSettings"
++          >
++            Cancel
++          </button>
++          <button
++            type="button"
++            class="rounded-md bg-n-brand px-3 py-2 text-sm font-medium text-white transition hover:bg-n-brand/90 disabled:cursor-not-allowed disabled:opacity-60"
++            :disabled="isSavingAttributionSettings"
++            @click="saveAttributionSettings"
++          >
++            {{ isSavingAttributionSettings ? 'Saving...' : 'Save settings' }}
++          </button>
++        </footer>
++      </aside>
++    </div>
++
+     <div
+       v-if="isManualSpendDrawerOpen"
+       class="fixed inset-0 z-50 bg-n-slate-12/40"
+diff --git a/app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue b/app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue
+index 524e1f9..532c7fb 100644
+--- a/app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue
++++ b/app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue
+@@ -30,6 +30,7 @@ const stages = ref([]);
+ const dealForm = ref({});
+ const fieldDefinitions = ref([]);
+ const fieldRequirements = ref({});
++const marketingConfig = ref(null);
+ const requiredDraftKeys = ref([]);
+ const requiredConfigStageId = ref('');
+ const showFieldConfig = ref(false);
+@@ -50,6 +51,7 @@ const conversationPaneError = ref('');
+ const saveMessage = ref('');
+ const isLoading = ref(false);
+ const isSaving = ref(false);
++const isSavingAttribution = ref(false);
+ const isLoadingFields = ref(false);
+ const isSavingField = ref(false);
+ const isSavingRequirements = ref(false);
+@@ -118,8 +120,10 @@ const ATTRIBUTION_FIELDS = [
+   { key: 'first_touch_source_label', label: 'First touch source label' },
+   { key: 'first_touch_entry_point_key', label: 'First touch entry point key' },
+   { key: 'first_touch_entry_point_label', label: 'First touch entry point label' },
++  { key: 'source_detection_method', label: 'Source detection method' },
+   { key: 'source_confidence', label: 'Source confidence' },
+   { key: 'source_override_by', label: 'Source override by' },
++  { key: 'needs_source_clarification', label: 'Needs clarification' },
+   { key: 'source_raw_snapshot', label: 'Source raw snapshot' },
+   { key: 'source_request', label: 'Source request' },
+   { key: 'utm_source', label: 'UTM source' },
+@@ -140,6 +144,35 @@ const ATTRIBUTION_FIELDS = [
+   { key: 'landing_page', label: 'Landing page' },
+ ];
+ 
++const MANUAL_ATTRIBUTION_KEYS = [
++  'traffic_source_key',
++  'traffic_source_label',
++  'lead_origin_key',
++  'lead_origin_label',
++  'source_detection_method',
++  'source_confidence',
++  'source_override_by',
++  'needs_source_clarification',
++];
++const DEFAULT_TRAFFIC_SOURCES = [
++  { key: 'google_ads', label: 'Google Ads', color: '#0EA5A0', is_active: true },
++  { key: 'meta_ads', label: 'Meta Ads', color: '#2E6F95', is_active: true },
++  { key: 'tiktok_ads', label: 'TikTok Ads', color: '#875B7B', is_active: true },
++  { key: 'dubizzle', label: 'Dubizzle', color: '#F59E0B', is_active: true },
++  { key: 'website_organic', label: 'Website Organic', color: '#0C8A86', is_active: true },
++  { key: 'referral', label: 'Referral', color: '#64748B', is_active: true },
++  { key: 'other', label: 'Other', color: '#94A3B8', is_active: true },
++];
++const DEFAULT_LEAD_ORIGINS = [
++  { key: 'website', label: 'Website', color: '#0EA5A0', is_active: true },
++  { key: 'instagram', label: 'Instagram', color: '#C13584', is_active: true },
++  { key: 'facebook', label: 'Facebook', color: '#1877F2', is_active: true },
++  { key: 'telegram_bot', label: 'Telegram Bot', color: '#229ED9', is_active: true },
++  { key: 'whatsapp', label: 'WhatsApp', color: '#25D366', is_active: true },
++  { key: 'call', label: 'Call', color: '#0F1923', is_active: true },
++  { key: 'other', label: 'Other', color: '#94A3B8', is_active: true },
++];
++
+ const MARKETING_KEYS = ATTRIBUTION_FIELDS.map(field => field.key);
+ const TRACKING_KEYS = [];
+ 
+@@ -160,6 +193,7 @@ const HIDDEN_DEAL_FIELD_KEYS = new Set([
+   'title',
+   'client_phone',
+   ...MARKETING_KEYS,
++  ...MANUAL_ATTRIBUTION_KEYS,
+   ...TRACKING_KEYS,
+   ...CLIENT_ATTRIBUTE_KEYS,
+ ]);
+@@ -289,6 +323,70 @@ const humanizeKey = key => {
+     .join(' ');
+ };
+ 
++const attributionKeyFromLabel = value => {
++  return String(value || '')
++    .trim()
++    .toLowerCase()
++    .replace(/[^a-z0-9]+/g, '_')
++    .replace(/^_+|_+$/g, '');
++};
++
++const defaultAttributionItems = defaults => {
++  return defaults.map((item, index) => ({
++    ...item,
++    sort_order: index + 1,
++  }));
++};
++
++const normalizeColor = (value, fallback = '#94A3B8') => {
++  const color = String(value || '').trim();
++  return /^#[0-9a-f]{6}$/i.test(color) ? color : fallback;
++};
++
++const sanitizeAttributionItems = (items, defaults) => {
++  const rawItems = Array.isArray(items) ? items : [];
++  if (!rawItems.length) return defaultAttributionItems(defaults);
++
++  const fallbackByKey = defaultAttributionItems(defaults).reduce((memo, item) => {
++    memo[item.key] = item;
++    return memo;
++  }, {});
++  const seen = new Set();
++  const sanitized = rawItems
++    .map((item, index) => {
++      const label = String(item?.label || '').trim();
++      const key = attributionKeyFromLabel(item?.key || label);
++      if (!key || !label || seen.has(key)) return null;
++
++      seen.add(key);
++      const fallback = fallbackByKey[key] || {};
++      const sortOrder = Number.parseInt(item?.sort_order, 10);
++      return {
++        key,
++        label,
++        color: normalizeColor(item?.color, fallback.color),
++        is_active: item?.is_active !== false,
++        sort_order: Number.isFinite(sortOrder) && sortOrder > 0 ? sortOrder : index + 1,
++      };
++    })
++    .filter(Boolean);
++
++  if (!sanitized.length) return defaultAttributionItems(defaults);
++
++  return sanitized
++    .sort((a, b) => a.sort_order - b.sort_order)
++    .map((item, index) => ({ ...item, sort_order: index + 1 }));
++};
++
++const sanitizeMarketingConfig = config => ({
++  traffic_sources: sanitizeAttributionItems(config?.traffic_sources, DEFAULT_TRAFFIC_SOURCES),
++  lead_origins: sanitizeAttributionItems(config?.lead_origins, DEFAULT_LEAD_ORIGINS),
++});
++
++const responseMarketingConfig = response => {
++  return response?.data?.crm_marketing_dashboard || response?.data || null;
++};
++
+ const valueFromSources = (sources, keys) => {
+   for (const source of sources) {
+     const attributes = normalizedAttributes(source);
+@@ -317,6 +415,71 @@ const attributeSources = computed(() => [
+   conversationAttributes.value,
+ ]);
+ 
++const currentAttributionUser = computed(() => {
++  return currentUser.value?.name || currentUser.value?.email || currentUser.value?.id || 'manual';
++});
++
++const configuredTrafficSources = computed(() => {
++  return sanitizeMarketingConfig(marketingConfig.value).traffic_sources;
++});
++
++const configuredLeadOrigins = computed(() => {
++  return sanitizeMarketingConfig(marketingConfig.value).lead_origins;
++});
++
++const activeAttributionOptions = (items, selectedKey, selectedLabel) => {
++  const activeItems = items.filter(item => item.is_active !== false);
++  const configuredSelected = items.find(item => item.key === selectedKey);
++  const snapshotLabel = selectedLabel || configuredSelected?.label || '';
++  const selectedOption = selectedKey && snapshotLabel
++    ? {
++      key: selectedKey,
++      label: snapshotLabel,
++      color: configuredSelected?.color || '#94A3B8',
++      is_active: true,
++      sort_order: 0,
++    }
++    : null;
++
++  return [
++    ...(selectedOption ? [selectedOption] : []),
++    ...activeItems.filter(item => item.key !== selectedKey),
++  ];
++};
++
++const trafficSourceKey = computed(() => dealForm.value.custom_attributes?.traffic_source_key || '');
++const trafficSourceLabel = computed(() => dealForm.value.custom_attributes?.traffic_source_label || '');
++const leadOriginKey = computed(() => dealForm.value.custom_attributes?.lead_origin_key || '');
++const leadOriginLabel = computed(() => dealForm.value.custom_attributes?.lead_origin_label || '');
++
++const trafficSourceOptions = computed(() => {
++  return activeAttributionOptions(
++    configuredTrafficSources.value,
++    trafficSourceKey.value,
++    trafficSourceLabel.value
++  );
++});
++
++const leadOriginOptions = computed(() => {
++  return activeAttributionOptions(
++    configuredLeadOrigins.value,
++    leadOriginKey.value,
++    leadOriginLabel.value
++  );
++});
++
++const selectedTrafficSourceDisplay = computed(() => {
++  return trafficSourceLabel.value ||
++    configuredTrafficSources.value.find(item => item.key === trafficSourceKey.value)?.label ||
++    'Unknown';
++});
++
++const selectedLeadOriginDisplay = computed(() => {
++  return leadOriginLabel.value ||
++    configuredLeadOrigins.value.find(item => item.key === leadOriginKey.value)?.label ||
++    'Unknown';
++});
++
+ const clientTypeValue = computed(() => {
+   return valueFromSources(attributeSources.value, ['client_type', 'customer_type', 'type']);
+ });
+@@ -632,15 +795,17 @@ const loadWorkspace = async () => {
+   missingRequiredKeys.value = [];
+ 
+   try {
+-    const [stageResponse, dealResponse, fieldResponse] = await Promise.all([
++    const [stageResponse, dealResponse, fieldResponse, marketingConfigResponse] = await Promise.all([
+       CrmPipelineAPI.getStages(),
+       CrmPipelineAPI.getDeal(route.params.dealId),
+       CrmPipelineAPI.getDealFields(),
++      CrmPipelineAPI.getMarketingDashboardConfig().catch(() => null),
+     ]);
+ 
+     stages.value = stageResponse.data || [];
+     deal.value = dealResponse.data;
+     dealForm.value = buildDealForm(deal.value);
++    marketingConfig.value = sanitizeMarketingConfig(responseMarketingConfig(marketingConfigResponse));
+     applyFieldConfig(fieldResponse.data);
+     syncRequiredDraft();
+     await loadConversation();
+@@ -723,6 +888,57 @@ const dealPayload = () => ({
+   custom_attributes: dealForm.value.custom_attributes || {},
+ });
+ 
++const saveMarketingAttribution = async () => {
++  if (!deal.value?.id) return;
++
++  isSavingAttribution.value = true;
++  errorMessage.value = '';
++  saveMessage.value = '';
++
++  try {
++    const response = await CrmPipelineAPI.updateDeal(deal.value.id, {
++      deal: {
++        custom_attributes: dealForm.value.custom_attributes || {},
++      },
++    });
++
++    deal.value = response.data;
++    dealForm.value = buildDealForm(deal.value);
++    saveMessage.value = 'Attribution saved';
++  } catch (error) {
++    setError(error);
++  } finally {
++    isSavingAttribution.value = false;
++  }
++};
++
++const attributionOptionFor = (items, key) => {
++  return items.find(item => item.key === key) || null;
++};
++
++const updateManualAttribution = async (type, key) => {
++  const nextAttributes = {
++    ...(dealForm.value.custom_attributes || {}),
++  };
++  const isTrafficSource = type === 'traffic_source';
++  const options = isTrafficSource ? trafficSourceOptions.value : leadOriginOptions.value;
++  const option = attributionOptionFor(options, key);
++  const keyField = isTrafficSource ? 'traffic_source_key' : 'lead_origin_key';
++  const labelField = isTrafficSource ? 'traffic_source_label' : 'lead_origin_label';
++
++  nextAttributes[keyField] = option?.key || '';
++  nextAttributes[labelField] = option?.label || '';
++  nextAttributes.source_detection_method = 'manual';
++  nextAttributes.source_confidence = 'manual';
++  nextAttributes.source_override_by = currentAttributionUser.value;
++  nextAttributes.needs_source_clarification = !(
++    nextAttributes.traffic_source_key && nextAttributes.lead_origin_key
++  );
++
++  dealForm.value.custom_attributes = nextAttributes;
++  await saveMarketingAttribution();
++};
++
+ const saveDeal = async () => {
+   if (!deal.value?.id || !dealForm.value.title.trim()) return;
+ 
+@@ -1309,11 +1525,76 @@ onUnmounted(() => {
+         </div>
+ 
+         <div v-else-if="activeSidebarTab === 'marketing'" class="grid gap-4 pt-4">
++          <section class="border-b border-n-weak pb-4">
++            <div class="flex items-center justify-between gap-3">
++              <div>
++                <h3 class="m-0 text-xs font-semibold uppercase text-n-slate-10">
++                  Manual Attribution
++                </h3>
++                <div class="mt-1 text-xs text-n-slate-10">
++                  {{ selectedTrafficSourceDisplay }} / {{ selectedLeadOriginDisplay }}
++                </div>
++              </div>
++              <span
++                v-if="isSavingAttribution"
++                class="rounded-md bg-n-alpha-2 px-2 py-1 text-xs font-medium text-n-slate-10"
++              >
++                Saving
++              </span>
++              <span
++                v-else-if="saveMessage === 'Attribution saved'"
++                class="rounded-md bg-n-teal-3 px-2 py-1 text-xs font-medium text-n-teal-11"
++              >
++                Saved
++              </span>
++            </div>
++
++            <div class="mt-3 grid gap-3">
++              <label class="grid gap-1 text-sm font-medium text-n-slate-11">
++                Traffic Source
++                <select
++                  :value="trafficSourceKey"
++                  :class="compactFieldClass"
++                  :disabled="isSavingAttribution"
++                  @change="updateManualAttribution('traffic_source', $event.target.value)"
++                >
++                  <option value="">Unknown</option>
++                  <option
++                    v-for="source in trafficSourceOptions"
++                    :key="source.key"
++                    :value="source.key"
++                  >
++                    {{ source.label }}
++                  </option>
++                </select>
++              </label>
++
++              <label class="grid gap-1 text-sm font-medium text-n-slate-11">
++                Lead Origin
++                <select
++                  :value="leadOriginKey"
++                  :class="compactFieldClass"
++                  :disabled="isSavingAttribution"
++                  @change="updateManualAttribution('lead_origin', $event.target.value)"
++                >
++                  <option value="">Unknown</option>
++                  <option
++                    v-for="origin in leadOriginOptions"
++                    :key="origin.key"
++                    :value="origin.key"
++                  >
++                    {{ origin.label }}
++                  </option>
++                </select>
++              </label>
++            </div>
++          </section>
++
+           <div
+             v-if="!hasMarketingData"
+-            class="rounded-lg border border-dashed border-n-weak px-4 py-8 text-center text-sm text-n-slate-10"
++            class="rounded-lg border border-dashed border-n-weak px-4 py-6 text-center text-sm text-n-slate-10"
+           >
+-            No marketing data yet
++            No raw attribution fields yet
+           </div>
+ 
+           <template v-else>
