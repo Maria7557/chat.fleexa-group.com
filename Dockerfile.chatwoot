@@ -37,6 +37,7 @@ COPY chatwoot-patches/crm-marketing-leads-as-clients-vue.patch /tmp/crm-marketin
 COPY chatwoot-patches/crm-marketing-loss-summary-panel-vue.patch /tmp/crm-marketing-loss-summary-panel-vue.patch
 COPY chatwoot-patches/crm-marketing-pipeline-funnel-reach-vue.patch /tmp/crm-marketing-pipeline-funnel-reach-vue.patch
 COPY chatwoot-patches/crm-marketing-lead-trend-after-economics-vue.patch /tmp/crm-marketing-lead-trend-after-economics-vue.patch
+COPY chatwoot-patches/crm-marketing-monthly-chart-all-periods-vue.patch /tmp/crm-marketing-monthly-chart-all-periods-vue.patch
 
 RUN cd /app && \
     git apply /tmp/crm-pipeline-vue.patch && \
@@ -74,6 +75,7 @@ RUN cd /app && \
     git apply /tmp/crm-marketing-loss-summary-panel-vue.patch && \
     git apply /tmp/crm-marketing-pipeline-funnel-reach-vue.patch && \
     git apply /tmp/crm-marketing-lead-trend-after-economics-vue.patch && \
+    git apply /tmp/crm-marketing-monthly-chart-all-periods-vue.patch && \
     HUSKY=0 pnpm install --frozen-lockfile && \
     (node node_modules/esbuild/install.js 2>/dev/null || true)
 
@@ -143,6 +145,7 @@ COPY chatwoot-patches/crm-marketing-leads-as-clients-vue.patch /tmp/crm-marketin
 COPY chatwoot-patches/crm-marketing-loss-summary-panel-vue.patch /tmp/crm-marketing-loss-summary-panel-vue.patch
 COPY chatwoot-patches/crm-marketing-pipeline-funnel-reach-vue.patch /tmp/crm-marketing-pipeline-funnel-reach-vue.patch
 COPY chatwoot-patches/crm-marketing-lead-trend-after-economics-vue.patch /tmp/crm-marketing-lead-trend-after-economics-vue.patch
+COPY chatwoot-patches/crm-marketing-monthly-chart-all-periods-vue.patch /tmp/crm-marketing-monthly-chart-all-periods-vue.patch
 
 RUN cd /app && \
     git apply /tmp/patch.patch && \
@@ -201,4 +204,5 @@ RUN cd /app && \
     git apply /tmp/crm-marketing-leads-as-clients-vue.patch && \
     git apply /tmp/crm-marketing-loss-summary-panel-vue.patch && \
     git apply /tmp/crm-marketing-pipeline-funnel-reach-vue.patch && \
-    git apply /tmp/crm-marketing-lead-trend-after-economics-vue.patch
+    git apply /tmp/crm-marketing-lead-trend-after-economics-vue.patch && \
+    git apply /tmp/crm-marketing-monthly-chart-all-periods-vue.patch

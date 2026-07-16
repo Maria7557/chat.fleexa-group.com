@@ -250,29 +250,3 @@ index 4c26405..4c48fb3 100644
  });
  
  const trendPointX = (index, total) => {
-@@ -2609,7 +2689,7 @@ onMounted(() => {
-                 Source Economics
-               </h2>
-               <div class="mt-1 text-xs text-n-slate-10">
--                AED metrics for the selected lead cohort
-+                AED metrics for the selected client cohort
-               </div>
-             </div>
-             <span class="rounded-full bg-[#E0F5F4] px-2 py-0.5 text-[10px] font-semibold text-[#0C8A86]">
-@@ -2789,7 +2869,7 @@ onMounted(() => {
-                 </span>
-               </div>
-               <div class="mt-1 text-xs text-n-slate-10">
--                Leads by source over time
-+                New clients by source over time
-               </div>
-             </div>
- 
-@@ -2969,6 +3049,6 @@ onMounted(() => {
-             v-else
-             class="grid min-h-[280px] place-items-center rounded-lg border border-dashed border-n-weak bg-n-background px-4 text-center text-sm text-n-slate-10"
-          >
--            No leads in selected period
-+            No new clients in selected period
-          </div>
-        </section>

@@ -1,0 +1,161 @@
+diff --git a/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue b/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue
+--- a/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue
++++ b/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue
+@@ -199,9 +199,11 @@
+ 
+ const stages = ref([]);
+ const deals = ref([]);
++const monthlyChartDeals = ref([]);
+ const meta = ref({});
+ const spendAmount = ref(0);
+ const monthlySpendRows = ref([]);
++const monthlyChartSpendRows = ref([]);
+ const manualSpendEntries = ref([]);
+ const analyticsDateRange = ref([subDays(new Date(), 6), new Date()]);
+ const selectedDateRange = ref(DATE_RANGE_TYPES.LAST_7_DAYS);
+@@ -1530,7 +1532,7 @@
+     return rowsByMonth[month];
+   };
+ 
+-  monthlySpendRows.value.forEach(row => {
++  monthlyChartSpendRows.value.forEach(row => {
+     const sourceKey = classifySpendSource(row);
+     if (!sourceMatches(sourceKey)) return;
+ 
+@@ -1538,7 +1540,7 @@
+     if (monthlyRow) monthlyRow.spend += amountValue(row.spend_aed);
+   });
+ 
+-  deals.value.forEach(deal => {
++  monthlyChartDeals.value.forEach(deal => {
+     if (!SUCCESSFUL_STAGE_TYPES.includes(dealStageType(deal))) return;
+ 
+     const sourceKey = classifyTrafficSource(deal);
+@@ -2532,18 +2534,18 @@
+   return 1.75;
+ };
+ 
+-const requestParams = page => {
++const requestParams = (page, { includeDateRange = true } = {}) => {
+   const params = {
+     include_meta: true,
+     page,
+     per_page: PAGE_SIZE,
+   };
+ 
+-  if (analyticsDateFrom.value) {
++  if (includeDateRange && analyticsDateFrom.value) {
+     params.created_at_from = analyticsDateFrom.value;
+   }
+ 
+-  if (analyticsDateTo.value) {
++  if (includeDateRange && analyticsDateTo.value) {
+     params.created_at_to = analyticsDateTo.value;
+   }
+ 
+@@ -2582,38 +2584,64 @@
+   };
+ };
+ 
++const collectPaginatedDeals = async (firstResponse, paramsForPage) => {
++  const firstPage = normalizeDealsResponse(firstResponse);
++  const nextDeals = [...firstPage.data];
++  let nextMeta = firstPage.meta;
++
++  while (nextMeta.has_more) {
++    const response = await CrmPipelineAPI.getDeals(paramsForPage(Number(nextMeta.page || 1) + 1));
++    const page = normalizeDealsResponse(response);
++    nextDeals.push(...page.data);
++    nextMeta = page.meta;
++  }
++
++  return {
++    deals: nextDeals,
++    meta: {
++      ...nextMeta,
++      total_count: nextMeta.total_count ?? nextDeals.length,
++    },
++  };
++};
++
+ const fetchAnalytics = async () => {
+   isLoading.value = true;
+   errorMessage.value = '';
+ 
+   try {
+-    const [stageResponse, firstDealResponse, spendResponse, monthlySpendResponse] = await Promise.all([
++    const [
++      stageResponse,
++      firstDealResponse,
++      firstMonthlyDealResponse,
++      spendResponse,
++      monthlySpendResponse,
++      monthlyChartSpendResponse,
++    ] = await Promise.all([
+       CrmPipelineAPI.getStages(),
+       CrmPipelineAPI.getDeals(requestParams(1)),
++      CrmPipelineAPI.getDeals(requestParams(1, { includeDateRange: false })),
+       CrmPipelineAPI.getMarketingSpend(spendRequestParams()),
+       CrmPipelineAPI.getMarketingMonthlySpend(spendRequestParams()),
++      CrmPipelineAPI.getMarketingMonthlySpend({}),
+     ]);
+-    const firstPage = normalizeDealsResponse(firstDealResponse);
+-    const nextDeals = [...firstPage.data];
+-    let nextMeta = firstPage.meta;
+-
+-    while (nextMeta.has_more) {
+-      const response = await CrmPipelineAPI.getDeals(requestParams(Number(nextMeta.page || 1) + 1));
+-      const page = normalizeDealsResponse(response);
+-      nextDeals.push(...page.data);
+-      nextMeta = page.meta;
+-    }
++    const periodDealResult = await collectPaginatedDeals(firstDealResponse, page => requestParams(page));
++    const monthlyDealResult = await collectPaginatedDeals(
++      firstMonthlyDealResponse,
++      page => requestParams(page, { includeDateRange: false })
++    );
+ 
+     stages.value = stageResponse.data || [];
+-    deals.value = nextDeals;
++    deals.value = periodDealResult.deals;
++    monthlyChartDeals.value = monthlyDealResult.deals;
+     spendAmount.value = amountValue(spendResponse?.data?.spend_aed);
+     monthlySpendRows.value = Array.isArray(monthlySpendResponse?.data?.data)
+       ? monthlySpendResponse.data.data
+       : [];
+-    meta.value = {
+-      ...nextMeta,
+-      total_count: nextMeta.total_count ?? nextDeals.length,
+-    };
++    monthlyChartSpendRows.value = Array.isArray(monthlyChartSpendResponse?.data?.data)
++      ? monthlyChartSpendResponse.data.data
++      : [];
++    meta.value = periodDealResult.meta;
+   } catch (error) {
+     errorMessage.value = error?.response?.data?.error || error?.message || 'Failed to load analytics';
+   } finally {
+@@ -2835,7 +2863,7 @@
+                 Source Economics
+               </h2>
+               <div class="mt-1 text-xs text-n-slate-10">
+-                AED metrics for the selected lead cohort
++                AED metrics for the selected client cohort
+               </div>
+             </div>
+             <span class="rounded-full bg-[#E0F5F4] px-2 py-0.5 text-[10px] font-semibold text-[#0C8A86]">
+@@ -2920,7 +2948,7 @@
+                 </span>
+               </div>
+               <div class="mt-1 text-xs text-n-slate-10">
+-                Leads by source over time
++                New clients by source over time
+               </div>
+             </div>
+ 
+@@ -3049,5 +3077,5 @@
+             class="grid min-h-[280px] place-items-center rounded-lg border border-dashed border-n-weak bg-n-background px-4 text-center text-sm text-n-slate-10"
+           >
+-            No leads in selected period
++            No new clients in selected period
+           </div>
+         </section>

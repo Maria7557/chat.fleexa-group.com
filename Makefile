@@ -247,6 +247,7 @@ crm-vue-copy: ensure-env
 		$(COMPOSE) cp chatwoot-patches/crm-marketing-loss-summary-panel-vue.patch rails:/tmp/crm-marketing-loss-summary-panel-vue.patch
 		$(COMPOSE) cp chatwoot-patches/crm-marketing-pipeline-funnel-reach-vue.patch rails:/tmp/crm-marketing-pipeline-funnel-reach-vue.patch
 		$(COMPOSE) cp chatwoot-patches/crm-marketing-lead-trend-after-economics-vue.patch rails:/tmp/crm-marketing-lead-trend-after-economics-vue.patch
+		$(COMPOSE) cp chatwoot-patches/crm-marketing-monthly-chart-all-periods-vue.patch rails:/tmp/crm-marketing-monthly-chart-all-periods-vue.patch
 		@echo "CRM Vue patch copied to Rails container"
 
 crm-vue-check: crm-vue-copy
@@ -285,6 +286,7 @@ crm-vue-check: crm-vue-copy
 		$(COMPOSE) exec rails sh -lc "cd /app && git apply --check /tmp/crm-marketing-loss-summary-panel-vue.patch"
 		$(COMPOSE) exec rails sh -lc "cd /app && git apply --check /tmp/crm-marketing-pipeline-funnel-reach-vue.patch"
 		$(COMPOSE) exec rails sh -lc "cd /app && git apply --check /tmp/crm-marketing-lead-trend-after-economics-vue.patch"
+		$(COMPOSE) exec rails sh -lc "cd /app && git apply --check /tmp/crm-marketing-monthly-chart-all-periods-vue.patch"
 		@echo "CRM Vue patch validated"
 
 crm-vue-patch: crm-vue-copy
@@ -323,6 +325,7 @@ crm-vue-patch: crm-vue-copy
 		$(COMPOSE) exec rails sh -lc "cd /app && git apply /tmp/crm-marketing-loss-summary-panel-vue.patch"
 		$(COMPOSE) exec rails sh -lc "cd /app && git apply /tmp/crm-marketing-pipeline-funnel-reach-vue.patch"
 		$(COMPOSE) exec rails sh -lc "cd /app && git apply /tmp/crm-marketing-lead-trend-after-economics-vue.patch"
+		$(COMPOSE) exec rails sh -lc "cd /app && git apply /tmp/crm-marketing-monthly-chart-all-periods-vue.patch"
 		@echo "CRM Vue patch applied"
 
 crm-assets-build-host:
@@ -394,6 +397,7 @@ crm-assets-build-host:
 			git apply "$(CURDIR)/chatwoot-patches/crm-marketing-loss-summary-panel-vue.patch"; \
 			git apply "$(CURDIR)/chatwoot-patches/crm-marketing-pipeline-funnel-reach-vue.patch"; \
 			git apply "$(CURDIR)/chatwoot-patches/crm-marketing-lead-trend-after-economics-vue.patch"; \
+			git apply "$(CURDIR)/chatwoot-patches/crm-marketing-monthly-chart-all-periods-vue.patch"; \
 		perl -0pi -e "s/import \\{ colors \\} from '\\.\\/theme\\/colors';/const { colors } = require('.\\/theme\\/colors.js');/; s/import \\{ icons \\} from '\\.\\/theme\\/icons';/const { icons } = require('.\\/theme\\/icons.js');/" tailwind.config.js; \
 	perl -0pi -e "s/export const colors =/const colors =/; s/\\n\\};\\s*\\z/\\n};\\nmodule.exports = { colors };\\n/s" theme/colors.js; \
 	perl -0pi -e "s/export const icons =/const icons =/; s/\\n\\};\\s*\\z/\\n};\\nmodule.exports = { icons };\\n/s" theme/icons.js; \
@@ -733,6 +737,7 @@ crm-assets-refresh-local: crm-assets-build-host crm-assets-install-local
 	$(COMPOSE) exec -T rails sh -lc "grep -n 'deals reached' /app/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue"; \
 	$(COMPOSE) exec -T rails sh -lc "grep -n 'Stage Reach' /app/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue"; \
 	$(COMPOSE) exec -T rails sh -lc "grep -n 'New clients by source over time' /app/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue"; \
+	$(COMPOSE) exec -T rails sh -lc "grep -n 'monthlyChartSpendRows' /app/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue"; \
 	$(COMPOSE) exec -T rails sh -lc "if grep -nE 'source_request|first_touch_source|first_touch_entry_point|source_raw_snapshot' /app/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue /app/app/javascript/dashboard/routes/dashboard/crm/Pipeline.vue /app/app/javascript/dashboard/routes/dashboard/crm/DealWorkspace.vue; then exit 1; fi"; \
 	$(COMPOSE) exec -T rails sh -lc "grep -n 'leadTrendLayeredSeries' /app/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue"; \
 	$(COMPOSE) exec -T rails sh -lc "grep -n 'fleexa_visible_config' /app/app/views/layouts/vueapp.html.erb"; \
