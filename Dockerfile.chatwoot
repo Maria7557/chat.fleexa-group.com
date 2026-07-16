@@ -32,6 +32,7 @@ COPY chatwoot-patches/crm-marketing-economics-kpi-layer-vue.patch /tmp/crm-marke
 COPY chatwoot-patches/crm-marketing-loss-analysis-vue.patch /tmp/crm-marketing-loss-analysis-vue.patch
 COPY chatwoot-patches/crm-marketing-demo-readiness-vue.patch /tmp/crm-marketing-demo-readiness-vue.patch
 COPY chatwoot-patches/crm-marketing-economics-meeting-polish-vue.patch /tmp/crm-marketing-economics-meeting-polish-vue.patch
+COPY chatwoot-patches/crm-marketing-two-funnels-vue.patch /tmp/crm-marketing-two-funnels-vue.patch
 
 RUN cd /app && \
     git apply /tmp/crm-pipeline-vue.patch && \
@@ -64,6 +65,7 @@ RUN cd /app && \
     git apply /tmp/crm-marketing-loss-analysis-vue.patch && \
     git apply /tmp/crm-marketing-demo-readiness-vue.patch && \
     git apply /tmp/crm-marketing-economics-meeting-polish-vue.patch && \
+    git apply /tmp/crm-marketing-two-funnels-vue.patch && \
     HUSKY=0 pnpm install --frozen-lockfile && \
     (node node_modules/esbuild/install.js 2>/dev/null || true)
 
@@ -127,6 +129,7 @@ COPY chatwoot-patches/crm-marketing-economics-kpi-layer-vue.patch /tmp/crm-marke
 COPY chatwoot-patches/crm-marketing-loss-analysis-vue.patch /tmp/crm-marketing-loss-analysis-vue.patch
 COPY chatwoot-patches/crm-marketing-demo-readiness-vue.patch /tmp/crm-marketing-demo-readiness-vue.patch
 COPY chatwoot-patches/crm-marketing-economics-meeting-polish-vue.patch /tmp/crm-marketing-economics-meeting-polish-vue.patch
+COPY chatwoot-patches/crm-marketing-two-funnels-vue.patch /tmp/crm-marketing-two-funnels-vue.patch
 
 RUN cd /app && \
     git apply /tmp/patch.patch && \
@@ -179,4 +182,5 @@ RUN cd /app && \
     git apply /tmp/crm-marketing-economics-kpi-layer-vue.patch && \
     git apply /tmp/crm-marketing-loss-analysis-vue.patch && \
     git apply /tmp/crm-marketing-demo-readiness-vue.patch && \
-    git apply /tmp/crm-marketing-economics-meeting-polish-vue.patch
+    git apply /tmp/crm-marketing-economics-meeting-polish-vue.patch && \
+    git apply /tmp/crm-marketing-two-funnels-vue.patch
