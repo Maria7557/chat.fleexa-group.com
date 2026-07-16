@@ -1,0 +1,310 @@
+diff --git a/lib/tasks/crm_marketing_demo.rake b/lib/tasks/crm_marketing_demo.rake
+new file mode 100644
+index 0000000..09b75d6
+--- /dev/null
++++ b/lib/tasks/crm_marketing_demo.rake
+@@ -0,0 +1,304 @@
++namespace :crm do
++  namespace :marketing_demo do
++    DEMO_MARKER = 'fleexa_demo_marketing'.freeze
++    DEMO_NOTES = 'Fleexa marketing analytics demo seed'.freeze
++
++    desc 'Seed a repeatable local Marketing Analytics demo dataset'
++    task :seed, [:account_id] => :environment do |_task, args|
++      account_id = args[:account_id].presence || ENV.fetch('ACCOUNT_ID', nil)
++      abort 'Usage: ACCOUNT_ID=1 rake crm:marketing_demo:seed' if account_id.blank?
++
++      account = Account.find(account_id)
++      inbox = account.inboxes.order(:id).first
++      abort "Account #{account_id} has no inbox. Create one before seeding demo conversations." if inbox.blank?
++
++      stages = CrmPipelineStage.for_account(account.id).index_by(&:slug)
++      required_stages = %w[unassigned in_progress reserved rental closed_won closed_lost]
++      missing_stages = required_stages.reject { |slug| stages[slug].present? }
++      abort "Missing CRM stages: #{missing_stages.join(', ')}" if missing_stages.any?
++
++      assignee = account.users.order(:id).first
++
++      cleanup_demo_data!(account)
++      seed_demo_spend!(account)
++
++      seed_rows.each_with_index do |row, index|
++        lead_at = Time.zone.local(
++          row[:date].year,
++          row[:date].month,
++          row[:date].day,
++          9 + (index % 8),
++          [5, 14, 22, 31, 43, 52][index % 6]
++        )
++
++        contact = Contact.create!(
++          account_id: account.id,
++          name: row[:name],
++          phone_number: row[:phone],
++          email: row[:email],
++          custom_attributes: demo_attributes(row)
++        )
++        contact.update_columns(created_at: lead_at, updated_at: lead_at)
++
++        contact_inbox = ContactInbox.create!(
++          contact: contact,
++          inbox: inbox,
++          source_id: "fleexa-demo-#{account.id}-#{index + 1}"
++        )
++        contact_inbox.update_columns(created_at: lead_at, updated_at: lead_at)
++
++        conversation = Conversation.create!(
++          account: account,
++          inbox: inbox,
++          contact: contact,
++          contact_inbox: contact_inbox,
++          assignee: assignee,
++          status: row[:conversation_status] || 'open',
++          custom_attributes: demo_attributes(row),
++          additional_attributes: { source: row[:lead_origin_label] },
++          first_reply_created_at: row[:first_reply_minutes].present? ? lead_at + row[:first_reply_minutes].minutes : nil,
++          last_activity_at: lead_at + 35.minutes,
++          waiting_since: nil
++        )
++        conversation.update_columns(created_at: lead_at, updated_at: lead_at + 35.minutes)
++
++        Message.create!(
++          account: account,
++          inbox: inbox,
++          conversation: conversation,
++          sender: contact,
++          message_type: :incoming,
++          content_type: :text,
++          status: :sent,
++          content: row[:message],
++          created_at: lead_at + 1.minute,
++          updated_at: lead_at + 1.minute
++        )
++
++        if assignee.present? && row[:first_reply_minutes].present?
++          Message.create!(
++            account: account,
++            inbox: inbox,
++            conversation: conversation,
++            sender: assignee,
++            message_type: :outgoing,
++            content_type: :text,
++            status: :sent,
++            content: 'Thanks, I will check availability and send options now.',
++            created_at: lead_at + row[:first_reply_minutes].minutes,
++            updated_at: lead_at + row[:first_reply_minutes].minutes
++          )
++        end
++
++        create_demo_deal!(
++          account: account,
++          stages: stages,
++          contact: contact,
++          conversation: conversation,
++          assignee: assignee,
++          row: row,
++          created_at: lead_at
++        )
++
++        next unless row[:extra_deal]
++
++        create_demo_deal!(
++          account: account,
++          stages: stages,
++          contact: contact,
++          conversation: conversation,
++          assignee: assignee,
++          row: row.merge(row[:extra_deal]),
++          created_at: [lead_at + 2.days, Time.zone.now - 15.minutes].min
++        )
++      end
++
++      Crm::MarketingSpend::ManualEntryNormalizer.rebuild_all!(account_id: account.id)
++
++      demo_contacts = Contact.where(account_id: account.id).where("custom_attributes ->> ? = ?", DEMO_MARKER, 'true')
++      demo_deals = CrmDeal.where(account_id: account.id).where("custom_attributes ->> ? = ?", DEMO_MARKER, 'true')
++      demo_lost = demo_deals.joins(:stage).where(crm_pipeline_stages: { slug: 'closed_lost' })
++      demo_spend = MarketingSpendDaily.for_account(account.id).where(import_type: MarketingSpendDaily::IMPORT_TYPE_MANUAL)
++        .where(manual_spend_entry_id: ManualSpendEntry.where(account_id: account.id, notes: DEMO_NOTES).select(:id))
++      demo_conversations = Conversation.where(account_id: account.id).where("custom_attributes ->> ? = ?", DEMO_MARKER, 'true')
++
++      puts "account_id=#{account.id}"
++      puts "demo_contacts=#{demo_contacts.count}"
++      puts "demo_deals=#{demo_deals.count}"
++      puts "demo_lost_deals=#{demo_lost.count}"
++      puts "demo_conversations=#{demo_conversations.count}"
++      puts "demo_spend_rows=#{demo_spend.count}"
++      puts "demo_spend_aed=#{demo_spend.sum(:spend_aed).to_d.to_s('F')}"
++    end
++
++    def cleanup_demo_data!(account)
++      ManualSpendEntry.where(account_id: account.id, notes: DEMO_NOTES).find_each(&:destroy!)
++
++      conversation_ids = Conversation.where(account_id: account.id)
++        .where("custom_attributes ->> ? = ?", DEMO_MARKER, 'true')
++        .pluck(:id)
++      contact_ids = Contact.where(account_id: account.id)
++        .where("custom_attributes ->> ? = ?", DEMO_MARKER, 'true')
++        .pluck(:id)
++
++      CrmDeal.where(account_id: account.id).where("custom_attributes ->> ? = ?", DEMO_MARKER, 'true').delete_all
++      Message.where(account_id: account.id, conversation_id: conversation_ids).delete_all if conversation_ids.any?
++      Conversation.where(id: conversation_ids).delete_all if conversation_ids.any?
++      ContactInbox.where(contact_id: contact_ids).delete_all if contact_ids.any?
++      Contact.where(id: contact_ids).delete_all if contact_ids.any?
++    end
++
++    def seed_demo_spend!(account)
++      [
++        ['google_ads', 'Google Ads', 'Google Search Leads', 14200],
++        ['meta_ads', 'Meta Ads', 'Meta Paid Social', 9800],
++        ['dubizzle', 'Dubizzle', 'Dubizzle Listings', 6200],
++        ['telegram_ads', 'Telegram Ads', 'Telegram Channel Promo', 2100],
++        ['blogger_ugc', 'Blogger UGC', 'UGC Blogger Stories', 3000]
++      ].each do |source_key, source_label, campaign_name, budget|
++        ManualSpendEntry.create!(
++          account_id: account.id,
++          source_key: source_key,
++          source_label: source_label,
++          platform: 'manual',
++          vendor_name: source_label,
++          campaign_name: campaign_name,
++          notes: DEMO_NOTES,
++          start_date: Date.current - 29.days,
++          end_date: Date.current,
++          total_budget: budget,
++          currency: 'AED',
++          allocation_mode: ManualSpendEntry::ALLOCATION_EVEN_BY_DAY,
++          is_active: true
++        )
++      end
++    end
++
++    def demo_attributes(row)
++      {
++        DEMO_MARKER => 'true',
++        'traffic_source_key' => row[:source_key],
++        'traffic_source_label' => row[:source_label],
++        'lead_origin_key' => row[:lead_origin_key],
++        'lead_origin_label' => row[:lead_origin_label],
++        'source_detection_method' => row[:detection_method] || 'demo',
++        'source_confidence' => 'manual',
++        'qualification_status' => row[:qualification_status],
++        'lost_reason_category' => row[:lost_category],
++        'lost_reason_key' => row[:lost_reason_key],
++        'lost_reason_label' => row[:lost_reason_label],
++        'manager_name' => row[:manager_name],
++        'first_response_minutes' => row[:first_reply_minutes],
++        'needs_source_clarification' => false
++      }.compact
++    end
++
++    def create_demo_deal!(account:, stages:, contact:, conversation:, assignee:, row:, created_at:)
++      stage = stages.fetch(row[:stage_slug])
++      deal = CrmDeal.create!(
++        account: account,
++        stage: stage,
++        contact: contact,
++        conversation: conversation,
++        assignee: assignee,
++        title: "#{contact.name} - #{row[:car]}",
++        car_model: row[:car],
++        client_phone: contact.phone_number,
++        rental_start: row[:rental_start],
++        rental_end: row[:rental_end],
++        amount: row[:amount],
++        debt_amount: row[:debt_amount] || 0,
++        fleet_sync_status: 'none',
++        custom_attributes: demo_attributes(row).merge(
++          'budget' => row[:budget],
++          'language' => row[:language] || 'English'
++        )
++      )
++      deal.update_columns(created_at: created_at, updated_at: created_at + 1.hour)
++      deal
++    end
++
++    def seed_rows
++      base = Date.current - 6.days
++      [
++        row(base + 0.days, 'Aisha Morgan', 'google_ads', 'Google Ads', 'website', 'Website', 'reserved', 'qualified', 3200, 'Range Rover Vogue', 'Need Range Rover for a weekend, Google search ad'),
++        row(base + 1.day, 'Omar Sterling', 'meta_ads', 'Meta Ads', 'instagram', 'Instagram', 'closed_lost', 'unqualified', 0, 'Mercedes G63', 'Saw Instagram reel, asking for G63', lost: ['eligibility', 'no_license', 'No UAE license']),
++        row(base + 2.days, 'Maya Laurent', 'dubizzle', 'Dubizzle', 'call', 'Call', 'in_progress', 'pending', 1200, 'BMW X7', 'Calling from Dubizzle listing'),
++        row(base + 3.days, 'Leo Haddad', 'website_organic', 'Website Organic', 'website', 'Website', 'closed_won', 'qualified', 5400, 'Porsche 911', 'Found your website organically'),
++        row(base + 4.days, 'Nadia Costa', 'google_ads', 'Google Ads', 'website', 'Website', 'rental', 'qualified', 2800, 'Mercedes C300', 'Google landing page request'),
++        row(base + 5.days, 'Samir Khan', 'meta_ads', 'Meta Ads', 'whatsapp', 'WhatsApp', 'reserved', 'qualified', 2500, 'BMW 430i', 'Instagram WhatsApp ad request'),
++        row(base + 6.days, 'Elena Petrova', 'referral', 'Referral', 'whatsapp', 'WhatsApp', 'closed_won', 'qualified', 6200, 'Lamborghini Huracan', 'Friend recommended your rental'),
++        row(base + 8.days, 'Karim Aziz', 'dubizzle', 'Dubizzle', 'call', 'Call', 'closed_lost', 'unqualified', 0, 'Nissan Patrol', 'Dubizzle listing, wants no deposit', lost: ['invalid', 'spam', 'Spam / invalid request']),
++        row(base + 8.days, 'Sofia Marin', 'google_ads', 'Google Ads', 'website', 'Website', 'in_progress', 'qualified', 1600, 'Audi Q8', 'Google ad for SUV rental'),
++        row(base + 8.days, 'Victor Stone', 'telegram_ads', 'Telegram Ads', 'telegram_bot', 'Telegram Bot', 'closed_lost', 'unqualified', 0, 'Cadillac Escalade', 'Telegram channel promo', lost: ['eligibility', 'under_age', 'Driver under 25']),
++        row(base + 10.days, 'Daria Kim', 'meta_ads', 'Meta Ads', 'instagram', 'Instagram', 'rental', 'qualified', 3300, 'Porsche Cayenne', 'Instagram story ad'),
++        row(base + 11.days, 'Hassan Noor', 'google_ads', 'Google Ads', 'website', 'Website', 'closed_lost', 'qualified', 0, 'Mercedes S-Class', 'Google search lead, comparing prices', lost: ['sales', 'price_too_high', 'Price too high']),
++        row(base + 12.days, 'Julia Novak', 'website_organic', 'Website Organic', 'website', 'Website', 'reserved', 'qualified', 1900, 'Mini Cooper', 'Website form request'),
++        row(base + 14.days, 'Mikhail Orlov', 'meta_ads', 'Meta Ads', 'whatsapp', 'WhatsApp', 'in_progress', 'pending', 900, 'Ford Mustang', 'Meta WhatsApp click'),
++        row(base + 15.days, 'Rania Saleh', 'google_ads', 'Google Ads', 'website', 'Website', 'closed_won', 'qualified', 7800, 'Mercedes G63', 'Google landing, wants premium SUV'),
++        row(base + 16.days, 'Adam Fox', 'dubizzle', 'Dubizzle', 'call', 'Call', 'closed_lost', 'unqualified', 0, 'Chevrolet Tahoe', 'Dubizzle call', lost: ['eligibility', 'no_credit_card', 'No credit card']),
++        row(base + 17.days, 'Priya Shah', 'meta_ads', 'Meta Ads', 'instagram', 'Instagram', 'reserved', 'qualified', 2100, 'Tesla Model Y', 'Instagram campaign message'),
++        row(base + 19.days, 'Daniel Reed', 'google_ads', 'Google Ads', 'website', 'Website', 'rental', 'qualified', 4600, 'BMW X6', 'Google Ads landing request'),
++        row(base + 20.days, 'Fatima Noor', 'website_organic', 'Website Organic', 'website', 'Website', 'unassigned', 'pending', 0, 'Range Rover Sport', 'Organic website inquiry'),
++        row(base + 20.days, 'George Blake', 'meta_ads', 'Meta Ads', 'facebook', 'Facebook', 'closed_lost', 'unqualified', 0, 'Mercedes C200', 'Facebook ad request', lost: ['invalid', 'duplicate', 'Duplicate request']),
++        row(base + 22.days, 'Ilya Sokolov', 'referral', 'Referral', 'whatsapp', 'WhatsApp', 'rental', 'qualified', 3900, 'Audi A6', 'Referral from previous client'),
++        row(base + 23.days, 'Layla Green', 'google_ads', 'Google Ads', 'website', 'Website', 'reserved', 'qualified', 2700, 'Jeep Wrangler', 'Google Search booking request'),
++        row(base + 24.days, 'Marco Rossi', 'blogger_ugc', 'Blogger UGC', 'instagram', 'Instagram', 'closed_lost', 'qualified', 0, 'Ferrari Portofino', 'Blogger story mention', lost: ['sales', 'no_reply', 'No reply after quote']),
++        row(base + 25.days, 'Sara Wilson', 'meta_ads', 'Meta Ads', 'instagram', 'Instagram', 'in_progress', 'qualified', 1300, 'Volkswagen Golf', 'Instagram lead ad'),
++        row(base + 26.days, 'Artem Volkov', 'google_ads', 'Google Ads', 'website', 'Website', 'in_progress', 'pending', 1500, 'Kia Carnival', 'Google ad family car inquiry'),
++        row(base + 27.days, 'Mona Ali', 'dubizzle', 'Dubizzle', 'call', 'Call', 'reserved', 'qualified', 2400, 'Lexus LX', 'Dubizzle listing call'),
++        row(base + 27.days, 'Chris Evans', 'meta_ads', 'Meta Ads', 'whatsapp', 'WhatsApp', 'closed_lost', 'unqualified', 0, 'Dodge Challenger', 'WhatsApp from Meta ad', lost: ['eligibility', 'no_license', 'No UAE license']),
++        row(base + 28.days, 'Olga Ivanova', 'website_organic', 'Website Organic', 'website', 'Website', 'rental', 'qualified', 3100, 'Mercedes E-Class', 'Organic website request'),
++        row(base + 29.days, 'Ahmed Faris', 'telegram_ads', 'Telegram Ads', 'telegram_bot', 'Telegram Bot', 'unassigned', 'pending', 0, 'Toyota Prado', 'Telegram bot inquiry'),
++        row(base + 29.days, 'Mira Hart', 'google_ads', 'Google Ads', 'website', 'Website', 'reserved', 'qualified', 3600, 'Porsche Macan', 'Google Ads search request')
++      ].map.with_index do |item, index|
++        item.merge(
++          date: base + (index % 7).days,
++          email: "demo.marketing.#{index + 1}@fleexa.local",
++          phone: "+9715009#{format('%05d', index + 1)}",
++          first_reply_minutes: [4, 7, 11, 15, 19, 24, nil][index % 7],
++          manager_name: ['Марина К.', 'Алексей П.', 'Сара С.'][index % 3],
++          conversation_status: item[:stage_slug] == 'closed_lost' ? 'resolved' : 'open',
++          extra_deal: extra_deal_for(index, item)
++        )
++      end
++    end
++
++    def row(date, name, source_key, source_label, origin_key, origin_label, stage_slug, qualification_status, amount, car, message, lost: nil)
++      lost_category, lost_key, lost_label = lost
++      {
++        date: date,
++        name: name,
++        source_key: source_key,
++        source_label: source_label,
++        lead_origin_key: origin_key,
++        lead_origin_label: origin_label,
++        stage_slug: stage_slug,
++        qualification_status: qualification_status,
++        amount: amount,
++        car: car,
++        message: message,
++        budget: amount.positive? ? amount + 800 : 1200,
++        rental_start: date + 3.days,
++        rental_end: date + 6.days,
++        lost_category: lost_category,
++        lost_reason_key: lost_key,
++        lost_reason_label: lost_label
++      }
++    end
++
++    def extra_deal_for(index, item)
++      return nil unless [4, 10, 17, 23, 27].include?(index)
++
++      {
++        stage_slug: %w[in_progress reserved closed_won rental reserved][[4, 10, 17, 23, 27].index(index)],
++        qualification_status: 'qualified',
++        amount: [900, 1800, 4200, 1600, 2400][[4, 10, 17, 23, 27].index(index)],
++        car: ['Mercedes C300', 'Porsche Boxster', 'BMW 740i', 'Audi Q5', 'Mercedes GLE'][[4, 10, 17, 23, 27].index(index)],
++        lost_category: nil,
++        lost_reason_key: nil,
++        lost_reason_label: nil
++      }
++    end
++  end
++end

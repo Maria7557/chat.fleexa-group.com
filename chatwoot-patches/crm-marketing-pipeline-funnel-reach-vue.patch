@@ -1,0 +1,61 @@
+diff --git a/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue b/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue
+index 0ccae3a..a34c7b1 100644
+--- a/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue
++++ b/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue
+@@ -1488,18 +1488,35 @@ const salesFunnelTransitions = computed(() => {
+ const pipelineStageCards = computed(() => {
+   const totalSelectedDeals = selectedDeals.value.length;
+ 
+-  return orderedStages.value.map(stage => {
+-    const count = selectedStageCount(stage.id);
++  const forwardCards = forwardStages.value.map(stage => {
++    const count = selectedDeals.value.filter(deal => dealReachedStage(deal, stage)).length;
+ 
+     return {
+       key: String(stage.id),
+       label: stage.name || 'Stage',
+       count,
+       shareLabel: formatConversionRate(count, totalSelectedDeals),
++      detailLabel: `${formatNumber(count)} deals reached`,
+       accentColor: stageAccentColor(stage),
+-      isLost: stageIsLost(stage),
++      isLost: false,
+     };
+   });
++
++  const lostCards = lostStages.value.map(stage => {
++    const count = selectedDeals.value.filter(deal => String(deal.stage_id) === String(stage.id)).length;
++
++    return {
++      key: String(stage.id),
++      label: stage.name || 'Stage',
++      count,
++      shareLabel: formatConversionRate(count, totalSelectedDeals),
++      detailLabel: `${formatNumber(count)} lost / cancelled`,
++      accentColor: stageAccentColor(stage),
++      isLost: true,
++    };
++  });
++
++  return [...forwardCards, ...lostCards];
+ });
+ 
+ const monthlyChartRows = computed(() => {
+@@ -2901,7 +2920,7 @@ onMounted(() => {
+                 Pipeline Funnel
+               </h2>
+               <div class="mt-1 text-xs text-n-slate-10">
+-                Current deal distribution across real pipeline stages
++                Reached stage from selected deals
+               </div>
+             </div>
+             <span class="rounded-full bg-[#E0F5F4] px-2 py-0.5 text-[10px] font-semibold text-[#0C8A86]">
+@@ -2934,7 +2953,7 @@ onMounted(() => {
+                   {{ stage.label }}
+                 </div>
+                 <div class="mt-1 text-xs text-n-slate-10">
+-                  {{ formatNumber(stage.count) }} deals in stage
++                  {{ stage.detailLabel }}
+                 </div>
+               </article>
+             </div>

@@ -1,0 +1,278 @@
+diff --git a/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue b/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue
+index 4c26405..4c48fb3 100644
+--- a/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue
++++ b/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue
+@@ -777,13 +777,13 @@ const metricRegistry = computed(() => ({
+     key: 'leads',
+     label: 'Leads',
+     value: formatNumber(selectedEconomics.value.leads),
+-    detail: 'CRM deals created in selected period',
++    detail: 'Unique new clients in selected period',
+   },
+   qualified_leads: {
+     key: 'qualified_leads',
+     label: 'Qualified Leads',
+     value: formatNumber(selectedEconomics.value.qualifiedLeads),
+-    detail: 'Deals marked qualified',
++    detail: 'Unique clients marked qualified',
+   },
+   successful_deals: {
+     key: 'successful_deals',
+@@ -889,8 +889,8 @@ const observedTrafficSourceItems = computed(() => {
+     });
+   };
+ 
+-  deals.value.forEach(deal => {
+-    const snapshot = sourceSnapshotFromDeal(deal);
++  allLeadRecords.value.forEach(leadRecord => {
++    const snapshot = sourceSnapshotFromDeal(leadRecord.firstDeal);
+     addItem({
+       key: snapshot.key,
+       label: snapshot.label,
+@@ -954,6 +954,60 @@ const sourceMatches = (sourceKey, selectedKey = selectedSourceKey.value) => {
+   return selectedKey === 'all' || sourceKey === selectedKey;
+ };
+ 
++const normalizedPhoneValue = value => String(value || '').replace(/\D+/g, '');
++
++const leadIdentityForDeal = deal => {
++  if (deal?.contact_id) return `contact:${deal.contact_id}`;
++  if (deal?.contact?.id) return `contact:${deal.contact.id}`;
++
++  const phone = normalizedPhoneValue(
++    deal?.contact?.phone_number ||
++    deal?.client_phone ||
++    deal?.phone_number
++  );
++  if (phone) return `phone:${phone}`;
++
++  const email = normalizeText(deal?.contact?.email || deal?.email);
++  if (email) return `email:${email}`;
++
++  return `deal:${deal?.id || deal?.created_at || 'unknown'}`;
++};
++
++const timestampForValue = value => {
++  const timestamp = new Date(value || 0).getTime();
++  return Number.isFinite(timestamp) ? timestamp : 0;
++};
++
++const leadRecordsForDeals = sourceDeals => {
++  const recordsByIdentity = new Map();
++
++  [...sourceDeals]
++    .sort((first, second) => timestampForValue(first?.created_at) - timestampForValue(second?.created_at))
++    .forEach(deal => {
++      const key = leadIdentityForDeal(deal);
++      const record = recordsByIdentity.get(key) || {
++        key,
++        firstDeal: deal,
++        deals: [],
++      };
++
++      record.deals.push(deal);
++      if (timestampForValue(deal?.created_at) < timestampForValue(record.firstDeal?.created_at)) {
++        record.firstDeal = deal;
++      }
++
++      recordsByIdentity.set(key, record);
++    });
++
++  return [...recordsByIdentity.values()];
++};
++
++const leadFirstDateKey = leadRecord => trendDateKeyFromValue(leadRecord?.firstDeal?.created_at);
++
++const leadTrafficSourceKey = leadRecord => classifyTrafficSource(leadRecord?.firstDeal);
++
++const dealListForLeadRecords = leadRecords => leadRecords.flatMap(leadRecord => leadRecord.deals);
++
+ const dealCustomAttributeValue = (deal, key) => normalizedAttributes(deal?.custom_attributes)[key];
+ 
+ const dealIsQualified = deal => {
+@@ -1003,6 +1057,20 @@ const dealIsSalesLost = deal => {
+   return dealIsLost(deal) && lostReasonCategoryKey(deal) === SALES_LOST_REASON_CATEGORY;
+ };
+ 
++const leadIsQualified = leadRecord => leadRecord.deals.some(dealIsQualified);
++
++const leadIsLost = leadRecord => leadRecord.deals.some(dealIsLost);
++
++const leadIsUnqualifiedLost = leadRecord => leadRecord.deals.some(dealIsUnqualifiedLost);
++
++const leadIsSalesLost = leadRecord => leadRecord.deals.some(dealIsSalesLost);
++
++const allLeadRecords = computed(() => leadRecordsForDeals(deals.value));
++
++const leadRecordsForSourceKey = sourceKey => {
++  return allLeadRecords.value.filter(leadRecord => leadTrafficSourceKey(leadRecord) === sourceKey);
++};
++
+ const amountForDeals = sourceDeals => {
+   return sourceDeals.reduce((sum, deal) => sum + amountValue(deal.amount), 0);
+ };
+@@ -1014,18 +1082,19 @@ const spendAmountForSource = sourceKey => {
+ };
+ 
+ const economicsSummaryForDeals = (sourceDeals, spend) => {
++  const leadRecords = leadRecordsForDeals(sourceDeals);
++  const qualifiedLeadRecords = leadRecords.filter(leadIsQualified);
++  const lostLeadRecords = leadRecords.filter(leadIsLost);
++  const unqualifiedLostLeadRecords = leadRecords.filter(leadIsUnqualifiedLost);
++  const salesLostLeadRecords = leadRecords.filter(leadIsSalesLost);
+   const successfulDeals = sourceDeals.filter(dealIsSuccessful);
+   const completedDeals = sourceDeals.filter(dealIsCompleted);
+-  const qualifiedDeals = sourceDeals.filter(dealIsQualified);
+-  const lostDeals = sourceDeals.filter(dealIsLost);
+-  const unqualifiedLostDeals = sourceDeals.filter(dealIsUnqualifiedLost);
+-  const salesLostDeals = sourceDeals.filter(dealIsSalesLost);
+   const pipelineValue = amountForDeals(successfulDeals);
+   const completedValue = amountForDeals(completedDeals);
+ 
+   return {
+-    leads: sourceDeals.length,
+-    qualifiedLeads: qualifiedDeals.length,
++    leads: leadRecords.length,
++    qualifiedLeads: qualifiedLeadRecords.length,
+     bookings: successfulDeals.length,
+     successfulDeals: successfulDeals.length,
+     successfulDealAmount: pipelineValue,
+@@ -1033,14 +1102,18 @@ const economicsSummaryForDeals = (sourceDeals, spend) => {
+     pipelineValue,
+     completedValue,
+     spend: amountValue(spend),
+-    lost: lostDeals.length,
+-    unqualifiedLost: unqualifiedLostDeals.length,
+-    salesLost: salesLostDeals.length,
++    lost: lostLeadRecords.length,
++    unqualifiedLost: unqualifiedLostLeadRecords.length,
++    salesLost: salesLostLeadRecords.length,
+   };
+ };
+ 
++const selectedLeadRecords = computed(() => {
++  return allLeadRecords.value.filter(leadRecord => sourceMatches(leadTrafficSourceKey(leadRecord)));
++});
++
+ const selectedDeals = computed(() => {
+-  return deals.value.filter(deal => sourceMatches(classifyTrafficSource(deal)));
++  return dealListForLeadRecords(selectedLeadRecords.value);
+ });
+ 
+ const selectedStageCount = stageId => {
+@@ -1068,8 +1141,8 @@ const sourceLabelForKey = key => {
+ const sourceEconomicsRows = computed(() => {
+   const sourceKeys = new Set();
+ 
+-  deals.value.forEach(deal => {
+-    sourceKeys.add(classifyTrafficSource(deal));
++  allLeadRecords.value.forEach(leadRecord => {
++    sourceKeys.add(leadTrafficSourceKey(leadRecord));
+   });
+   monthlySpendRows.value.forEach(row => {
+     sourceKeys.add(classifySpendSource(row));
+@@ -1081,7 +1154,7 @@ const sourceEconomicsRows = computed(() => {
+   return [...sourceKeys]
+     .filter(key => key && key !== 'all' && sourceMatches(key))
+     .map(key => {
+-      const sourceDeals = deals.value.filter(deal => classifyTrafficSource(deal) === key);
++      const sourceDeals = dealListForLeadRecords(leadRecordsForSourceKey(key));
+       const summary = economicsSummaryForDeals(sourceDeals, spendAmountForSource(key));
+ 
+       return {
+@@ -1137,7 +1210,7 @@ const topLostReasonForDeals = lostDeals => {
+ const sourceLossRows = computed(() => {
+   return sourceEconomicsRows.value
+     .map(row => {
+-      const sourceDeals = deals.value.filter(deal => classifyTrafficSource(deal) === row.key);
++      const sourceDeals = dealListForLeadRecords(leadRecordsForSourceKey(row.key));
+       const lostDeals = sourceDeals.filter(dealIsLost);
+       const categoryCounts = LOST_REASON_CATEGORY_ORDER.reduce((memo, category) => {
+         memo[category] = 0;
+@@ -1278,7 +1351,7 @@ const salesFunnelTransitions = computed(() => {
+ });
+ 
+ const pipelineStageCards = computed(() => {
+-  const totalSelectedDeals = selectedEconomics.value.leads;
++  const totalSelectedDeals = selectedDeals.value.length;
+ 
+   return orderedStages.value.map(stage => {
+     const count = selectedStageCount(stage.id);
+@@ -2069,11 +2142,11 @@ const setManualSpendActive = async (entry, isActive) => {
+ };
+ 
+ const dealDateKeys = computed(() => {
+-  return deals.value.map(deal => trendDateKeyFromValue(deal.created_at)).filter(Boolean).sort();
++  return allLeadRecords.value.map(leadFirstDateKey).filter(Boolean).sort();
+ });
+ 
+ const trendDateKeys = computed(() => {
+-  if (!deals.value.length) return [];
++  if (!allLeadRecords.value.length) return [];
+ 
+   const fromKey = analyticsDateFrom.value || dealDateKeys.value[0];
+   const toKey = analyticsDateTo.value || dealDateKeys.value[dealDateKeys.value.length - 1];
+@@ -2091,13 +2164,13 @@ const leadTrendRows = computed(() => {
+     return memo;
+   }, {});
+ 
+-  deals.value.forEach(deal => {
+-    const dateKey = trendDateKeyFromValue(deal.created_at);
++  allLeadRecords.value.forEach(leadRecord => {
++    const dateKey = leadFirstDateKey(leadRecord);
+     const row = rowsByDate[dateKey];
+     if (!row) return;
+ 
+     row.all += 1;
+-    const sourceKey = classifyTrafficSource(deal);
++    const sourceKey = leadTrafficSourceKey(leadRecord);
+     row[sourceKey] = (row[sourceKey] || 0) + 1;
+   });
+ 
+@@ -2113,11 +2186,18 @@ const maxTrendValue = computed(() => {
+ });
+ 
+ const totalLeadTrendCount = computed(() => {
+-  return leadTrendRows.value.reduce((sum, row) => sum + (row.all || 0), 0);
++  const sourceKey = selectedSourceKey.value;
++  return leadTrendRows.value.reduce((sum, row) => {
++    return sum + (sourceKey === 'all' ? row.all || 0 : row[sourceKey] || 0);
++  }, 0);
+ });
+ 
+ const peakLeadTrendCount = computed(() => {
+-  return leadTrendRows.value.reduce((peak, row) => Math.max(peak, row.all || 0), 0);
++  const sourceKey = selectedSourceKey.value;
++  return leadTrendRows.value.reduce((peak, row) => {
++    const value = sourceKey === 'all' ? row.all || 0 : row[sourceKey] || 0;
++    return Math.max(peak, value);
++  }, 0);
+ });
+ 
+ const trendPointX = (index, total) => {
+@@ -2609,7 +2689,7 @@ onMounted(() => {
+                 Source Economics
+               </h2>
+               <div class="mt-1 text-xs text-n-slate-10">
+-                AED metrics for the selected lead cohort
++                AED metrics for the selected client cohort
+               </div>
+             </div>
+             <span class="rounded-full bg-[#E0F5F4] px-2 py-0.5 text-[10px] font-semibold text-[#0C8A86]">
+@@ -2789,7 +2869,7 @@ onMounted(() => {
+                 </span>
+               </div>
+               <div class="mt-1 text-xs text-n-slate-10">
+-                Leads by source over time
++                New clients by source over time
+               </div>
+             </div>
+ 
+@@ -2969,6 +3049,6 @@ onMounted(() => {
+             v-else
+             class="grid min-h-[280px] place-items-center rounded-lg border border-dashed border-n-weak bg-n-background px-4 text-center text-sm text-n-slate-10"
+          >
+-            No leads in selected period
++            No new clients in selected period
+          </div>
+        </section>

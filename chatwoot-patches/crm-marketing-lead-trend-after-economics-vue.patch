@@ -1,0 +1,207 @@
+diff --git a/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue b/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue
+--- a/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue
++++ b/app/javascript/dashboard/routes/dashboard/crm/MarketingAnalytics.vue
+@@ -2907,101 +2907,6 @@
+             class="grid min-h-[112px] place-items-center rounded-lg border border-dashed border-n-weak bg-n-background px-4 text-center text-sm text-n-slate-10"
+           >
+             No source economics in selected period
+-          </div>
+-        </section>
+-
+-        <section class="grid gap-4 rounded-lg border border-n-weak bg-n-solid-1 p-5">
+-          <div class="flex flex-wrap items-start justify-between gap-3">
+-            <div>
+-              <h2 class="text-sm font-semibold text-n-slate-12">
+-                Pipeline Funnel
+-              </h2>
+-              <div class="mt-1 text-xs text-n-slate-10">
+-                Reached stage from selected deals
+-              </div>
+-            </div>
+-            <span class="rounded-full bg-[#E0F5F4] px-2 py-0.5 text-[10px] font-semibold text-[#0C8A86]">
+-              {{ selectedTrendSeriesLabel }}
+-            </span>
+-          </div>
+-
+-          <div class="overflow-x-auto pb-1">
+-            <div class="flex min-w-max items-stretch gap-3">
+-              <article
+-                v-for="stage in pipelineStageCards"
+-                :key="stage.key"
+-                class="flex min-h-[128px] min-w-[164px] flex-col rounded-2xl border border-n-weak bg-white px-4 py-4 shadow-[0_10px_24px_rgba(15,25,35,0.05)]"
+-              >
+-                <div class="flex items-center justify-between gap-3">
+-                  <span
+-                    class="h-2.5 w-2.5 shrink-0 rounded-full"
+-                    :style="{ backgroundColor: stage.accentColor }"
+-                  />
+-                  <span
+-                    class="text-[11px] font-semibold"
+-                    :class="stage.isLost ? 'text-n-ruby-10' : 'text-n-slate-10'"
+-                  >
+-                    {{ stage.shareLabel }}
+-                  </span>
+-                </div>
+-                <div class="mt-5 text-3xl font-semibold tracking-normal text-n-slate-12">
+-                  {{ formatNumber(stage.count) }}
+-                </div>
+-                <div class="mt-4 text-sm font-semibold text-n-slate-12">
+-                  {{ stage.label }}
+-                </div>
+-                <div class="mt-1 text-xs text-n-slate-10">
+-                  {{ stage.detailLabel }}
+-                </div>
+-              </article>
+-            </div>
+-          </div>
+-        </section>
+-
+-        <section class="grid gap-4 rounded-lg border border-n-weak bg-n-solid-1 p-5">
+-          <div class="flex flex-wrap items-start justify-between gap-3">
+-            <div>
+-              <h2 class="text-sm font-semibold text-n-slate-12">
+-                Marketing Funnel
+-              </h2>
+-              <div class="mt-1 text-xs text-n-slate-10">
+-                Lead to qualified to revenue progression
+-              </div>
+-            </div>
+-            <span class="rounded-full bg-[#E0F5F4] px-2 py-0.5 text-[10px] font-semibold text-[#0C8A86]">
+-              {{ selectedTrendSeriesLabel }}
+-            </span>
+-          </div>
+-
+-          <div class="overflow-x-auto pb-1">
+-            <div class="flex min-w-max items-center gap-3">
+-              <template
+-                v-for="(step, index) in salesFunnelSteps"
+-                :key="step.key"
+-              >
+-                <article
+-                  class="flex h-[120px] min-w-[150px] flex-col items-center justify-center rounded-2xl px-4 text-center shadow-[0_10px_24px_rgba(15,25,35,0.05)]"
+-                  :class="[step.bgClass, step.textClass]"
+-                >
+-                  <div class="text-3xl font-semibold tracking-normal">
+-                    {{ formatNumber(step.count) }}
+-                  </div>
+-                  <div class="mt-5 text-sm font-semibold">
+-                    {{ step.label }}
+-                  </div>
+-                </article>
+-
+-                <div
+-                  v-if="index < salesFunnelTransitions.length"
+-                  class="flex min-w-[66px] flex-col items-center justify-center gap-2 px-1 text-n-slate-10"
+-                >
+-                  <div class="text-sm font-semibold text-n-slate-11">
+-                    {{ salesFunnelTransitions[index].value }}
+-                  </div>
+-                  <i class="i-lucide-arrow-right h-4 w-4" />
+-                </div>
+-              </template>
+-            </div>
+           </div>
+         </section>
+ 
+@@ -3201,6 +3106,101 @@
+           </div>
+         </section>
+ 
++        <section class="grid gap-4 rounded-lg border border-n-weak bg-n-solid-1 p-5">
++          <div class="flex flex-wrap items-start justify-between gap-3">
++            <div>
++              <h2 class="text-sm font-semibold text-n-slate-12">
++                Pipeline Funnel
++              </h2>
++              <div class="mt-1 text-xs text-n-slate-10">
++                Reached stage from selected deals
++              </div>
++            </div>
++            <span class="rounded-full bg-[#E0F5F4] px-2 py-0.5 text-[10px] font-semibold text-[#0C8A86]">
++              {{ selectedTrendSeriesLabel }}
++            </span>
++          </div>
++
++          <div class="overflow-x-auto pb-1">
++            <div class="flex min-w-max items-stretch gap-3">
++              <article
++                v-for="stage in pipelineStageCards"
++                :key="stage.key"
++                class="flex min-h-[128px] min-w-[164px] flex-col rounded-2xl border border-n-weak bg-white px-4 py-4 shadow-[0_10px_24px_rgba(15,25,35,0.05)]"
++              >
++                <div class="flex items-center justify-between gap-3">
++                  <span
++                    class="h-2.5 w-2.5 shrink-0 rounded-full"
++                    :style="{ backgroundColor: stage.accentColor }"
++                  />
++                  <span
++                    class="text-[11px] font-semibold"
++                    :class="stage.isLost ? 'text-n-ruby-10' : 'text-n-slate-10'"
++                  >
++                    {{ stage.shareLabel }}
++                  </span>
++                </div>
++                <div class="mt-5 text-3xl font-semibold tracking-normal text-n-slate-12">
++                  {{ formatNumber(stage.count) }}
++                </div>
++                <div class="mt-4 text-sm font-semibold text-n-slate-12">
++                  {{ stage.label }}
++                </div>
++                <div class="mt-1 text-xs text-n-slate-10">
++                  {{ stage.detailLabel }}
++                </div>
++              </article>
++            </div>
++          </div>
++        </section>
++
++        <section class="grid gap-4 rounded-lg border border-n-weak bg-n-solid-1 p-5">
++          <div class="flex flex-wrap items-start justify-between gap-3">
++            <div>
++              <h2 class="text-sm font-semibold text-n-slate-12">
++                Marketing Funnel
++              </h2>
++              <div class="mt-1 text-xs text-n-slate-10">
++                Lead to qualified to revenue progression
++              </div>
++            </div>
++            <span class="rounded-full bg-[#E0F5F4] px-2 py-0.5 text-[10px] font-semibold text-[#0C8A86]">
++              {{ selectedTrendSeriesLabel }}
++            </span>
++          </div>
++
++          <div class="overflow-x-auto pb-1">
++            <div class="flex min-w-max items-center gap-3">
++              <template
++                v-for="(step, index) in salesFunnelSteps"
++                :key="step.key"
++              >
++                <article
++                  class="flex h-[120px] min-w-[150px] flex-col items-center justify-center rounded-2xl px-4 text-center shadow-[0_10px_24px_rgba(15,25,35,0.05)]"
++                  :class="[step.bgClass, step.textClass]"
++                >
++                  <div class="text-3xl font-semibold tracking-normal">
++                    {{ formatNumber(step.count) }}
++                  </div>
++                  <div class="mt-5 text-sm font-semibold">
++                    {{ step.label }}
++                  </div>
++                </article>
++
++                <div
++                  v-if="index < salesFunnelTransitions.length"
++                  class="flex min-w-[66px] flex-col items-center justify-center gap-2 px-1 text-n-slate-10"
++                >
++                  <div class="text-sm font-semibold text-n-slate-11">
++                    {{ salesFunnelTransitions[index].value }}
++                  </div>
++                  <i class="i-lucide-arrow-right h-4 w-4" />
++                </div>
++              </template>
++            </div>
++          </div>
++        </section>
++
+         <section class="grid gap-4 lg:grid-cols-[minmax(0,0.72fr)_minmax(0,1fr)]">
+           <article class="rounded-2xl border border-n-weak bg-n-solid-1 shadow-[0_12px_32px_rgba(15,25,35,0.05)]">
+             <div class="flex items-center justify-between gap-4 border-b border-n-weak px-5 py-4">
