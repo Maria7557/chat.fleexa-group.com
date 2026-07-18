@@ -159,6 +159,7 @@ crm-copy-patches: ensure-env
 	$(COMPOSE) cp chatwoot-patches/crm-marketing-economics-kpi-layer-backend.patch rails:/tmp/crm-marketing-economics-kpi-layer-backend.patch
 	$(COMPOSE) cp chatwoot-patches/crm-marketing-demo-seed-backend.patch rails:/tmp/crm-marketing-demo-seed-backend.patch
 	$(COMPOSE) cp chatwoot-patches/fleexa-manager-chat-api-backend.patch rails:/tmp/fleexa-manager-chat-api-backend.patch
+	$(COMPOSE) cp chatwoot-patches/fleexa-manager-conversation-filters-backend.patch rails:/tmp/fleexa-manager-conversation-filters-backend.patch
 	@echo "CRM patch files copied to Rails container"
 
 crm-patch-check: crm-copy-patches
@@ -184,6 +185,7 @@ crm-patch-check: crm-copy-patches
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply --check /tmp/crm-marketing-economics-kpi-layer-backend.patch"
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply --check /tmp/crm-marketing-demo-seed-backend.patch"
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply --check /tmp/fleexa-manager-chat-api-backend.patch"
+	$(COMPOSE) exec rails sh -lc "cd /app && git apply --check /tmp/fleexa-manager-conversation-filters-backend.patch"
 	@echo "CRM patches validated"
 
 crm-patch:
@@ -209,6 +211,7 @@ crm-patch:
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply /tmp/crm-marketing-economics-kpi-layer-backend.patch"
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply /tmp/crm-marketing-demo-seed-backend.patch"
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply /tmp/fleexa-manager-chat-api-backend.patch"
+	$(COMPOSE) exec rails sh -lc "cd /app && git apply /tmp/fleexa-manager-conversation-filters-backend.patch"
 	@echo "CRM patches applied to Rails container"
 
 crm-install: crm-copy-patches crm-patch
@@ -366,6 +369,7 @@ crm-assets-build-host:
 	git apply "$(CURDIR)/chatwoot-patches/crm-marketing-economics-kpi-layer-backend.patch"; \
 	git apply "$(CURDIR)/chatwoot-patches/crm-marketing-demo-seed-backend.patch"; \
 	git apply "$(CURDIR)/chatwoot-patches/fleexa-manager-chat-api-backend.patch"; \
+	git apply "$(CURDIR)/chatwoot-patches/fleexa-manager-conversation-filters-backend.patch"; \
 	git apply "$(CURDIR)/chatwoot-patches/crm-pipeline-vue.patch"; \
 	git apply "$(CURDIR)/chatwoot-patches/crm-deal-workspace-vue.patch"; \
 	git apply "$(CURDIR)/chatwoot-patches/crm-deal-fields-vue.patch"; \

@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
-import { activeAccountIdForSession } from '@fleexa/domain';
+import { activeAccountIdForSession, type ConversationFilter } from '@fleexa/domain';
 import { createClientMessageId } from '@fleexa/api-client';
 
 import { useAuth } from '@/src/auth/AuthProvider';
@@ -9,7 +9,7 @@ import { useFleexaApiClient } from './client';
 export const queryKeys = {
   session: ['session', 'current'] as const,
   counters: (accountId: string) => ['manager-counters', accountId] as const,
-  conversations: (accountId: string) => ['conversations', accountId] as const,
+  conversations: (accountId: string, filter?: ConversationFilter) => ['conversations', accountId, filter ?? 'all'] as const,
   conversation: (accountId: string, conversationId: string) => ['conversation', accountId, conversationId] as const,
   messages: (accountId: string, conversationId: string) => ['messages', accountId, conversationId] as const,
   stages: (accountId: string) => ['pipeline-stages', accountId] as const,
@@ -43,12 +43,12 @@ export const useManagerCounters = (accountId: string | null) => {
   });
 };
 
-export const useConversations = (accountId: string | null) => {
+export const useConversations = (accountId: string | null, filter: ConversationFilter = 'all') => {
   const client = useFleexaApiClient();
 
   return useQuery({
-    queryKey: accountId ? queryKeys.conversations(accountId) : ['conversations', 'missing'],
-    queryFn: () => client.listConversations({ accountId: accountId ?? '', limit: 12, assignment: 'mine' }),
+    queryKey: accountId ? queryKeys.conversations(accountId, filter) : ['conversations', 'missing', filter],
+    queryFn: () => client.listConversations({ accountId: accountId ?? '', limit: 12, filter }),
     enabled: Boolean(accountId),
     retry: false,
   });
@@ -106,7 +106,7 @@ export const useSendTextMessage = (accountId: string | null, conversationId: str
       if (!accountId || !conversationId) return;
       void queryClient.invalidateQueries({ queryKey: queryKeys.messages(accountId, conversationId) });
       void queryClient.invalidateQueries({ queryKey: queryKeys.conversation(accountId, conversationId) });
-      void queryClient.invalidateQueries({ queryKey: queryKeys.conversations(accountId) });
+      void queryClient.invalidateQueries({ queryKey: ['conversations', accountId] });
       void queryClient.invalidateQueries({ queryKey: queryKeys.counters(accountId) });
     },
   });

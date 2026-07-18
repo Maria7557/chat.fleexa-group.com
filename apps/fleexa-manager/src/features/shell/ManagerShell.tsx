@@ -1,11 +1,11 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { router, type Href } from 'expo-router';
 import { ChevronRight, GitBranch, MessageSquareText, PanelLeftClose, PanelLeftOpen, RefreshCw, Settings, UserRound } from 'lucide-react-native';
 
 import { FleexaApiError, safeFleexaApiErrorMessage } from '@fleexa/api-client';
 import { Button, Screen, StatusPill, colors, spacing } from '@fleexa/ui';
-import { activeAccountIdForSession } from '@fleexa/domain';
+import { activeAccountIdForSession, type ConversationFilter } from '@fleexa/domain';
 import type { FleexaRuntimeConfig } from '@fleexa/config';
 
 import { useConversations, useCurrentSession, useManagerCounters, usePipelineStages } from '@/src/api/queries';
@@ -19,14 +19,29 @@ const sections: Array<{ key: ManagerSection; label: string }> = [
   { key: 'bookings', label: 'Bookings' },
 ];
 
+const conversationFilters: Array<{ key: ConversationFilter; label: string }> = [
+  { key: 'mine', label: 'My' },
+  { key: 'unassigned', label: 'Unassigned' },
+  { key: 'unread', label: 'Unread' },
+  { key: 'all', label: 'All' },
+  { key: 'waiting_for_reply', label: 'Waiting' },
+];
+
 const formatAmount = (amount?: { amount: string; currency: string } | null): string => {
   if (!amount) return 'No value';
   return `${Number(amount.amount).toLocaleString()} ${amount.currency}`;
 };
 
+const replyStateLabel = (state: 'waiting_for_reply' | 'replied'): string =>
+  state === 'waiting_for_reply' ? 'Waiting' : 'Replied';
+
+const replyStateTone = (state: 'waiting_for_reply' | 'replied'): 'warning' | 'success' =>
+  state === 'waiting_for_reply' ? 'warning' : 'success';
+
 export const ManagerShell = ({ config }: { config: FleexaRuntimeConfig }) => {
   const { signOut } = useAuth();
   const { width } = useWindowDimensions();
+  const [conversationFilter, setConversationFilter] = useState<ConversationFilter>('mine');
   const activeSection = useUiStore(state => state.activeSection);
   const setActiveSection = useUiStore(state => state.setActiveSection);
   const sidebarCollapsed = useUiStore(state => state.sidebarCollapsed);
@@ -34,7 +49,7 @@ export const ManagerShell = ({ config }: { config: FleexaRuntimeConfig }) => {
   const session = useCurrentSession();
   const accountId = session.data ? activeAccountIdForSession(session.data) : null;
   const counters = useManagerCounters(accountId);
-  const conversations = useConversations(accountId);
+  const conversations = useConversations(accountId, conversationFilter);
   const stages = usePipelineStages(accountId);
   const isWide = width >= 900;
   const sessionExpired =
@@ -159,6 +174,25 @@ export const ManagerShell = ({ config }: { config: FleexaRuntimeConfig }) => {
                 <MessageSquareText size={20} color={colors.teal} />
                 <Text style={styles.sectionTitle}>Conversation queue</Text>
               </View>
+              <View style={styles.filterTabs}>
+                {conversationFilters.map(filter => {
+                  const selected = conversationFilter === filter.key;
+
+                  return (
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityState={{ selected }}
+                      key={filter.key}
+                      onPress={() => setConversationFilter(filter.key)}
+                      style={[styles.filterTab, selected && styles.filterTabActive]}
+                    >
+                      <Text style={[styles.filterTabText, selected && styles.filterTabTextActive]}>
+                        {filter.label}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
               {conversations.error ? (
                 <EmptyState label={safeFleexaApiErrorMessage(conversations.error)} tone="danger" />
               ) : null}
@@ -176,8 +210,14 @@ export const ManagerShell = ({ config }: { config: FleexaRuntimeConfig }) => {
                     <Text numberOfLines={2} style={styles.rowMeta}>
                       {item.lastMessage?.text || item.title || 'No messages yet'}
                     </Text>
+                    <Text numberOfLines={1} style={styles.rowOwner}>
+                      {item.assignedManager ? `Manager: ${item.assignedManager.displayName}` : 'Unassigned'}
+                    </Text>
+                    <View style={styles.queueBadges}>
+                      <StatusPill label={replyStateLabel(item.replyState)} tone={replyStateTone(item.replyState)} />
+                      <StatusPill label={`${item.unreadCount} unread`} tone={item.unreadCount ? 'warning' : 'neutral'} />
+                    </View>
                   </View>
-                  <StatusPill label={`${item.unreadCount} unread`} tone={item.unreadCount ? 'warning' : 'neutral'} />
                   <ChevronRight size={18} color={colors.textMuted} />
                 </Pressable>
               ))}
@@ -411,6 +451,33 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '800',
   },
+  filterTabs: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+  },
+  filterTab: {
+    minHeight: 34,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: spacing.md,
+  },
+  filterTabActive: {
+    borderColor: colors.teal,
+    backgroundColor: '#E7F7F6',
+  },
+  filterTabText: {
+    color: colors.textMuted,
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  filterTabTextActive: {
+    color: colors.text,
+  },
   queueRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -436,6 +503,17 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     fontSize: 13,
     marginTop: 2,
+  },
+  rowOwner: {
+    color: colors.textMuted,
+    fontSize: 12,
+    marginTop: spacing.xs,
+  },
+  queueBadges: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.xs,
+    marginTop: spacing.sm,
   },
   stageRow: {
     flexDirection: 'row',

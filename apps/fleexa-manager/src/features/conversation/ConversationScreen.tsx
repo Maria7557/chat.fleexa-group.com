@@ -20,6 +20,12 @@ import { activeAccountIdForSession, type ManagerMessage } from '@fleexa/domain';
 
 import { useConversationDetail, useCurrentSession, useMessages, useSendTextMessage } from '@/src/api/queries';
 
+const replyStateLabel = (state: 'waiting_for_reply' | 'replied'): string =>
+  state === 'waiting_for_reply' ? 'Waiting' : 'Replied';
+
+const replyStateTone = (state: 'waiting_for_reply' | 'replied'): 'warning' | 'success' =>
+  state === 'waiting_for_reply' ? 'warning' : 'success';
+
 export const ConversationScreen = ({ conversationId }: { conversationId: string | null }) => {
   const { width } = useWindowDimensions();
   const [draft, setDraft] = useState('');
@@ -74,7 +80,12 @@ export const ConversationScreen = ({ conversationId }: { conversationId: string 
               {conversation?.channel.displayName ?? conversationId ?? 'Chat'}
             </Text>
           </View>
-          {conversation ? <StatusPill label={conversation.status} tone={conversation.status === 'open' ? 'success' : 'neutral'} /> : null}
+          {conversation ? (
+            <View style={styles.headerPills}>
+              <StatusPill label={conversation.status} tone={conversation.status === 'open' ? 'success' : 'neutral'} />
+              <StatusPill label={replyStateLabel(conversation.replyState)} tone={replyStateTone(conversation.replyState)} />
+            </View>
+          ) : null}
         </View>
 
         <View style={[styles.body, isWide && styles.bodyWide]}>
@@ -189,6 +200,12 @@ const styles = StyleSheet.create({
   headerText: {
     flex: 1,
     minWidth: 0,
+  },
+  headerPills: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.xs,
+    justifyContent: 'flex-end',
   },
   title: {
     color: colors.text,

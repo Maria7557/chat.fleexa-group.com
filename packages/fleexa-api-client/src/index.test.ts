@@ -144,6 +144,37 @@ describe('@fleexa/api-client', () => {
     } satisfies Partial<FleexaApiError>);
   });
 
+  it('passes manager conversation filters through the Manager API', async () => {
+    const fetchImpl = vi.fn(async () =>
+      new Response(
+        JSON.stringify({
+          data: [],
+          page: { nextCursor: null, hasMore: false, limit: 12 },
+        })
+      )
+    );
+    const client = new ManagerApiClient({
+      baseUrl: 'https://api.example.com/api/fleexa-manager/v1',
+      tokenProvider: () => 'access-token',
+      fetchImpl,
+    });
+
+    await client.listConversations({
+      accountId: 'acc_1',
+      limit: 12,
+      filter: 'waiting_for_reply',
+    });
+
+    expect(fetchImpl).toHaveBeenCalledWith(
+      'https://api.example.com/api/fleexa-manager/v1/accounts/acc_1/conversations?limit=12&filter=waiting_for_reply',
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Authorization: 'Bearer access-token',
+        }),
+      })
+    );
+  });
+
   it('sanitizes unavailable Manager API failures', async () => {
     const fetchImpl = vi.fn(async () => {
       throw new TypeError('connect ECONNREFUSED 127.0.0.1:3000');
@@ -204,6 +235,12 @@ describe('@fleexa/api-client', () => {
     expect(login.accessToken).toContain('mock');
     expect(session.apiVersion).toContain('mock');
     expect(conversations.data[0]?.linkedDeal?.id).toMatch(/^deal_/);
+    expect(conversations.data[0]).toMatchObject({
+      assignedManager: { id: 'user_mock_manager' },
+      lastCustomerMessageAt: '2026-07-18T09:00:00.000Z',
+      lastAgentReplyAt: null,
+      replyState: 'waiting_for_reply',
+    });
     expect(conversations.data[0]).not.toHaveProperty('custom_attributes');
     expect(counters.counters).toEqual({ unread: 5, assigned: 14, unassigned: 3 });
     expect(counters.counters).not.toHaveProperty('activeDeals');
@@ -346,6 +383,10 @@ describe('@fleexa/api-client', () => {
       channel: { type: 'other', displayName: 'Api' },
       contact: { id: 'contact_44', displayName: 'Mikhail Orlov' },
       lastMessage: { id: 'msg_180', text: 'Meta WhatsApp click', direction: 'incoming' },
+      assignedManager: { id: 'user_1' },
+      lastCustomerMessageAt: '2026-07-18T10:19:38.000Z',
+      lastAgentReplyAt: null,
+      replyState: 'waiting_for_reply',
     });
     expect(conversations.data[0]).not.toHaveProperty('custom_attributes');
   });

@@ -5,6 +5,7 @@ import type {
   AppRole,
   BookingByDealResponse,
   ChannelType,
+  ConversationFilter,
   ConversationDetailResponse,
   ConversationListItem,
   ConversationListResponse,
@@ -45,6 +46,7 @@ export interface ListConversationsParams {
   cursor?: string;
   limit?: number;
   status?: string;
+  filter?: ConversationFilter;
   assignment?: 'mine' | 'unassigned' | 'all';
 }
 
@@ -511,6 +513,28 @@ const messagePreviewFromChatwoot = (raw: unknown): MessagePreview | null => {
   };
 };
 
+const lastVisibleChatwootMessageAt = (messages: unknown[], direction: ManagerMessage['direction']): string | null => {
+  const messageType = direction === 'incoming' ? 0 : 1;
+  const timestamps = messages
+    .map(recordFrom)
+    .filter(record => numberFrom(record.message_type) === messageType && booleanFrom(record.private) !== true)
+    .map(record => timestampToIso(record.created_at))
+    .sort();
+
+  return timestamps[timestamps.length - 1] ?? null;
+};
+
+const chatwootReplyState = (
+  lastCustomerMessageAt: string | null,
+  lastAgentReplyAt: string | null
+): ConversationListItem['replyState'] => {
+  if (lastCustomerMessageAt && (!lastAgentReplyAt || lastCustomerMessageAt > lastAgentReplyAt)) {
+    return 'waiting_for_reply';
+  }
+
+  return 'replied';
+};
+
 const conversationFromChatwoot = (raw: unknown): ConversationListItem => {
   const record = recordFrom(raw);
   const meta = recordFrom(record.meta);
@@ -518,7 +542,10 @@ const conversationFromChatwoot = (raw: unknown): ConversationListItem => {
   const accountId = primitiveToString(record.account_id) ?? 'unknown';
   const channel = meta.channel;
   const contact = contactFromChatwoot(meta.sender);
-  const lastRawMessage = arrayFrom(record.messages)[0] ?? record.last_non_activity_message;
+  const rawMessages = arrayFrom(record.messages);
+  const lastCustomerMessageAt = lastVisibleChatwootMessageAt(rawMessages, 'incoming');
+  const lastAgentReplyAt = lastVisibleChatwootMessageAt(rawMessages, 'outgoing');
+  const lastRawMessage = rawMessages[0] ?? record.last_non_activity_message;
   const canReply = booleanFrom(record.can_reply) ?? false;
 
   return {
@@ -533,9 +560,13 @@ const conversationFromChatwoot = (raw: unknown): ConversationListItem => {
     },
     contact,
     assignee: actorFromChatwoot(meta.assignee, 'user'),
+    assignedManager: actorFromChatwoot(meta.assignee, 'user'),
     lastMessage: messagePreviewFromChatwoot(lastRawMessage),
     linkedDeal: null,
     unreadCount: numberFrom(record.unread_count) ?? 0,
+    lastCustomerMessageAt,
+    lastAgentReplyAt,
+    replyState: chatwootReplyState(lastCustomerMessageAt, lastAgentReplyAt),
     canReply,
     replyWindow: {
       canReply,
@@ -641,7 +672,16 @@ export class ChatwootFleexaApiClient implements FleexaApiClient {
   async listConversations(params: ListConversationsParams): Promise<ConversationListResponse> {
     const accountId = rawIdFromStableId('acc', params.accountId);
     const page = numberFrom(params.cursor) ?? 1;
-    const assignment = params.assignment === 'mine' ? 'me' : params.assignment === 'unassigned' ? 'unassigned' : undefined;
+    if (params.filter === 'unread' || params.filter === 'waiting_for_reply') {
+      throw new FleexaApiError(422, {
+        error: {
+          code: 'validation_failed',
+          message: 'Unread and reply-state filters require the Fleexa Manager API.',
+        },
+      });
+    }
+    const assignmentParam = params.filter ?? params.assignment;
+    const assignment = assignmentParam === 'mine' ? 'me' : assignmentParam === 'unassigned' ? 'unassigned' : undefined;
     const response = recordFrom(
       await this.request(
         pathWithQuery(`/accounts/${accountId}/conversations`, {
@@ -884,6 +924,7 @@ export class ManagerApiClient implements FleexaApiClient {
         cursor: params.cursor,
         limit: params.limit,
         status: params.status,
+        filter: params.filter,
         assignment: params.assignment,
       })
     );
@@ -1156,43 +1197,51 @@ export class MockFleexaApiClient implements FleexaApiClient {
     return mockSession;
   }
 
-  async listConversations(_params: ListConversationsParams): Promise<ConversationListResponse> {
-    return {
-      data: [
-        {
-          id: 'conv_mock_whatsapp',
-          accountId: 'acc_mock_fleexa',
-          title: 'WhatsApp client',
-          status: 'open',
-          priority: 'high',
-          channel: {
-            type: 'whatsapp',
-            displayName: 'Main WhatsApp',
-          },
-          contact: mockContact,
-          assignee: {
-            id: 'user_mock_manager',
-            displayName: 'Fleexa Manager',
-            type: 'user',
-          },
-          lastMessage: {
-            id: 'msg_mock_latest',
-            text: 'Can you confirm the Range Rover booking?',
-            direction: 'incoming',
-            createdAt: now,
-          },
-          linkedDeal: mockDeal,
-          unreadCount: 2,
-          canReply: true,
-          replyWindow: {
-            canReply: true,
-            reason: 'open',
-            closesAt: '2026-07-18T19:00:00Z',
-          },
-          lastActivityAt: now,
-          permissions: ['conversations:read', 'messages:send'],
+  async listConversations(params: ListConversationsParams): Promise<ConversationListResponse> {
+    const assignedManager = {
+      id: 'user_mock_manager',
+      displayName: 'Fleexa Manager',
+      type: 'user' as const,
+    };
+    const data: ConversationListItem[] = [
+      {
+        id: 'conv_mock_whatsapp',
+        accountId: 'acc_mock_fleexa',
+        title: 'WhatsApp client',
+        status: 'open',
+        priority: 'high',
+        channel: {
+          type: 'whatsapp',
+          displayName: 'Main WhatsApp',
         },
-      ],
+        contact: mockContact,
+        assignee: assignedManager,
+        assignedManager,
+        lastMessage: {
+          id: 'msg_mock_latest',
+          text: 'Can you confirm the Range Rover booking?',
+          direction: 'incoming',
+          createdAt: now,
+        },
+        linkedDeal: mockDeal,
+        unreadCount: 2,
+        lastCustomerMessageAt: now,
+        lastAgentReplyAt: null,
+        replyState: 'waiting_for_reply',
+        canReply: true,
+        replyWindow: {
+          canReply: true,
+          reason: 'open',
+          closesAt: '2026-07-18T19:00:00Z',
+        },
+        lastActivityAt: now,
+        permissions: ['conversations:read', 'messages:send'],
+      },
+    ];
+    const filteredData = params.filter === 'unassigned' ? [] : data;
+
+    return {
+      data: filteredData,
       page: {
         nextCursor: null,
         hasMore: false,

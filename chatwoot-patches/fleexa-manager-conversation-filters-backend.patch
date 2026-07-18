@@ -1,0 +1,363 @@
+diff -ruN a/app/controllers/api/fleexa_manager/v1/accounts/conversations_controller.rb b/app/controllers/api/fleexa_manager/v1/accounts/conversations_controller.rb
+--- a/app/controllers/api/fleexa_manager/v1/accounts/conversations_controller.rb	2026-07-18 20:30:21
++++ b/app/controllers/api/fleexa_manager/v1/accounts/conversations_controller.rb	2026-07-18 20:30:37
+@@ -47,6 +47,9 @@
+     scope = apply_status_filter(scope)
+     return scope if performed?
+ 
++    scope = apply_manager_filter(scope)
++    return scope if performed?
++
+     scope = apply_assignment_filter(scope)
+     scope = apply_channel_filter(scope)
+     return scope if performed?
+@@ -66,7 +69,30 @@
+     scope.none
+   end
+ 
++  def apply_manager_filter(scope)
++    filter = params[:filter].presence
++    return scope if filter.blank?
++
++    case filter
++    when 'mine'
++      scope.where(assignee_id: current_manager_user.id)
++    when 'unassigned'
++      scope.where(assignee_id: nil)
++    when 'unread'
++      apply_unread_filter(scope)
++    when 'waiting_for_reply'
++      apply_waiting_for_reply_filter(scope)
++    when 'all'
++      scope
++    else
++      render_manager_error('bad_request', 'Invalid conversation filter.', status: :bad_request)
++      scope.none
++    end
++  end
++
+   def apply_assignment_filter(scope)
++    return scope if params[:filter].present?
++
+     case params[:assignment].presence || 'all'
+     when 'mine'
+       scope.where(assignee_id: current_manager_user.id)
+@@ -78,6 +104,58 @@
+       render_manager_error('bad_request', 'Invalid assignment filter.', status: :bad_request)
+       scope.none
+     end
++  end
++
++  def apply_unread_filter(scope)
++    scope.where(
++      <<~SQL.squish,
++        EXISTS (
++          SELECT 1
++          FROM messages unread_messages
++          WHERE unread_messages.conversation_id = conversations.id
++            AND unread_messages.account_id = conversations.account_id
++            AND unread_messages.message_type = :incoming_type
++            AND (
++              conversations.agent_last_seen_at IS NULL
++              OR unread_messages.created_at > conversations.agent_last_seen_at
++            )
++        )
++      SQL
++      incoming_type: Message.message_types[:incoming]
++    )
++  end
++
++  def apply_waiting_for_reply_filter(scope)
++    scope.where(
++      "#{last_customer_message_at_sql} IS NOT NULL AND " \
++      "(#{last_agent_reply_at_sql} IS NULL OR #{last_customer_message_at_sql} > #{last_agent_reply_at_sql})"
++    )
++  end
++
++  def last_customer_message_at_sql
++    <<~SQL.squish
++      (
++        SELECT MAX(customer_messages.created_at)
++        FROM messages customer_messages
++        WHERE customer_messages.conversation_id = conversations.id
++          AND customer_messages.account_id = conversations.account_id
++          AND customer_messages.message_type = #{Message.message_types[:incoming]}
++          AND customer_messages.private = FALSE
++      )
++    SQL
++  end
++
++  def last_agent_reply_at_sql
++    <<~SQL.squish
++      (
++        SELECT MAX(agent_messages.created_at)
++        FROM messages agent_messages
++        WHERE agent_messages.conversation_id = conversations.id
++          AND agent_messages.account_id = conversations.account_id
++          AND agent_messages.message_type = #{Message.message_types[:outgoing]}
++          AND agent_messages.private = FALSE
++      )
++    SQL
+   end
+ 
+   def apply_channel_filter(scope)
+diff -ruN a/app/services/fleexa_manager/v1/dto_serializer.rb b/app/services/fleexa_manager/v1/dto_serializer.rb
+--- a/app/services/fleexa_manager/v1/dto_serializer.rb	2026-07-18 20:30:21
++++ b/app/services/fleexa_manager/v1/dto_serializer.rb	2026-07-18 20:30:49
+@@ -35,6 +35,7 @@
+ 
+         def conversation_summary(conversation, permissions:)
+           last_message = conversation.messages.chat.includes(:attachments, :sender).reorder(created_at: :desc, id: :desc).first
++          reply_metrics = conversation_reply_metrics(conversation)
+ 
+           {
+             id: conversation_id(conversation),
+@@ -45,9 +46,13 @@
+             channel: channel_summary(conversation.inbox),
+             contact: contact_summary(conversation.contact),
+             assignee: actor(conversation.assignee),
++            assignedManager: actor(conversation.assignee),
+             lastMessage: message_preview(last_message),
+             linkedDeal: linked_deal_summary(conversation),
+             unreadCount: conversation.unread_incoming_messages.count,
++            lastCustomerMessageAt: iso8601(reply_metrics[:last_customer_message_at]),
++            lastAgentReplyAt: iso8601(reply_metrics[:last_agent_reply_at]),
++            replyState: reply_metrics[:reply_state],
+             canReply: conversation.can_reply?,
+             replyWindow: reply_window(conversation),
+             lastActivityAt: iso8601(conversation.last_activity_at),
+@@ -339,6 +344,35 @@
+           return 'sent' if message.status.blank?
+ 
+           message.status
++        end
++
++        def conversation_reply_metrics(conversation)
++          customer_at = last_customer_message_at(conversation)
++          agent_at = last_agent_reply_at(conversation)
++
++          {
++            last_customer_message_at: customer_at,
++            last_agent_reply_at: agent_at,
++            reply_state: reply_state_for(customer_at, agent_at)
++          }
++        end
++
++        def reply_state_for(customer_at, agent_at)
++          return 'waiting_for_reply' if customer_at.present? && (agent_at.blank? || customer_at > agent_at)
++
++          'replied'
++        end
++
++        def last_customer_message_at(conversation)
++          customer_visible_messages(conversation).incoming.maximum(:created_at)
++        end
++
++        def last_agent_reply_at(conversation)
++          customer_visible_messages(conversation).outgoing.maximum(:created_at)
++        end
++
++        def customer_visible_messages(conversation)
++          conversation.messages.where(account_id: conversation.account_id, private: false)
+         end
+ 
+         def attachment_summary(attachment)
+diff -ruN a/spec/requests/api/fleexa_manager/v1/chat_api_spec.rb b/spec/requests/api/fleexa_manager/v1/chat_api_spec.rb
+--- a/spec/requests/api/fleexa_manager/v1/chat_api_spec.rb	2026-07-18 20:30:21
++++ b/spec/requests/api/fleexa_manager/v1/chat_api_spec.rb	2026-07-18 20:31:46
+@@ -18,6 +18,17 @@
+     allow_any_instance_of(Conversation).to receive(:can_reply?).and_return(true)
+   end
+ 
++  def manager_conversation_ids(filter)
++    get "/api/fleexa-manager/v1/accounts/acc_#{account.id}/conversations?filter=#{filter}", headers: headers
++
++    expect(response).to have_http_status(:ok)
++    json_response['data'].map { |item| item['id'] }
++  end
++
++  def manager_conversation_id(record)
++    "conv_#{record.display_id}"
++  end
++
+   describe 'OPTIONS /api/fleexa-manager/v1/*path' do
+     it 'allows local Expo web preflight without authentication' do
+       options '/api/fleexa-manager/v1/session/current',
+@@ -146,11 +157,109 @@
+       expect(response).to have_http_status(:ok)
+       expect(json_response['data'].first).to include(
+         'id' => "conv_#{conversation.display_id}",
+-        'accountId' => "acc_#{account.id}"
++        'accountId' => "acc_#{account.id}",
++        'assignedManager' => nil,
++        'lastCustomerMessageAt' => nil,
++        'lastAgentReplyAt' => nil,
++        'replyState' => 'replied',
++        'unreadCount' => 0
+       )
+       expect(json_response['data'].first).not_to include('custom_attributes', 'additional_attributes', 'display_id')
+     end
+ 
++    it 'filters backend-owned manager buckets before pagination' do
++      now = Time.zone.parse('2026-07-18T09:00:00Z')
++      conversation.update!(assignee: user, agent_last_seen_at: now, last_activity_at: now)
++      unassigned_conversation = create(
++        :conversation,
++        account: account,
++        inbox: inbox,
++        contact: contact,
++        contact_inbox: contact_inbox,
++        assignee: nil,
++        agent_last_seen_at: now,
++        last_activity_at: now - 5.minutes
++      )
++      unread_replied_conversation = create(
++        :conversation,
++        account: account,
++        inbox: inbox,
++        contact: contact,
++        contact_inbox: contact_inbox,
++        assignee: user,
++        agent_last_seen_at: now - 4.hours,
++        last_activity_at: now - 1.hour
++      )
++      create(
++        :message,
++        account: account,
++        inbox: inbox,
++        conversation: unread_replied_conversation,
++        content: 'Customer message already answered',
++        message_type: :incoming,
++        created_at: now - 3.hours
++      )
++      create(
++        :message,
++        account: account,
++        inbox: inbox,
++        conversation: unread_replied_conversation,
++        content: 'Manager reply',
++        message_type: :outgoing,
++        sender: user,
++        created_at: now - 1.hour
++      )
++      waiting_conversation = create(
++        :conversation,
++        account: account,
++        inbox: inbox,
++        contact: contact,
++        contact_inbox: contact_inbox,
++        assignee: user,
++        agent_last_seen_at: now,
++        last_activity_at: now - 30.minutes
++      )
++      create(
++        :message,
++        account: account,
++        inbox: inbox,
++        conversation: waiting_conversation,
++        content: 'Fresh customer question',
++        message_type: :incoming,
++        created_at: now - 30.minutes
++      )
++
++      expect(manager_conversation_ids('mine')).to include(
++        manager_conversation_id(conversation),
++        manager_conversation_id(unread_replied_conversation),
++        manager_conversation_id(waiting_conversation)
++      )
++      expect(manager_conversation_ids('mine')).not_to include(manager_conversation_id(unassigned_conversation))
++
++      expect(manager_conversation_ids('unassigned')).to include(manager_conversation_id(unassigned_conversation))
++      expect(manager_conversation_ids('unassigned')).not_to include(manager_conversation_id(conversation))
++
++      expect(manager_conversation_ids('unread')).to include(manager_conversation_id(unread_replied_conversation))
++      expect(manager_conversation_ids('unread')).not_to include(manager_conversation_id(waiting_conversation))
++
++      expect(manager_conversation_ids('waiting_for_reply')).to include(manager_conversation_id(waiting_conversation))
++      expect(manager_conversation_ids('waiting_for_reply')).not_to include(manager_conversation_id(unread_replied_conversation))
++
++      expect(manager_conversation_ids('all')).to include(
++        manager_conversation_id(conversation),
++        manager_conversation_id(unassigned_conversation),
++        manager_conversation_id(unread_replied_conversation),
++        manager_conversation_id(waiting_conversation)
++      )
++    end
++
++    it 'denies invalid manager filters' do
++      get "/api/fleexa-manager/v1/accounts/acc_#{account.id}/conversations?filter=customer_replied_again", headers: headers
++
++      expect(response).to have_http_status(:bad_request)
++      expect(json_response['error']['code']).to eq('bad_request')
++    end
++
+     it 'denies access to an account without membership' do
+       get "/api/fleexa-manager/v1/accounts/acc_#{other_account.id}/conversations", headers: headers
+ 
+@@ -177,6 +286,66 @@
+       expect(response).to have_http_status(:ok)
+       expect(json_response['data']).to include('participants', 'tags', 'createdAt', 'updatedAt')
+       expect(json_response['data']).not_to include('messages', 'uuid', 'identifier')
++    end
++
++    it 'changes reply_state after customer messages and manager replies' do
++      now = Time.zone.parse('2026-07-18T09:00:00Z')
++      create(
++        :message,
++        account: account,
++        inbox: inbox,
++        conversation: conversation,
++        content: 'Can you help?',
++        message_type: :incoming,
++        created_at: now - 3.hours
++      )
++
++      get "/api/fleexa-manager/v1/accounts/acc_#{account.id}/conversations/conv_#{conversation.display_id}", headers: headers
++
++      expect(response).to have_http_status(:ok)
++      expect(json_response['data']).to include(
++        'lastCustomerMessageAt' => (now - 3.hours).utc.iso8601,
++        'lastAgentReplyAt' => nil,
++        'replyState' => 'waiting_for_reply'
++      )
++
++      create(
++        :message,
++        account: account,
++        inbox: inbox,
++        conversation: conversation,
++        content: 'Yes, checking now.',
++        message_type: :outgoing,
++        sender: user,
++        created_at: now - 2.hours
++      )
++
++      get "/api/fleexa-manager/v1/accounts/acc_#{account.id}/conversations/conv_#{conversation.display_id}", headers: headers
++
++      expect(response).to have_http_status(:ok)
++      expect(json_response['data']).to include(
++        'lastAgentReplyAt' => (now - 2.hours).utc.iso8601,
++        'replyState' => 'replied'
++      )
++
++      create(
++        :message,
++        account: account,
++        inbox: inbox,
++        conversation: conversation,
++        content: 'Any update?',
++        message_type: :incoming,
++        created_at: now - 1.hour
++      )
++
++      get "/api/fleexa-manager/v1/accounts/acc_#{account.id}/conversations/conv_#{conversation.display_id}", headers: headers
++
++      expect(response).to have_http_status(:ok)
++      expect(json_response['data']).to include(
++        'lastCustomerMessageAt' => (now - 1.hour).utc.iso8601,
++        'lastAgentReplyAt' => (now - 2.hours).utc.iso8601,
++        'replyState' => 'waiting_for_reply'
++      )
+     end
+ 
+     it 'does not expose a conversation from another account' do

@@ -71,3 +71,61 @@ login while keeping the accepted Stage 2 temporary Chatwoot auth strategy.
 - Add device/session inventory.
 - Add production MFA flow.
 - Add audit events for login, refresh, logout, and revoke.
+
+## Conversation Filters And Reply State
+
+Added after the email/password login foundation on branch
+`codex/fleexa-manager-core-stage-3`.
+
+### Implemented
+
+- Added backend-supported Manager API `filter` query param for conversation
+  buckets:
+  - `mine`
+  - `unassigned`
+  - `unread`
+  - `all`
+  - `waiting_for_reply`
+- Kept the older `assignment` query param as temporary compatibility, but the
+  Expo app now uses `filter`.
+- Added Manager DTO fields:
+  - `lastCustomerMessageAt`
+  - `lastAgentReplyAt`
+  - `replyState`
+  - `assignedManager`
+  - `unreadCount`
+- `replyState` is backend-owned and only exposes:
+  - `waiting_for_reply`
+  - `replied`
+- A customer message after a manager reply returns the conversation to
+  `waiting_for_reply`; no `customer_replied_again` state is exposed.
+- `Unread` uses the same Chatwoot unread source as `unreadCount`.
+- `Waiting for reply` is calculated in the Manager API from customer-visible
+  incoming messages and customer-visible outgoing manager replies before
+  pagination/cursor slicing.
+- Added request-spec coverage in the patch for every filter bucket, invalid
+  filter rejection, wrong-account isolation, DTO shape, and reply-state
+  transitions.
+- Added Expo conversation filter chips and compact reply/unread state display.
+  The UI sends the selected bucket to `ManagerApiClient`; it does not calculate
+  reply state or filter conversations locally.
+
+### Verification Notes
+
+Closeout verification for the conversation-filter and reply-state change:
+
+| Check | Result | Notes |
+| --- | --- | --- |
+| `npm run lint` | Pass | ESLint completed with `--max-warnings=0`. |
+| `npm run typecheck` | Pass | Expo app and workspace packages typechecked. |
+| `npm test` | Pass | Vitest: 3 files, 23 tests. |
+| OpenAPI YAML parse | Pass | `docs/fleexa-manager/openapi.yaml` parsed successfully. |
+| Ruby syntax | Pass | Generated Manager API controller, serializer, and request spec syntax checked. |
+| `make crm-assets-build-host` | Pass | Clean Chatwoot host build applied the full patch chain, including the new conversation-filter patch, and built Vite assets. |
+| `make crm-patch-check` | Blocked by local container state | The running Rails container is already patched and rejects reapplying existing CRM files. Clean host build remains the authoritative patch-chain validation for this run. |
+| Backend request specs | Authored, runner blocked | Request specs are included in the patch, but host execution requires Bundler 2.5.16 and the running Rails container reports `bundler: command not found: rspec`. |
+| Manager API smoke | Pass | `session/current`, filter buckets, conversation detail, messages, send text, repeat send idempotency, wrong-account denial, conversation/account mismatch denial, reliable counters, and DTO shape were verified against `/api/fleexa-manager/v1`. |
+| Expo web smoke | Pass | Browser smoke confirmed filter chips call Manager API filters, conversation detail opens, send reply succeeds, and reply state updates from `Waiting` to `Replied`. |
+
+The local smoke confirmed that production/live mode remains on
+`ManagerApiClient` and does not downgrade to mock mode or the raw Chatwoot API.

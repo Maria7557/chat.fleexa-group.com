@@ -118,9 +118,17 @@ paths:
           in: query
           schema:
             $ref: "#/components/schemas/ConversationStatus"
+        - name: filter
+          in: query
+          description: |
+            Manager conversation bucket. The backend owns unread and reply-state
+            calculations; clients must not approximate these filters locally.
+          schema:
+            $ref: "#/components/schemas/ConversationFilter"
+            default: all
         - name: assignment
           in: query
-          description: Filter conversations by ownership bucket.
+          description: Deprecated Stage 2 ownership filter kept for temporary compatibility; prefer `filter`.
           schema:
             type: string
             enum:
@@ -865,6 +873,10 @@ components:
         - contact
         - lastActivityAt
         - unreadCount
+        - assignedManager
+        - lastCustomerMessageAt
+        - lastAgentReplyAt
+        - replyState
         - permissions
       properties:
         id:
@@ -891,6 +903,10 @@ components:
           oneOf:
             - $ref: "#/components/schemas/Actor"
             - type: "null"
+        assignedManager:
+          oneOf:
+            - $ref: "#/components/schemas/Actor"
+            - type: "null"
         lastMessage:
           oneOf:
             - $ref: "#/components/schemas/MessagePreview"
@@ -902,6 +918,20 @@ components:
         unreadCount:
           type: integer
           minimum: 0
+        lastCustomerMessageAt:
+          type:
+            - string
+            - "null"
+          format: date-time
+          description: Latest customer-visible incoming message timestamp for backend reply-state logic.
+        lastAgentReplyAt:
+          type:
+            - string
+            - "null"
+          format: date-time
+          description: Latest customer-visible outgoing manager reply timestamp for backend reply-state logic.
+        replyState:
+          $ref: "#/components/schemas/ReplyState"
         canReply:
           type: boolean
         replyWindow:
@@ -948,6 +978,25 @@ components:
         - pending
         - resolved
         - snoozed
+
+    ConversationFilter:
+      type: string
+      enum:
+        - mine
+        - unassigned
+        - unread
+        - all
+        - waiting_for_reply
+
+    ReplyState:
+      type: string
+      description: |
+        Backend-owned reply state. A new customer message after a manager reply
+        moves the conversation back to `waiting_for_reply`; no separate
+        `customer_replied_again` state is exposed.
+      enum:
+        - waiting_for_reply
+        - replied
 
     ChannelSummary:
       type: object

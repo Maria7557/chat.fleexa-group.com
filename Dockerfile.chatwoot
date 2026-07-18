@@ -111,6 +111,7 @@ COPY chatwoot-patches/crm-manual-spend-attribution-sources-backend.patch /tmp/cr
 COPY chatwoot-patches/crm-marketing-economics-kpi-layer-backend.patch /tmp/crm-marketing-economics-kpi-layer-backend.patch
 COPY chatwoot-patches/crm-marketing-demo-seed-backend.patch /tmp/crm-marketing-demo-seed-backend.patch
 COPY chatwoot-patches/fleexa-manager-chat-api-backend.patch /tmp/fleexa-manager-chat-api-backend.patch
+COPY chatwoot-patches/fleexa-manager-conversation-filters-backend.patch /tmp/fleexa-manager-conversation-filters-backend.patch
 COPY chatwoot-patches/crm-pipeline-vue.patch /tmp/crm-pipeline-vue.patch
 COPY chatwoot-patches/crm-deal-workspace-vue.patch /tmp/crm-deal-workspace-vue.patch
 COPY chatwoot-patches/crm-deal-fields-vue.patch /tmp/crm-deal-fields-vue.patch
@@ -172,6 +173,7 @@ RUN cd /app && \
     git apply /tmp/crm-marketing-economics-kpi-layer-backend.patch && \
     git apply /tmp/crm-marketing-demo-seed-backend.patch && \
     git apply /tmp/fleexa-manager-chat-api-backend.patch && \
+    git apply /tmp/fleexa-manager-conversation-filters-backend.patch && \
     git apply /tmp/crm-pipeline-vue.patch && \
     git apply /tmp/crm-deal-workspace-vue.patch && \
     git apply /tmp/crm-deal-fields-vue.patch && \

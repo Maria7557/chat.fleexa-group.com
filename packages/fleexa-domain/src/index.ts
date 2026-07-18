@@ -63,6 +63,8 @@ export interface LoginSessionResponse {
 }
 
 export type ConversationStatus = 'open' | 'pending' | 'resolved' | 'snoozed';
+export type ConversationFilter = 'mine' | 'unassigned' | 'unread' | 'all' | 'waiting_for_reply';
+export type ReplyState = 'waiting_for_reply' | 'replied';
 export type ChannelType =
   | 'whatsapp'
   | 'instagram'
@@ -164,9 +166,13 @@ export interface ConversationListItem {
   channel: ChannelSummary;
   contact: ContactSummary;
   assignee?: Actor | null;
+  assignedManager?: Actor | null;
   lastMessage?: MessagePreview | null;
   linkedDeal?: DealSummary | null;
   unreadCount: number;
+  lastCustomerMessageAt?: IsoDateTime | null;
+  lastAgentReplyAt?: IsoDateTime | null;
+  replyState: ReplyState;
   canReply?: boolean;
   replyWindow?: ReplyWindow | null;
   lastActivityAt: IsoDateTime;
