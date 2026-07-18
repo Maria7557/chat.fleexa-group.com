@@ -72,3 +72,14 @@ and do not attribute it to the new change.
 See `docs/fleexa-manager/CURRENT_STATE_AUDIT.md` for the current Chatwoot CRM
 patch audit, endpoint map, known risks, and the boundary between legacy
 Chatwoot and future Fleexa Manager work.
+
+Use these Fleexa Manager architecture docs as the current source map:
+
+- `docs/fleexa-manager/PRODUCT_SCOPE.md`
+- `docs/fleexa-manager/SYSTEM_ARCHITECTURE.md`
+- `docs/fleexa-manager/DOMAIN_OWNERSHIP.md`
+- `docs/fleexa-manager/ROADMAP_90_DAYS.md`
+- `docs/fleexa-manager/adr/0001-manager-frontend-direction.md`
+- `docs/fleexa-manager/adr/0002-business-logic-backend-first.md`
+- `docs/fleexa-manager/adr/0003-chatwoot-as-backoffice.md`
+- `docs/fleexa-manager/adr/0004-manager-api-layer-placement.md`
