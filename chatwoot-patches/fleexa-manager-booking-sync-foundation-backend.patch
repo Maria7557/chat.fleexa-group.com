@@ -325,7 +325,7 @@ new file mode 100644
 index 0000000..97adf13
 --- /dev/null
 +++ b/spec/requests/api/fleexa_manager/v1/booking_sync_foundation_spec.rb
-@@ -0,0 +1,247 @@
+@@ -0,0 +1,251 @@
 +require 'rails_helper'
 +
 +RSpec.describe 'Fleexa Manager Booking sync foundation API', type: :request do
@@ -336,6 +336,10 @@ index 0000000..97adf13
 +
 +  def booking_headers(token)
 +    { 'X-Fleexa-Booking-Token' => token }
++  end
++
++  def json_response
++    JSON.parse(response.body)
 +  end
 +
 +  def create_booking_credential(account:, token:, scopes:)
@@ -556,7 +560,7 @@ index 0000000..97adf13
 +      end
 +
 +      expect(index).to be_present
-+      expect(index).to be_unique
++      expect(index.unique).to be(true)
 +      expect(index.columns).to eq(%w[account_id booking_id])
 +      expect(index.where).to include("booking_id IS NOT NULL")
 +      expect(index.where).to include("booking_id")

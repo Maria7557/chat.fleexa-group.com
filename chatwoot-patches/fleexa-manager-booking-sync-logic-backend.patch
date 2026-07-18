@@ -996,7 +996,7 @@ new file mode 100644
 index 0000000..46e8741
 --- /dev/null
 +++ b/spec/requests/api/fleexa_manager/v1/booking_sync_logic_spec.rb
-@@ -0,0 +1,365 @@
+@@ -0,0 +1,389 @@
 +require 'rails_helper'
 +
 +RSpec.describe 'Fleexa Manager Booking sync logic API', type: :request do
@@ -1006,6 +1006,10 @@ index 0000000..46e8741
 +
 +  def booking_headers(token = service_token)
 +    { 'X-Fleexa-Booking-Token' => token }
++  end
++
++  def json_response
++    JSON.parse(response.body)
 +  end
 +
 +  def create_booking_credential(account:, token: service_token, scopes: ['booking:sync'])
@@ -1111,6 +1115,7 @@ index 0000000..46e8741
 +    inbox = create(:inbox, account: account)
 +    contact_inbox = create(:contact_inbox, contact: conversation_contact, inbox: inbox)
 +    conversation = create(:conversation, account: account, inbox: inbox, contact: conversation_contact, contact_inbox: contact_inbox, display_id: 344)
++    conversation.update_column(:display_id, 344)
 +
 +    direct_deal = CrmDeal.create!(id: 344, account: account, stage: @reserved_stage, contact: direct_contact, title: 'Deal id 344')
 +    conversation_deal = CrmDeal.create!(account: account, stage: @reserved_stage, contact: conversation_contact, conversation: conversation, title: 'Conversation 344 deal')
@@ -1138,6 +1143,22 @@ index 0000000..46e8741
 +
 +    expect(response).to have_http_status(:forbidden)
 +    expect(json_response['error']['code']).to eq('forbidden')
++  end
++
++  it 'rejects syncing an explicit deal that belongs to another account without writing' do
++    other_stage = stage(slug: 'reserved', name: 'Other booking', position: 1, trigger: 'reserved', target_account: other_account)
++    other_deal = CrmDeal.create!(account: other_account, stage: other_stage, title: 'Other account explicit deal')
++
++    expect do
++      post sync_path,
++           params: sync_payload(pipeline_deal_id: other_deal.id.to_s),
++           headers: booking_headers,
++           as: :json
++    end.not_to change { CrmDeal.for_account(account.id).count }
++
++    expect(response).to have_http_status(:forbidden)
++    expect(json_response['error']['code']).to eq('forbidden')
++    expect(other_deal.reload.booking_id).to be_nil
 +  end
 +
 +  it 'updates an explicit existing deal without overwriting contact_id or client_phone' do
@@ -1340,7 +1361,10 @@ index 0000000..46e8741
 +
 +  it 'relinks booking_id transactionally and records durable audit' do
 +    relink_token = 'booking-service-token-relink'
-+    create_booking_credential(account: account, token: relink_token, scopes: ['booking:relink'])
++    FleexaManagerBookingCredential.find_by!(account: account).update!(
++      token_digest: FleexaManagerBookingCredential.digest_token(relink_token),
++      scopes: ['booking:sync', 'booking:relink']
++    )
 +    old_deal = CrmDeal.create!(account: account, stage: @reserved_stage, title: 'Wrong deal', booking_id: 'order_1001')
 +    new_deal = CrmDeal.create!(account: account, stage: @reserved_stage, title: 'Correct deal')
 +
