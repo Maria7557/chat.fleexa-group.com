@@ -158,6 +158,7 @@ crm-copy-patches: ensure-env
 	$(COMPOSE) cp chatwoot-patches/crm-manual-spend-attribution-sources-backend.patch rails:/tmp/crm-manual-spend-attribution-sources-backend.patch
 	$(COMPOSE) cp chatwoot-patches/crm-marketing-economics-kpi-layer-backend.patch rails:/tmp/crm-marketing-economics-kpi-layer-backend.patch
 	$(COMPOSE) cp chatwoot-patches/crm-marketing-demo-seed-backend.patch rails:/tmp/crm-marketing-demo-seed-backend.patch
+	$(COMPOSE) cp chatwoot-patches/fleexa-manager-chat-api-backend.patch rails:/tmp/fleexa-manager-chat-api-backend.patch
 	@echo "CRM patch files copied to Rails container"
 
 crm-patch-check: crm-copy-patches
@@ -182,6 +183,7 @@ crm-patch-check: crm-copy-patches
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply --check /tmp/crm-manual-spend-attribution-sources-backend.patch"
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply --check /tmp/crm-marketing-economics-kpi-layer-backend.patch"
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply --check /tmp/crm-marketing-demo-seed-backend.patch"
+	$(COMPOSE) exec rails sh -lc "cd /app && git apply --check /tmp/fleexa-manager-chat-api-backend.patch"
 	@echo "CRM patches validated"
 
 crm-patch:
@@ -206,6 +208,7 @@ crm-patch:
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply /tmp/crm-manual-spend-attribution-sources-backend.patch"
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply /tmp/crm-marketing-economics-kpi-layer-backend.patch"
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply /tmp/crm-marketing-demo-seed-backend.patch"
+	$(COMPOSE) exec rails sh -lc "cd /app && git apply /tmp/fleexa-manager-chat-api-backend.patch"
 	@echo "CRM patches applied to Rails container"
 
 crm-install: crm-copy-patches crm-patch
@@ -362,6 +365,7 @@ crm-assets-build-host:
 	git apply "$(CURDIR)/chatwoot-patches/crm-manual-spend-attribution-sources-backend.patch"; \
 	git apply "$(CURDIR)/chatwoot-patches/crm-marketing-economics-kpi-layer-backend.patch"; \
 	git apply "$(CURDIR)/chatwoot-patches/crm-marketing-demo-seed-backend.patch"; \
+	git apply "$(CURDIR)/chatwoot-patches/fleexa-manager-chat-api-backend.patch"; \
 	git apply "$(CURDIR)/chatwoot-patches/crm-pipeline-vue.patch"; \
 	git apply "$(CURDIR)/chatwoot-patches/crm-deal-workspace-vue.patch"; \
 	git apply "$(CURDIR)/chatwoot-patches/crm-deal-fields-vue.patch"; \
@@ -504,8 +508,9 @@ crm-assets-install-local: ensure-env
 	docker create --name "$$install_container" "$(CHATWOOT_LOCAL_IMAGE)" sh -lc "sleep 600" >/dev/null; \
 	trap 'docker rm -f "$$install_container" >/dev/null 2>&1 || true' EXIT; \
 	docker start "$$install_container" >/dev/null; \
-	docker exec "$$install_container" sh -lc "mkdir -p /app/app/controllers/api/v1/accounts /app/app/javascript/dashboard/routes/dashboard /app/app/javascript/dashboard/api /app/app/javascript/dashboard/components-next/sidebar /app/app/services/crm/marketing_spend /app/app/services/onboarding /app/app/jobs/crm /app/lib/tasks /app/app/listeners /app/app/views/layouts/mailer /app/app/views/devise/mailer /app/app/views/installation/onboarding /app/app/views/mailers/administrator_notifications/account_compliance_mailer /app/app/views/mailers/administrator_notifications/account_notification_mailer /app/app/views/super_admin/application /app/app/views/super_admin/devise/sessions /app/app/views/super_admin/settings /app/public/brand-assets /app/public/packs/brand-assets /app/public/packs/js /app/theme /app/app/assets/stylesheets/administrate/library /app/app/assets/stylesheets/administrate/utilities"; \
+	docker exec "$$install_container" sh -lc "mkdir -p /app/app/controllers/api/v1/accounts /app/app/controllers/api/fleexa_manager /app/app/javascript/dashboard/routes/dashboard /app/app/javascript/dashboard/api /app/app/javascript/dashboard/components-next/sidebar /app/app/services/crm/marketing_spend /app/app/services/fleexa_manager /app/app/services/onboarding /app/app/jobs/crm /app/lib/tasks /app/app/listeners /app/app/views/layouts/mailer /app/app/views/devise/mailer /app/app/views/installation/onboarding /app/app/views/mailers/administrator_notifications/account_compliance_mailer /app/app/views/mailers/administrator_notifications/account_notification_mailer /app/app/views/super_admin/application /app/app/views/super_admin/devise/sessions /app/app/views/super_admin/settings /app/public/brand-assets /app/public/packs/brand-assets /app/public/packs/js /app/theme /app/spec/requests/api /app/app/assets/stylesheets/administrate/library /app/app/assets/stylesheets/administrate/utilities"; \
 	docker cp "$(CRM_ASSETS_BUILD_DIR)/app/controllers/api/v1/accounts/crm" "$$install_container:/app/app/controllers/api/v1/accounts/"; \
+	docker cp "$(CRM_ASSETS_BUILD_DIR)/app/controllers/api/fleexa_manager" "$$install_container:/app/app/controllers/api/"; \
 	docker cp "$(CRM_ASSETS_BUILD_DIR)/app/models/crm_deal.rb" "$$install_container:/app/app/models/crm_deal.rb"; \
 	docker cp "$(CRM_ASSETS_BUILD_DIR)/app/models/crm_deal_activity.rb" "$$install_container:/app/app/models/crm_deal_activity.rb"; \
 	docker cp "$(CRM_ASSETS_BUILD_DIR)/app/models/crm_deal_field_definition.rb" "$$install_container:/app/app/models/crm_deal_field_definition.rb"; \
@@ -526,6 +531,8 @@ crm-assets-install-local: ensure-env
 	docker cp "$(CRM_ASSETS_BUILD_DIR)/app/services/crm/marketing_spend/google_ads_airbyte_normalizer.rb" "$$install_container:/app/app/services/crm/marketing_spend/google_ads_airbyte_normalizer.rb"; \
 	docker cp "$(CRM_ASSETS_BUILD_DIR)/app/services/crm/marketing_spend/meta_ads_airbyte_normalizer.rb" "$$install_container:/app/app/services/crm/marketing_spend/meta_ads_airbyte_normalizer.rb"; \
 	docker cp "$(CRM_ASSETS_BUILD_DIR)/app/services/crm/marketing_spend/source_mapping_resolver.rb" "$$install_container:/app/app/services/crm/marketing_spend/source_mapping_resolver.rb"; \
+	docker cp "$(CRM_ASSETS_BUILD_DIR)/app/services/fleexa_manager" "$$install_container:/app/app/services/"; \
+	docker cp "$(CRM_ASSETS_BUILD_DIR)/spec/requests/api/fleexa_manager" "$$install_container:/app/spec/requests/api/"; \
 	docker cp "$(CRM_ASSETS_BUILD_DIR)/app/services/onboarding/web_widget_creation_service.rb" "$$install_container:/app/app/services/onboarding/web_widget_creation_service.rb"; \
 	docker cp "$(CRM_ASSETS_BUILD_DIR)/app/jobs/crm/ensure_from_conversation_job.rb" "$$install_container:/app/app/jobs/crm/ensure_from_conversation_job.rb"; \
 	docker cp "$(CRM_ASSETS_BUILD_DIR)/app/listeners/webhook_listener.rb" "$$install_container:/app/app/listeners/webhook_listener.rb"; \

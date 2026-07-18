@@ -1,0 +1,1288 @@
+diff --git a/app/controllers/api/fleexa_manager/v1/accounts/conversations/messages_controller.rb b/app/controllers/api/fleexa_manager/v1/accounts/conversations/messages_controller.rb
+new file mode 100644
+index 0000000..d353b9a
+--- /dev/null
++++ b/app/controllers/api/fleexa_manager/v1/accounts/conversations/messages_controller.rb
+@@ -0,0 +1,136 @@
++class Api::FleexaManager::V1::Accounts::Conversations::MessagesController < Api::FleexaManager::V1::BaseController
++  UUID_PATTERN = /\A[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\z/i
++
++  before_action :set_current_account_from_params
++  before_action :set_conversation
++
++  def index
++    limit = request_limit
++    return if performed?
++
++    order = message_order
++    return if performed?
++
++    scope = apply_message_cursor(@conversation.messages.includes(:attachments, :sender), order)
++    return if performed?
++
++    messages = scope.reorder(id: order).limit(limit + 1).to_a
++    visible_messages = messages.first(limit)
++    has_more = messages.length > limit
++    next_cursor = visible_messages.any? ? message_cursor_for(visible_messages.last) : nil
++
++    render json: {
++      data: visible_messages.map { |message| FleexaManager::V1::DtoSerializer.message(message) },
++      page: cursor_page(
++        items: visible_messages,
++        has_more: has_more,
++        limit: limit,
++        next_cursor: next_cursor
++      )
++    }
++  end
++
++  def create_text
++    payload = text_message_payload
++    return if performed?
++
++    result = FleexaManager::V1::MessageIdempotencyService.new(
++      account: Current.account,
++      conversation: @conversation,
++      user: current_manager_user,
++      text: payload[:text],
++      client_message_id: payload[:client_message_id],
++      idempotency_key: payload[:idempotency_key],
++      quoted_message_id: payload[:quoted_message_id],
++      quoted_message_database_id: payload[:quoted_message_database_id]
++    ).call
++
++    render json: {
++      data: FleexaManager::V1::DtoSerializer.message(result.message),
++      idempotency: {
++        key: result.key,
++        duplicate: result.duplicate,
++        originalMessageId: result.duplicate ? FleexaManager::V1::DtoSerializer.message_id(result.message) : nil
++      }
++    }, status: :created
++  rescue FleexaManager::V1::MessageIdempotencyService::PayloadConflict
++    render_manager_error('conflict', 'Idempotency key was already used with a different payload.', status: :conflict)
++  rescue ActiveRecord::RecordInvalid => e
++    render_manager_error('validation_failed', e.record.errors.full_messages.join(', '), status: :unprocessable_entity)
++  rescue StandardError => e
++    Rails.logger.info("Fleexa Manager message send failed: #{e.class}: #{e.message}")
++    render_manager_error('validation_failed', e.message, status: :unprocessable_entity)
++  end
++
++  private
++
++  def set_conversation
++    @conversation = find_visible_conversation!(params[:conversation_id])
++  end
++
++  def message_order
++    order = params[:order].presence || 'desc'
++    return order.to_sym if %w[asc desc].include?(order)
++
++    render_manager_error('bad_request', 'Invalid message order.', status: :bad_request)
++    nil
++  end
++
++  def apply_message_cursor(scope, order)
++    cursor = decoded_cursor
++    return scope if cursor.blank? && !performed?
++    return scope.none if performed?
++
++    id = cursor['id'].to_i
++    unless id.positive?
++      render_manager_error('bad_request', 'Invalid cursor.', status: :bad_request)
++      return scope.none
++    end
++
++    order == :asc ? scope.where('messages.id > ?', id) : scope.where('messages.id < ?', id)
++  end
++
++  def message_cursor_for(message)
++    encode_cursor({ id: message.id })
++  end
++
++  def text_message_payload
++    text = params[:text]
++    client_message_id = params[:clientMessageId].presence
++    idempotency_key = request.headers['Idempotency-Key'].presence || client_message_id
++    quoted_message_id = params[:quotedMessageId].presence
++
++    return payload_error('text must be a non-empty string.') unless text.is_a?(String) && text.strip.present?
++    return payload_error('text is too long.') if text.length > 4000
++    return payload_error('clientMessageId or Idempotency-Key is required.') if idempotency_key.blank?
++    return payload_error('clientMessageId must be a UUID.') if client_message_id.present? && !client_message_id.match?(UUID_PATTERN)
++    return payload_error('Idempotency-Key must be between 16 and 120 characters.') unless idempotency_key.length.between?(16, 120)
++
++    quoted_message_database_id = quoted_message_database_id_for(quoted_message_id)
++    return if performed?
++
++    {
++      text: text,
++      client_message_id: client_message_id,
++      idempotency_key: idempotency_key,
++      quoted_message_id: quoted_message_id,
++      quoted_message_database_id: quoted_message_database_id
++    }
++  end
++
++  def quoted_message_database_id_for(quoted_message_id)
++    return if quoted_message_id.blank?
++
++    message_id = stable_id_value(quoted_message_id, 'msg')
++    return payload_error('quotedMessageId is invalid.') if message_id.blank?
++
++    return message_id if @conversation.messages.where(id: message_id, account_id: Current.account.id).exists?
++
++    payload_error('quotedMessageId is not accessible.')
++  end
++
++  def payload_error(message)
++    render_manager_error('validation_failed', message, status: :unprocessable_entity)
++    nil
++  end
++end
+diff --git a/app/controllers/api/fleexa_manager/v1/accounts/conversations_controller.rb b/app/controllers/api/fleexa_manager/v1/accounts/conversations_controller.rb
+new file mode 100644
+index 0000000..bb2b0a0
+--- /dev/null
++++ b/app/controllers/api/fleexa_manager/v1/accounts/conversations_controller.rb
+@@ -0,0 +1,148 @@
++class Api::FleexaManager::V1::Accounts::ConversationsController < Api::FleexaManager::V1::BaseController
++  before_action :set_current_account_from_params
++
++  def index
++    limit = request_limit
++    return if performed?
++
++    scope = apply_conversation_filters(account_conversations_scope.includes(:inbox, :contact, :assignee))
++    return if performed?
++
++    conversations = scope.reorder(last_activity_at: :desc, id: :desc).limit(limit + 1).to_a
++    visible_conversations = conversations.first(limit)
++    has_more = conversations.length > limit
++    next_cursor = visible_conversations.any? ? conversation_cursor_for(visible_conversations.last) : nil
++
++    render json: {
++      data: visible_conversations.map do |conversation|
++        FleexaManager::V1::DtoSerializer.conversation_summary(
++          conversation,
++          permissions: conversation_permissions
++        )
++      end,
++      page: cursor_page(
++        items: visible_conversations,
++        has_more: has_more,
++        limit: limit,
++        next_cursor: next_cursor
++      )
++    }
++  end
++
++  def show
++    conversation = find_visible_conversation!(params[:id])
++    return if performed?
++
++    render json: {
++      data: FleexaManager::V1::DtoSerializer.conversation_detail(
++        conversation,
++        permissions: conversation_permissions
++      )
++    }
++  end
++
++  private
++
++  def apply_conversation_filters(scope)
++    scope = apply_status_filter(scope)
++    return scope if performed?
++
++    scope = apply_assignment_filter(scope)
++    scope = apply_channel_filter(scope)
++    return scope if performed?
++
++    scope = apply_updated_after_filter(scope)
++    scope = apply_conversation_cursor(scope)
++    scope
++  end
++
++  def apply_status_filter(scope)
++    return scope if params[:status].blank?
++
++    status = params[:status].to_s
++    return scope.where(status: status) if Conversation.statuses.key?(status)
++
++    render_manager_error('bad_request', 'Invalid conversation status.', status: :bad_request)
++    scope.none
++  end
++
++  def apply_assignment_filter(scope)
++    case params[:assignment].presence || 'all'
++    when 'mine'
++      scope.where(assignee_id: current_manager_user.id)
++    when 'unassigned'
++      scope.where(assignee_id: nil)
++    when 'all'
++      scope
++    else
++      render_manager_error('bad_request', 'Invalid assignment filter.', status: :bad_request)
++      scope.none
++    end
++  end
++
++  def apply_channel_filter(scope)
++    return scope if params[:channel].blank?
++
++    channel_types = channel_types_for(params[:channel].to_s)
++    return scope.joins(:inbox).where(inboxes: { channel_type: channel_types }) if channel_types.present?
++
++    render_manager_error('bad_request', 'Invalid channel filter.', status: :bad_request)
++    scope.none
++  end
++
++  def apply_updated_after_filter(scope)
++    return scope if params[:updatedAfter].blank?
++
++    updated_after = Time.zone.parse(params[:updatedAfter].to_s)
++    return scope.where('conversations.last_activity_at >= ?', updated_after) if updated_after.present?
++
++    render_manager_error('bad_request', 'Invalid updatedAfter.', status: :bad_request)
++    scope.none
++  rescue ArgumentError
++    render_manager_error('bad_request', 'Invalid updatedAfter.', status: :bad_request)
++    scope.none
++  end
++
++  def apply_conversation_cursor(scope)
++    cursor = decoded_cursor
++    return scope if cursor.blank? && !performed?
++    return scope.none if performed?
++
++    last_activity_at = Time.zone.parse(cursor['lastActivityAt'].to_s)
++    id = cursor['id'].to_i
++    unless last_activity_at.present? && id.positive?
++      render_manager_error('bad_request', 'Invalid cursor.', status: :bad_request)
++      return scope.none
++    end
++
++    scope.where(
++      'conversations.last_activity_at < :last_activity_at OR ' \
++      '(conversations.last_activity_at = :last_activity_at AND conversations.id < :id)',
++      last_activity_at: last_activity_at,
++      id: id
++    )
++  rescue ArgumentError
++    render_manager_error('bad_request', 'Invalid cursor.', status: :bad_request)
++    scope.none
++  end
++
++  def conversation_cursor_for(conversation)
++    encode_cursor(
++      {
++        id: conversation.id,
++        lastActivityAt: conversation.last_activity_at.utc.iso8601
++      }
++    )
++  end
++
++  def channel_types_for(channel)
++    {
++      'whatsapp' => ['Channel::Whatsapp', 'Channel::TwilioSms'],
++      'instagram' => ['Channel::Instagram', 'Channel::FacebookPage'],
++      'web_widget' => ['Channel::WebWidget'],
++      'email' => ['Channel::Email'],
++      'phone' => ['Channel::Sms', 'Channel::TwilioSms'],
++      'telegram' => ['Channel::Telegram']
++    }[channel]
++  end
++end
+diff --git a/app/controllers/api/fleexa_manager/v1/accounts/manager/counters_controller.rb b/app/controllers/api/fleexa_manager/v1/accounts/manager/counters_controller.rb
+new file mode 100644
+index 0000000..8c0978b
+--- /dev/null
++++ b/app/controllers/api/fleexa_manager/v1/accounts/manager/counters_controller.rb
+@@ -0,0 +1,27 @@
++class Api::FleexaManager::V1::Accounts::Manager::CountersController < Api::FleexaManager::V1::BaseController
++  before_action :set_current_account_from_params
++
++  def show
++    scope = account_conversations_scope
++
++    render json: {
++      accountId: FleexaManager::V1::DtoSerializer.account_id(Current.account),
++      generatedAt: Time.current.utc.iso8601,
++      counters: {
++        unread: unread_count(scope),
++        assigned: scope.where.not(assignee_id: nil).count,
++        unassigned: scope.where(assignee_id: nil).count
++      }
++    }
++  end
++
++  private
++
++  def unread_count(scope)
++    scope.joins(:messages)
++         .where(messages: { account_id: Current.account.id, message_type: Message.message_types[:incoming] })
++         .where('conversations.agent_last_seen_at IS NULL OR messages.created_at > conversations.agent_last_seen_at')
++         .distinct
++         .count
++  end
++end
+diff --git a/app/controllers/api/fleexa_manager/v1/base_controller.rb b/app/controllers/api/fleexa_manager/v1/base_controller.rb
+new file mode 100644
+index 0000000..bca41a5
+--- /dev/null
++++ b/app/controllers/api/fleexa_manager/v1/base_controller.rb
+@@ -0,0 +1,163 @@
++require 'base64'
++require 'json'
++
++class Api::FleexaManager::V1::BaseController < Api::BaseController
++  MANAGER_API_VERSION = '2026-07-18.stage2'.freeze
++  READ_PERMISSIONS = %w[session:read conversations:read counters:read].freeze
++  WRITE_PERMISSIONS = %w[messages:send].freeze
++  OWNER_EXTRA_PERMISSIONS = %w[deals:read pipeline:read bookings:read settings:read settings:write].freeze
++  MAX_LIMIT = 100
++  DEFAULT_LIMIT = 30
++
++  prepend_before_action :normalize_fleexa_bearer_token
++  before_action :ensure_fleexa_manager_user!
++
++  private
++
++  def normalize_fleexa_bearer_token
++    return if request.headers[:api_access_token].present? || request.headers[:HTTP_API_ACCESS_TOKEN].present?
++
++    authorization = request.headers['Authorization'].to_s
++    token = authorization.match(/\ABearer\s+(.+)\z/i)&.[](1)&.strip
++    return if token.blank?
++
++    request.headers['api_access_token'] = token
++    request.headers['HTTP_API_ACCESS_TOKEN'] = token
++  end
++
++  def authenticate_user!(*)
++    return if current_user.present?
++
++    render_manager_error('unauthenticated', 'Authentication required.', status: :unauthorized)
++  end
++
++  def render_unauthorized(message)
++    render_manager_error('unauthenticated', message, status: :unauthorized)
++  end
++
++  def render_not_found_error(message)
++    render_manager_error('not_found', message, status: :not_found)
++  end
++
++  def render_could_not_create_error(message)
++    render_manager_error('validation_failed', message, status: :unprocessable_entity)
++  end
++
++  def ensure_fleexa_manager_user!
++    return if performed?
++
++    unless current_manager_user.is_a?(User)
++      return render_manager_error('unauthenticated', 'A manager user is required.', status: :unauthorized)
++    end
++
++    return unless current_manager_user.respond_to?(:active_for_authentication?)
++    return if current_manager_user.active_for_authentication?
++
++    render_manager_error('unauthenticated', 'The manager user is inactive.', status: :unauthorized)
++  end
++
++  def current_manager_user
++    Current.user || current_user
++  end
++
++  def set_current_account_from_params
++    return if performed?
++
++    account_id = stable_id_value(params[:account_id], 'acc')
++    return render_manager_error('bad_request', 'Invalid accountId.', status: :bad_request) if account_id.blank?
++
++    account = Account.find_by(id: account_id)
++    return render_manager_error('not_found', 'Account was not found.', status: :not_found) if account.blank?
++    return render_manager_error('forbidden', 'Account is suspended.', status: :forbidden) unless account.active?
++
++    account_user = account.account_users.find_by(user_id: current_manager_user.id)
++    return render_manager_error('forbidden', 'Account is not accessible.', status: :forbidden) if account_user.blank?
++
++    @current_account = account
++    @current_account_user = account_user
++    Current.account = account
++    Current.account_user = account_user
++  end
++
++  def account_conversations_scope
++    Conversations::PermissionFilterService.new(
++      Current.account.conversations,
++      current_manager_user,
++      Current.account
++    ).perform
++  end
++
++  def find_visible_conversation!(conversation_id_param)
++    display_id = stable_id_value(conversation_id_param, 'conv')
++    return render_manager_error('bad_request', 'Invalid conversationId.', status: :bad_request) if display_id.blank?
++
++    conversation = account_conversations_scope
++                   .includes(:inbox, :contact, :assignee, :messages)
++                   .find_by(display_id: display_id)
++    return render_manager_error('not_found', 'Conversation was not found.', status: :not_found) if conversation.blank?
++
++    conversation
++  end
++
++  def stable_id_value(value, prefix)
++    value = value.to_s
++    match = value.match(/\A#{Regexp.escape(prefix)}_(\d+)\z/)
++    match&.[](1)&.to_i
++  end
++
++  def manager_role(account_user)
++    account_user.administrator? ? 'owner' : 'operator'
++  end
++
++  def manager_permissions(account_user)
++    permissions = READ_PERMISSIONS + WRITE_PERMISSIONS
++    permissions += OWNER_EXTRA_PERMISSIONS if account_user.administrator?
++    permissions.uniq
++  end
++
++  def conversation_permissions
++    %w[conversations:read messages:send]
++  end
++
++  def request_limit
++    raw_limit = params[:limit].presence || DEFAULT_LIMIT
++    limit = Integer(raw_limit)
++    [[limit, 1].max, MAX_LIMIT].min
++  rescue ArgumentError, TypeError
++    render_manager_error('bad_request', 'Invalid limit.', status: :bad_request)
++    nil
++  end
++
++  def decoded_cursor
++    return if params[:cursor].blank?
++
++    JSON.parse(Base64.urlsafe_decode64(params[:cursor].to_s))
++  rescue ArgumentError, JSON::ParserError
++    render_manager_error('bad_request', 'Invalid cursor.', status: :bad_request)
++    nil
++  end
++
++  def encode_cursor(payload)
++    Base64.urlsafe_encode64(payload.to_json)
++  end
++
++  def cursor_page(items:, has_more:, limit:, next_cursor:)
++    {
++      limit: limit,
++      nextCursor: has_more ? next_cursor : nil,
++      previousCursor: nil,
++      hasMore: has_more
++    }
++  end
++
++  def render_manager_error(code, message, status:, details: nil)
++    error = {
++      code: code,
++      message: message
++    }
++    error[:requestId] = request.request_id if request.respond_to?(:request_id)
++    error[:details] = details if details.present?
++
++    render json: { error: error }, status: status
++  end
++end
+diff --git a/app/controllers/api/fleexa_manager/v1/session_controller.rb b/app/controllers/api/fleexa_manager/v1/session_controller.rb
+new file mode 100644
+index 0000000..213d10e
+--- /dev/null
++++ b/app/controllers/api/fleexa_manager/v1/session_controller.rb
+@@ -0,0 +1,31 @@
++class Api::FleexaManager::V1::SessionController < Api::FleexaManager::V1::BaseController
++  def current
++    memberships = current_manager_user.account_users.includes(:account).select { |membership| membership.account&.active? }
++    active_membership = active_membership_for(memberships)
++    return if performed?
++
++    render json: FleexaManager::V1::DtoSerializer.current_session(
++      user: current_manager_user,
++      memberships: memberships,
++      active_membership: active_membership,
++      permissions_for: method(:manager_permissions),
++      role_for: method(:manager_role),
++      api_version: MANAGER_API_VERSION
++    )
++  end
++
++  private
++
++  def active_membership_for(memberships)
++    return memberships.first if params[:activeAccountId].blank?
++
++    account_id = stable_id_value(params[:activeAccountId], 'acc')
++    return render_manager_error('bad_request', 'Invalid activeAccountId.', status: :bad_request) if account_id.blank?
++
++    membership = memberships.find { |candidate| candidate.account_id == account_id }
++    return membership if membership.present?
++
++    render_manager_error('forbidden', 'Active account is not accessible.', status: :forbidden)
++    nil
++  end
++end
+diff --git a/app/services/fleexa_manager/v1/dto_serializer.rb b/app/services/fleexa_manager/v1/dto_serializer.rb
+new file mode 100644
+index 0000000..0b6da2c
+--- /dev/null
++++ b/app/services/fleexa_manager/v1/dto_serializer.rb
+@@ -0,0 +1,373 @@
++module FleexaManager
++  module V1
++    class DtoSerializer
++      class << self
++        def current_session(user:, memberships:, active_membership:, permissions_for:, role_for:, api_version:)
++          {
++            user: manager_user(user),
++            activeAccountId: active_membership.present? ? account_id(active_membership.account) : nil,
++            memberships: memberships.map do |membership|
++              {
++                accountId: account_id(membership.account),
++                accountName: membership.account.name,
++                role: role_for.call(membership),
++                permissions: permissions_for.call(membership),
++                features: []
++              }
++            end,
++            permissions: active_membership.present? ? permissions_for.call(active_membership) : [],
++            realtime: realtime_bootstrap(user),
++            serverTime: Time.current.utc.iso8601,
++            apiVersion: api_version
++          }
++        end
++
++        def manager_user(user)
++          {
++            id: user_id(user),
++            name: user.name.to_s,
++            email: user.email.to_s,
++            avatarUrl: user.avatar_url.presence,
++            locale: user.ui_settings&.dig('locale').presence || I18n.locale.to_s,
++            timeZone: user.ui_settings&.dig('timezone').presence || Time.zone.name
++          }
++        end
++
++        def conversation_summary(conversation, permissions:)
++          last_message = conversation.messages.chat.includes(:attachments, :sender).reorder(created_at: :desc, id: :desc).first
++
++          {
++            id: conversation_id(conversation),
++            accountId: account_id(conversation.account),
++            title: conversation_title(conversation),
++            status: conversation.status,
++            priority: conversation_priority(conversation),
++            channel: channel_summary(conversation.inbox),
++            contact: contact_summary(conversation.contact),
++            assignee: actor(conversation.assignee),
++            lastMessage: message_preview(last_message),
++            linkedDeal: linked_deal_summary(conversation),
++            unreadCount: conversation.unread_incoming_messages.count,
++            canReply: conversation.can_reply?,
++            replyWindow: reply_window(conversation),
++            lastActivityAt: iso8601(conversation.last_activity_at),
++            permissions: permissions
++          }
++        end
++
++        def conversation_detail(conversation, permissions:)
++          conversation_summary(conversation, permissions: permissions).merge(
++            participants: participants(conversation),
++            tags: conversation.cached_label_list_array,
++            createdAt: iso8601(conversation.created_at),
++            updatedAt: iso8601(conversation.updated_at)
++          )
++        end
++
++        def message(message)
++          {
++            id: message_id(message),
++            conversationId: conversation_id(message.conversation),
++            clientMessageId: message.content_attributes&.dig('clientMessageId'),
++            direction: message.incoming? ? 'incoming' : 'outgoing',
++            visibility: message_visibility(message),
++            type: message_kind(message),
++            text: message.content,
++            sender: actor(message.sender),
++            deliveryStatus: delivery_status(message),
++            failureReason: message.content_attributes&.dig('external_error'),
++            attachments: message.attachments.map { |attachment| attachment_summary(attachment) }.compact,
++            createdAt: iso8601(message.created_at),
++            updatedAt: iso8601(message.updated_at)
++          }
++        end
++
++        def message_id(message)
++          "msg_#{message.id}"
++        end
++
++        def conversation_id(conversation)
++          "conv_#{conversation.display_id}"
++        end
++
++        def account_id(account)
++          "acc_#{account.id}"
++        end
++
++        private
++
++        def user_id(user)
++          "user_#{user.id}"
++        end
++
++        def contact_id(contact)
++          "contact_#{contact.id}"
++        end
++
++        def deal_id(deal)
++          "deal_#{deal.id}"
++        end
++
++        def stage_id(stage)
++          "stage_#{stage.id}"
++        end
++
++        def realtime_bootstrap(user)
++          frontend_url = ENV.fetch('FRONTEND_URL', 'http://localhost:3000').to_s.chomp('/')
++
++          {
++            url: "#{frontend_url}/cable",
++            token: user.pubsub_token.to_s,
++            tokenExpiresAt: 1.hour.from_now.utc.iso8601,
++            lastEventCursor: nil
++          }
++        end
++
++        def conversation_title(conversation)
++          conversation.contact&.name.presence ||
++            conversation.contact&.phone_number.presence ||
++            conversation.contact&.email.presence ||
++            "Conversation ##{conversation.display_id}"
++        end
++
++        def conversation_priority(conversation)
++          return 'normal' if conversation.priority.blank? || conversation.priority == 'medium'
++
++          conversation.priority
++        end
++
++        def channel_summary(inbox)
++          {
++            type: channel_type(inbox),
++            displayName: inbox.name.to_s
++          }
++        end
++
++        def channel_type(inbox)
++          return 'whatsapp' if inbox.whatsapp? || inbox.twilio_whatsapp?
++          return 'instagram' if inbox.instagram? || inbox.instagram_direct?
++          return 'web_widget' if inbox.web_widget?
++          return 'email' if inbox.email?
++          return 'phone' if inbox.sms? || inbox.twilio?
++          return 'telegram' if inbox.telegram?
++
++          'other'
++        end
++
++        def contact_summary(contact)
++          {
++            id: contact_id(contact),
++            displayName: contact.name.presence || contact.phone_number.presence || contact.email.presence || "Contact ##{contact.id}",
++            phone: contact.phone_number.presence,
++            email: contact.email.presence
++          }
++        end
++
++        def actor(record)
++          return if record.blank?
++
++          {
++            id: actor_id(record),
++            displayName: actor_name(record),
++            type: actor_type(record),
++            avatarUrl: actor_avatar_url(record)
++          }
++        end
++
++        def actor_id(record)
++          return user_id(record) if record.is_a?(User)
++          return contact_id(record) if record.is_a?(Contact)
++          return "bot_#{record.id}" if record.is_a?(AgentBot)
++
++          "system_#{record.id}"
++        end
++
++        def actor_name(record)
++          record.try(:name).presence || record.try(:display_name).presence || record.class.name
++        end
++
++        def actor_type(record)
++          return 'user' if record.is_a?(User)
++          return 'contact' if record.is_a?(Contact)
++          return 'bot' if record.is_a?(AgentBot)
++
++          'system'
++        end
++
++        def actor_avatar_url(record)
++          return unless record.respond_to?(:avatar_url)
++
++          record.avatar_url.presence
++        end
++
++        def message_preview(message)
++          return if message.blank?
++
++          {
++            id: message_id(message),
++            text: message.content.to_s,
++            direction: message.incoming? ? 'incoming' : 'outgoing',
++            createdAt: iso8601(message.created_at)
++          }
++        end
++
++        def linked_deal_summary(conversation)
++          return unless defined?(CrmDeal)
++
++          deal = CrmDeal.for_account(conversation.account_id)
++                        .includes(:stage, :contact, :assignee)
++                        .where(conversation_id: conversation.id)
++                        .order(updated_at: :desc)
++                        .first
++          return if deal.blank?
++
++          {
++            id: deal_id(deal),
++            accountId: account_id(conversation.account),
++            title: deal.title.to_s,
++            stage: stage_summary(deal.stage),
++            amount: money(deal.amount),
++            bookingRef: booking_ref(deal),
++            contact: deal.contact.present? ? contact_summary(deal.contact) : nil,
++            assignee: actor(deal.assignee),
++            sourceAttribution: source_attribution(deal),
++            qualification: lead_qualification(deal),
++            lastActivityAt: iso8601(deal.updated_at),
++            createdAt: iso8601(deal.created_at),
++            updatedAt: iso8601(deal.updated_at),
++            permissions: %w[deals:read]
++          }
++        end
++
++        def stage_summary(stage)
++          return { id: 'stage_unknown', key: 'unknown', name: 'Unknown' } if stage.blank?
++
++          {
++            id: stage_id(stage),
++            key: stage.slug.to_s,
++            name: stage.name.to_s
++          }
++        end
++
++        def money(value)
++          return if value.blank?
++
++          {
++            amount: format('%.2f', value.to_d),
++            currency: 'AED'
++          }
++        end
++
++        def booking_ref(deal)
++          return if deal.booking_id.blank?
++
++          {
++            bookingId: "booking_#{deal.booking_id}",
++            status: 'pending',
++            externalBookingId: deal.booking_id.to_s
++          }
++        end
++
++        def source_attribution(deal)
++          attrs = deal.custom_attributes || {}
++          return if attrs.blank?
++
++          {
++            trafficSourceKey: attrs['traffic_source_key'].presence,
++            trafficSourceLabel: attrs['traffic_source_label'].presence,
++            leadOriginKey: attrs['lead_origin_key'].presence,
++            leadOriginLabel: attrs['lead_origin_label'].presence,
++            sourceDetectionMethod: safe_source_detection_method(attrs['source_detection_method']),
++            sourceConfidence: safe_source_confidence(attrs['source_confidence']),
++            needsSourceClarification: ActiveModel::Type::Boolean.new.cast(attrs['needs_source_clarification'])
++          }
++        end
++
++        def safe_source_detection_method(value)
++          %w[click_id utm first_message_rule manual unknown].include?(value) ? value : 'unknown'
++        end
++
++        def safe_source_confidence(value)
++          %w[auto manual unknown].include?(value) ? value : 'unknown'
++        end
++
++        def lead_qualification(deal)
++          attrs = deal.custom_attributes || {}
++          status = attrs['qualification_status'].presence || attrs['lead_qualification_status'].presence
++          return if status.blank?
++
++          {
++            status: %w[pending unqualified qualified].include?(status) ? status : 'pending',
++            reason: attrs['qualification_reason'].presence,
++            lostReasonKey: attrs['lost_reason_key'].presence,
++            lostReasonLabel: attrs['lost_reason_label'].presence
++          }
++        end
++
++        def reply_window(conversation)
++          can_reply = conversation.can_reply?
++
++          {
++            canReply: can_reply,
++            reason: can_reply ? 'open' : 'expired',
++            closesAt: nil
++          }
++        end
++
++        def participants(conversation)
++          actors = [conversation.assignee]
++          actors += conversation.conversation_participants.includes(:user).map(&:user) if conversation.respond_to?(:conversation_participants)
++          actors.compact.uniq.map { |participant| actor(participant) }
++        end
++
++        def message_visibility(message)
++          return 'system' if message.activity?
++          return 'private_note' if message.private?
++
++          'customer'
++        end
++
++        def message_kind(message)
++          return 'system' if message.activity?
++          return 'template' if message.template?
++          return 'attachment' if message.attachments.any?
++
++          'text'
++        end
++
++        def delivery_status(message)
++          return 'sent' if message.status.blank?
++
++          message.status
++        end
++
++        def attachment_summary(attachment)
++          {
++            id: "att_#{attachment.id}",
++            kind: attachment_kind(attachment),
++            fileName: attachment.file.attached? ? attachment.file.filename.to_s : attachment.fallback_title.presence,
++            url: attachment_url(attachment),
++            contentType: attachment.file.attached? ? attachment.file.content_type : nil
++          }
++        end
++
++        def attachment_kind(attachment)
++          return 'document' if attachment.file?
++          return attachment.file_type if %w[image video audio].include?(attachment.file_type)
++
++          'other'
++        end
++
++        def attachment_url(attachment)
++          attachment.download_url.presence || attachment.external_url.presence || attachment.file_url.presence || ''
++        rescue StandardError
++          ''
++        end
++
++        def iso8601(value)
++          value&.utc&.iso8601
++        end
++      end
++    end
++  end
++end
+diff --git a/app/services/fleexa_manager/v1/message_idempotency_service.rb b/app/services/fleexa_manager/v1/message_idempotency_service.rb
+new file mode 100644
+index 0000000..921e9b7
+--- /dev/null
++++ b/app/services/fleexa_manager/v1/message_idempotency_service.rb
+@@ -0,0 +1,162 @@
++require 'digest'
++require 'json'
++require 'zlib'
++
++module FleexaManager
++  module V1
++    class MessageIdempotencyService
++      Result = Struct.new(:message, :duplicate, :key, keyword_init: true)
++      class PayloadConflict < StandardError; end
++
++      LOCK_NAMESPACE = 'fleexa_manager_message_send'.freeze
++
++      def initialize(account:, conversation:, user:, text:, client_message_id:, idempotency_key:, quoted_message_id:, quoted_message_database_id:)
++        @account = account
++        @conversation = conversation
++        @user = user
++        @text = text
++        @client_message_id = client_message_id
++        @idempotency_key = idempotency_key
++        @quoted_message_id = quoted_message_id
++        @quoted_message_database_id = quoted_message_database_id
++      end
++
++      def call
++        result = nil
++
++        ActiveRecord::Base.transaction do
++          advisory_lock!
++          existing_message = find_existing_message
++
++          if existing_message.present?
++            raise PayloadConflict unless same_payload?(existing_message)
++
++            result = Result.new(message: existing_message, duplicate: true, key: idempotency_key)
++            next
++          end
++
++          result = Result.new(message: create_message!, duplicate: false, key: idempotency_key)
++        end
++
++        result
++      end
++
++      private
++
++      attr_reader :account, :conversation, :user, :text, :client_message_id, :idempotency_key,
++                  :quoted_message_id, :quoted_message_database_id
++
++      def advisory_lock!
++        first_key = signed_crc32(LOCK_NAMESPACE)
++        second_key = signed_crc32("#{account.id}:#{conversation.id}:#{idempotency_key}")
++
++        ActiveRecord::Base.connection.execute("SELECT pg_advisory_xact_lock(#{first_key}, #{second_key})")
++      end
++
++      def signed_crc32(value)
++        crc = Zlib.crc32(value.to_s)
++        crc > 2_147_483_647 ? crc - 4_294_967_296 : crc
++      end
++
++      def find_existing_message
++        conditions = [
++          "additional_attributes -> 'fleexa_manager' ->> 'idempotencyKey' = :idempotency_key",
++          'content_attributes::text LIKE :idempotency_like'
++        ]
++        binds = {
++          idempotency_key: idempotency_key,
++          idempotency_like: "%#{ActiveRecord::Base.sanitize_sql_like(idempotency_key)}%"
++        }
++
++        if client_message_id.present?
++          conditions << "additional_attributes -> 'fleexa_manager' ->> 'clientMessageId' = :client_message_id"
++          conditions << 'content_attributes::text LIKE :client_message_like'
++          binds[:client_message_id] = client_message_id
++          binds[:client_message_like] = "%#{ActiveRecord::Base.sanitize_sql_like(client_message_id)}%"
++        end
++
++        conversation.messages
++                    .where(account_id: account.id)
++                    .where(conditions.join(' OR '), binds)
++                    .reorder(id: :asc)
++                    .detect { |message| idempotency_match?(message) }
++      end
++
++      def same_payload?(message)
++        existing_hash = idempotency_attributes(message)['requestHash'] ||
++                        content_attributes_for(message)['fleexaManagerRequestHash']
++        existing_hash.blank? || existing_hash == request_hash
++      end
++
++      def create_message!
++        message = Messages::MessageBuilder.new(user, conversation, builder_params).perform
++        persist_idempotency_attributes!(message)
++        message
++      end
++
++      def builder_params
++        ActionController::Parameters.new(
++          content: text,
++          private: false,
++          message_type: 'outgoing',
++          content_type: 'text',
++          content_attributes: content_attributes
++        )
++      end
++
++      def content_attributes
++        attrs = {
++          clientMessageId: client_message_id,
++          fleexaManagerIdempotencyKey: idempotency_key,
++          fleexaManagerRequestHash: request_hash
++        }
++        attrs[:quotedMessageId] = quoted_message_id if quoted_message_id.present?
++        attrs[:in_reply_to] = quoted_message_database_id if quoted_message_database_id.present?
++        attrs
++      end
++
++      def persist_idempotency_attributes!(message)
++        attrs = (message.additional_attributes || {}).deep_dup
++        attrs['fleexa_manager'] = {
++          'idempotencyKey' => idempotency_key,
++          'clientMessageId' => client_message_id,
++          'requestHash' => request_hash
++        }
++        attrs['fleexa_manager']['quotedMessageId'] = quoted_message_id if quoted_message_id.present?
++
++        message.update_column(:additional_attributes, attrs)
++      end
++
++      def idempotency_match?(message)
++        attrs = idempotency_attributes(message)
++        content_attrs = content_attributes_for(message)
++
++        return true if attrs['idempotencyKey'] == idempotency_key
++        return true if content_attrs['fleexaManagerIdempotencyKey'] == idempotency_key
++
++        client_message_id.present? &&
++          (attrs['clientMessageId'] == client_message_id || content_attrs['clientMessageId'] == client_message_id)
++      end
++
++      def idempotency_attributes(message)
++        (message.additional_attributes || {}).fetch('fleexa_manager', {})
++      end
++
++      def content_attributes_for(message)
++        message.content_attributes || {}
++      end
++
++      def request_hash
++        @request_hash ||= Digest::SHA256.hexdigest(
++          JSON.generate(
++            {
++              text: text,
++              clientMessageId: client_message_id,
++              quotedMessageId: quoted_message_id
++            }
++          )
++        )
++      end
++    end
++  end
++end
+diff --git a/config/routes.rb b/config/routes.rb
+index 22341dc..ac0712b 100644
+--- a/config/routes.rb
++++ b/config/routes.rb
+@@ -40,6 +40,22 @@ Rails.application.routes.draw do
+ 
+   get '/health', to: 'health#show'
+   get '/api', to: 'api#index'
++  namespace :api, defaults: { format: 'json' } do
++    namespace :fleexa_manager, path: 'fleexa-manager' do
++      namespace :v1 do
++        get 'session/current', to: 'session#current'
++
++        scope 'accounts/:account_id', module: :accounts do
++          get 'conversations', to: 'conversations#index'
++          get 'conversations/:id', to: 'conversations#show'
++          get 'conversations/:conversation_id/messages', to: 'conversations/messages#index'
++          post 'conversations/:conversation_id/messages/text', to: 'conversations/messages#create_text'
++          get 'manager/counters', to: 'manager/counters#show'
++        end
++      end
++    end
++  end
++
+   namespace :api, defaults: { format: 'json' } do
+     namespace :v1 do
+       # ----------------------------------
+diff --git a/spec/requests/api/fleexa_manager/v1/chat_api_spec.rb b/spec/requests/api/fleexa_manager/v1/chat_api_spec.rb
+new file mode 100644
+index 0000000..a013597
+--- /dev/null
++++ b/spec/requests/api/fleexa_manager/v1/chat_api_spec.rb
+@@ -0,0 +1,173 @@
++require 'rails_helper'
++
++RSpec.describe 'Fleexa Manager chat API', type: :request do
++  let(:account) { create(:account) }
++  let(:other_account) { create(:account) }
++  let(:user) { create(:user) }
++  let!(:account_user) { create(:account_user, account: account, user: user, role: :administrator) }
++  let(:access_token) { create(:access_token, owner: user) }
++  let(:headers) { { 'api_access_token' => access_token.token } }
++  let(:inbox) { create(:inbox, account: account) }
++  let(:contact) { create(:contact, account: account) }
++  let(:contact_inbox) { create(:contact_inbox, contact: contact, inbox: inbox) }
++  let!(:conversation) do
++    create(:conversation, account: account, inbox: inbox, contact: contact, contact_inbox: contact_inbox, display_id: 42)
++  end
++
++  before do
++    allow_any_instance_of(Conversation).to receive(:can_reply?).and_return(true)
++  end
++
++  describe 'GET /api/fleexa-manager/v1/session/current' do
++    it 'returns the current Manager session DTO' do
++      get '/api/fleexa-manager/v1/session/current', headers: headers
++
++      expect(response).to have_http_status(:ok)
++      expect(json_response['user']['id']).to eq("user_#{user.id}")
++      expect(json_response['memberships'].first['accountId']).to eq("acc_#{account.id}")
++      expect(json_response['permissions']).to include('session:read', 'conversations:read', 'messages:send')
++      expect(json_response).not_to include('tokens')
++    end
++
++    it 'denies unauthenticated requests' do
++      get '/api/fleexa-manager/v1/session/current'
++
++      expect(response).to have_http_status(:unauthorized)
++      expect(json_response['error']['code']).to eq('unauthenticated')
++    end
++
++    it 'denies an inactive unconfirmed user when Devise marks it inactive' do
++      user.update_column(:confirmed_at, nil)
++
++      get '/api/fleexa-manager/v1/session/current', headers: headers
++
++      expect(response).to have_http_status(:unauthorized)
++      expect(json_response['error']['code']).to eq('unauthenticated')
++    end
++  end
++
++  describe 'GET /api/fleexa-manager/v1/accounts/:account_id/conversations' do
++    it 'allows an authenticated manager to list conversations in their account' do
++      get "/api/fleexa-manager/v1/accounts/acc_#{account.id}/conversations", headers: headers
++
++      expect(response).to have_http_status(:ok)
++      expect(json_response['data'].first).to include(
++        'id' => "conv_#{conversation.display_id}",
++        'accountId' => "acc_#{account.id}"
++      )
++      expect(json_response['data'].first).not_to include('custom_attributes', 'additional_attributes', 'display_id')
++    end
++
++    it 'denies access to an account without membership' do
++      get "/api/fleexa-manager/v1/accounts/acc_#{other_account.id}/conversations", headers: headers
++
++      expect(response).to have_http_status(:forbidden)
++      expect(json_response['error']['code']).to eq('forbidden')
++    end
++
++    it 'paginates with opaque cursors' do
++      create_list(:conversation, 3, account: account, inbox: inbox, contact: contact, contact_inbox: contact_inbox)
++
++      get "/api/fleexa-manager/v1/accounts/acc_#{account.id}/conversations?limit=2", headers: headers
++
++      expect(response).to have_http_status(:ok)
++      expect(json_response['data'].length).to eq(2)
++      expect(json_response['page']['hasMore']).to be(true)
++      expect(json_response['page']['nextCursor']).to be_present
++    end
++  end
++
++  describe 'GET /api/fleexa-manager/v1/accounts/:account_id/conversations/:id' do
++    it 'returns a normalized conversation detail DTO' do
++      get "/api/fleexa-manager/v1/accounts/acc_#{account.id}/conversations/conv_#{conversation.display_id}", headers: headers
++
++      expect(response).to have_http_status(:ok)
++      expect(json_response['data']).to include('participants', 'tags', 'createdAt', 'updatedAt')
++      expect(json_response['data']).not_to include('messages', 'uuid', 'identifier')
++    end
++
++    it 'does not expose a conversation from another account' do
++      other_inbox = create(:inbox, account: other_account)
++      other_contact = create(:contact, account: other_account)
++      other_contact_inbox = create(:contact_inbox, contact: other_contact, inbox: other_inbox)
++      other_conversation = create(
++        :conversation,
++        account: other_account,
++        inbox: other_inbox,
++        contact: other_contact,
++        contact_inbox: other_contact_inbox,
++        display_id: 77
++      )
++
++      get "/api/fleexa-manager/v1/accounts/acc_#{account.id}/conversations/conv_#{other_conversation.display_id}", headers: headers
++
++      expect(response).to have_http_status(:not_found)
++      expect(json_response['error']['code']).to eq('not_found')
++    end
++  end
++
++  describe 'GET /api/fleexa-manager/v1/accounts/:account_id/conversations/:id/messages' do
++    it 'returns Manager message DTOs without raw Chatwoot fields' do
++      create(:message, account: account, inbox: inbox, conversation: conversation, content: 'Hello', message_type: :incoming)
++
++      get "/api/fleexa-manager/v1/accounts/acc_#{account.id}/conversations/conv_#{conversation.display_id}/messages",
++          headers: headers
++
++      expect(response).to have_http_status(:ok)
++      expect(json_response['data'].first).to include('id', 'conversationId', 'direction', 'visibility', 'type', 'createdAt')
++      expect(json_response['data'].first).not_to include('content_attributes', 'additional_attributes', 'source_id')
++    end
++  end
++
++  describe 'POST /api/fleexa-manager/v1/accounts/:account_id/conversations/:id/messages/text' do
++    let(:message_path) do
++      "/api/fleexa-manager/v1/accounts/acc_#{account.id}/conversations/conv_#{conversation.display_id}/messages/text"
++    end
++    let(:client_message_id) { SecureRandom.uuid }
++    let(:payload) { { text: 'Manager reply', clientMessageId: client_message_id } }
++    let(:idempotent_headers) { headers.merge('Idempotency-Key' => client_message_id) }
++
++    it 'denies invalid payloads' do
++      post message_path, params: { text: '' }, headers: idempotent_headers
++
++      expect(response).to have_http_status(:unprocessable_entity)
++      expect(json_response['error']['code']).to eq('validation_failed')
++    end
++
++    it 'creates one Chatwoot message and returns a Manager DTO' do
++      expect do
++        post message_path, params: payload, headers: idempotent_headers
++      end.to change { conversation.messages.count }.by(1)
++
++      expect(response).to have_http_status(:created)
++      expect(json_response['data']).to include(
++        'conversationId' => "conv_#{conversation.display_id}",
++        'clientMessageId' => client_message_id,
++        'direction' => 'outgoing'
++      )
++      expect(json_response['idempotency']).to include('key' => client_message_id, 'duplicate' => false)
++    end
++
++    it 'does not duplicate a repeated request with the same idempotency key' do
++      post message_path, params: payload, headers: idempotent_headers
++      first_message_id = json_response['data']['id']
++
++      expect do
++        post message_path, params: payload, headers: idempotent_headers
++      end.not_to change { conversation.messages.count }
++
++      expect(response).to have_http_status(:created)
++      expect(json_response['data']['id']).to eq(first_message_id)
++      expect(json_response['idempotency']).to include('duplicate' => true, 'originalMessageId' => first_message_id)
++    end
++
++    it 'rejects key reuse with a different payload' do
++      post message_path, params: payload, headers: idempotent_headers
++
++      post message_path, params: payload.merge(text: 'Different reply'), headers: idempotent_headers
++
++      expect(response).to have_http_status(:conflict)
++      expect(json_response['error']['code']).to eq('conflict')
++    end
++  end
++end

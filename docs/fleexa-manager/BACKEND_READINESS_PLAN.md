@@ -1,8 +1,9 @@
 # Fleexa Manager Backend Readiness Plan
 
 Date: 2026-07-18
-Branch: `codex/fleexa-manager-foundation`
-Status: planning only, no backend code implemented
+Branch: `codex/fleexa-manager-manager-api-stage-2`
+Status: first Stage 2 chat namespace implemented through
+`chatwoot-patches/fleexa-manager-chat-api-backend.patch`
 
 ## Purpose
 
@@ -41,6 +42,27 @@ and `custom_attributes` fields that the Vue UI interprets directly. Manager
 needs a separate API contract that normalizes these fields before they leave the
 backend.
 
+## Stage 2 Chat Namespace Update
+
+The first production-shaped Manager backend slice now exists as a patch-only
+Chatwoot adapter under `/api/fleexa-manager/v1`.
+
+Implemented in the Stage 2 chat patch:
+
+- `GET /session/current`
+- `GET /accounts/{accountId}/conversations`
+- `GET /accounts/{accountId}/conversations/{conversationId}`
+- `GET /accounts/{accountId}/conversations/{conversationId}/messages`
+- `POST /accounts/{accountId}/conversations/{conversationId}/messages/text`
+- `GET /accounts/{accountId}/manager/counters`
+
+The adapter uses existing Chatwoot authentication temporarily, checks account
+membership before account-scoped reads/writes, filters conversation visibility
+through Chatwoot conversation permissions, returns Manager DTOs instead of raw
+Chatwoot objects, and implements message-send idempotency with a persisted key
+and PostgreSQL transaction advisory lock. Counters remain limited to reliable
+conversation values: `unread`, `assigned`, and `unassigned`.
+
 ## Missing Endpoints
 
 The first backend implementation pass needs to cover the OpenAPI surface without
@@ -48,17 +70,17 @@ leaking current Chatwoot records directly.
 
 | Contract | Current source | Readiness gap |
 | --- | --- | --- |
-| `GET /session/current` | Chatwoot session/current user/account membership | Missing Manager session DTO, capability list, realtime token, and allowed account switch metadata. |
-| `GET /accounts/{accountId}/conversations` | Chatwoot conversations finder | Missing Manager serializer, stable cursor contract, linked deal summary, booking signal, manager-safe filters, and mobile list shape. |
-| `GET /accounts/{accountId}/conversations/{conversationId}` | Chatwoot conversation show by `display_id` | Missing normalized detail DTO, permission-filtered customer/deal/booking references, and explicit not-found vs inaccessible handling. |
-| `GET /accounts/{accountId}/conversations/{conversationId}/messages` | Chatwoot message finder | Missing mobile message DTO, redaction rules, cursor resume, attachment normalization, and event-compatible ordering. |
-| `POST /accounts/{accountId}/conversations/{conversationId}/messages/text` | Chatwoot `Messages::MessageBuilder` | Missing Manager permission gate, text-only payload validation, idempotency handling, normalized response, and safe error mapping. |
+| `GET /session/current` | Chatwoot session/current user/account membership | Implemented for Stage 2 with temporary Chatwoot auth, Manager memberships, permissions, and realtime bootstrap placeholder. Beta still needs Manager-owned session/refresh/revoke. |
+| `GET /accounts/{accountId}/conversations` | Chatwoot conversations finder | Implemented for Stage 2 with Manager serializer, stable cursor, manager-safe filters, linked deal summary when present, and mobile list shape. Booking signal remains limited until booking read model exists. |
+| `GET /accounts/{accountId}/conversations/{conversationId}` | Chatwoot conversation show by `display_id` | Implemented for Stage 2 with normalized detail DTO and permission-filtered not-found behavior for inaccessible conversations. |
+| `GET /accounts/{accountId}/conversations/{conversationId}/messages` | Chatwoot message finder | Implemented for Stage 2 with mobile message DTO, attachment normalization, cursor resume, and account-scoped conversation access. |
+| `POST /accounts/{accountId}/conversations/{conversationId}/messages/text` | Chatwoot `Messages::MessageBuilder` | Implemented for Stage 2 with Manager permission/account gates, text-only validation, idempotency, normalized response, and safe error mapping. |
 | `GET /accounts/{accountId}/conversations/{conversationId}/linked-deal` | CRM deal by conversation | Missing dedicated wrapper that returns link state instead of raw deal or `404` ambiguity. |
 | `PATCH /accounts/{accountId}/deals/{dealId}/stage` | CRM deals update | Missing stage-transition service, required-field validation DTOs, non-admin permission path, audit event, and realtime emission. |
 | `GET /accounts/{accountId}/pipeline/stages` | CRM pipeline stages | Missing Manager stage DTO and permission-filtered stage metadata. |
 | `GET /accounts/{accountId}/pipeline/stages/{stageId}/deals` | CRM deal index with `stage_id` | Missing stage-specific mobile pagination, compact deal card DTO, booking summary, source summary, and consistent sort defaults. |
 | `GET /accounts/{accountId}/deals/{dealId}/booking` | No durable booking domain confirmed | Missing booking storage/read model, link-state resolver, provider normalization, and permission filtering. |
-| `GET /accounts/{accountId}/manager/counters` | Vue and existing CRM/conversation queries | Missing backend-owned counters for unread conversations, active deals, overdue/rotting deals, booking states, and personal/team views. |
+| `GET /accounts/{accountId}/manager/counters` | Vue and existing CRM/conversation queries | Implemented for Stage 2 only for reliable conversation counters: `unread`, `assigned`, and `unassigned`. Deal, booking, answered/unanswered, and economics counters remain missing. |
 | Booking webhook endpoint | Documented contract only | Missing endpoint, signature verification, idempotency store, normalized booking upsert, deal-link resolver, and realtime event publication. |
 | Realtime socket/replay | Chatwoot realtime exists, Manager contract missing | Missing Manager event stream, sequence/cursor store, permission filtering, and resume behavior. |
 
