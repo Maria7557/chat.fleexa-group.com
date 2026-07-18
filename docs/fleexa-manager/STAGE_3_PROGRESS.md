@@ -129,3 +129,63 @@ Closeout verification for the conversation-filter and reply-state change:
 
 The local smoke confirmed that production/live mode remains on
 `ManagerApiClient` and does not downgrade to mock mode or the raw Chatwoot API.
+
+## Chat Workflow Polish
+
+Added after backend-owned filters and reply state on branch
+`codex/fleexa-manager-core-stage-3`.
+
+### Implemented
+
+- Increased conversation list density with compact rows, stable row spacing,
+  avatar initials, last-message preview, last-message time, and clearer
+  unread highlighting.
+- Kept conversation filtering backend-owned. The Expo list still sends
+  Manager API `filter` values and does not calculate bucket membership locally.
+- Displayed assigned/unassigned state from the Manager DTO through a compact
+  assignment chip.
+- Displayed backend-owned `replyState` through compact `Waiting` and `Replied`
+  badges in the list and conversation detail.
+- Improved message bubbles for desktop and mobile widths, including sender,
+  time, delivery status, and responsive max widths.
+- Improved the composer with mobile stacking, clear send loading state, and a
+  visible failure state.
+- Changed send mutation inputs so the UI creates the `clientMessageId` before
+  the request. Retry uses that same `clientMessageId` and `Idempotency-Key` so
+  backend duplicate-send protection remains intact.
+- Added local failed-send recovery controls:
+  - `Retry` resends the exact same text with the original `clientMessageId`.
+  - `Edit` returns the text to the composer and clears the failed local draft;
+    the next send creates a new idempotency key.
+- Added temporary polling until production realtime is implemented:
+  - conversation list every 7 seconds
+  - conversation detail every 7 seconds
+  - messages every 5 seconds
+  - counters every 10 seconds
+
+### Production Realtime Gap
+
+Polling is acceptable for Stage 3 polish but is not the production-beta realtime
+strategy. Before production beta, the Manager API path needs ActionCable or a
+Manager-owned WebSocket/SSE stream with account-scoped auth, reconnect cursors,
+and event ordering guarantees.
+
+### Verification Notes
+
+Closeout verification for the chat-polish change:
+
+| Check | Result | Notes |
+| --- | --- | --- |
+| `npm run lint` | Pass | ESLint completed with `--max-warnings=0`. |
+| `npm run typecheck` | Pass | Expo app and workspace packages typechecked. |
+| `npm test` | Pass | Vitest: 3 files, 23 tests. |
+| `npm run smoke:web` | Pass | Expo web export produced `dist-web-smoke`; Expo force-exited after export as expected. |
+| `git diff --check` | Pass | No whitespace errors. |
+| Desktop web smoke | Pass | `http://localhost:8082/home` restored the live session, showed Manager API conversation filters, unread state, reply-state badges, and no horizontal overflow at `1280x720`. |
+| Mobile web smoke | Pass | `390x844` viewport showed mobile nav, filters, unread/reply state, conversation detail, composer, and no horizontal overflow. |
+| Send failure smoke | Pass | Rails was stopped for one send attempt; the UI showed a safe Manager API unavailable message plus failed local bubble with `Retry` and `Edit`. |
+| Retry smoke | Pass | Rails was restarted and `Retry` resent the failed draft with the original client idempotency input path. The message appeared once in the UI, and backend `Message.where(content: ...)` returned `1`. |
+
+The app still uses `ManagerApiClient` for production/live mode. No raw Chatwoot
+API calls were added to the UI. Polling remains a temporary Stage 3 strategy;
+ActionCable/WebSocket remains required before production beta.

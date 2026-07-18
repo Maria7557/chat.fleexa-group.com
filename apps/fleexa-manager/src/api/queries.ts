@@ -1,10 +1,19 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { activeAccountIdForSession, type ConversationFilter } from '@fleexa/domain';
-import { createClientMessageId } from '@fleexa/api-client';
 
 import { useAuth } from '@/src/auth/AuthProvider';
 import { useFleexaApiClient } from './client';
+
+const CONVERSATION_LIST_POLL_INTERVAL_MS = 7_000;
+const CONVERSATION_DETAIL_POLL_INTERVAL_MS = 7_000;
+const MESSAGE_THREAD_POLL_INTERVAL_MS = 5_000;
+const COUNTERS_POLL_INTERVAL_MS = 10_000;
+
+export interface SendTextMessageInput {
+  clientMessageId: string;
+  text: string;
+}
 
 export const queryKeys = {
   session: ['session', 'current'] as const,
@@ -40,6 +49,8 @@ export const useManagerCounters = (accountId: string | null) => {
     queryFn: () => client.getManagerCounters(accountId ?? ''),
     enabled: Boolean(accountId),
     retry: false,
+    refetchInterval: COUNTERS_POLL_INTERVAL_MS,
+    refetchIntervalInBackground: false,
   });
 };
 
@@ -48,9 +59,11 @@ export const useConversations = (accountId: string | null, filter: ConversationF
 
   return useQuery({
     queryKey: accountId ? queryKeys.conversations(accountId, filter) : ['conversations', 'missing', filter],
-    queryFn: () => client.listConversations({ accountId: accountId ?? '', limit: 12, filter }),
+    queryFn: () => client.listConversations({ accountId: accountId ?? '', limit: 20, filter }),
     enabled: Boolean(accountId),
     retry: false,
+    refetchInterval: CONVERSATION_LIST_POLL_INTERVAL_MS,
+    refetchIntervalInBackground: false,
   });
 };
 
@@ -73,6 +86,8 @@ export const useConversationDetail = (accountId: string | null, conversationId: 
     queryFn: () => client.getConversationDetail(accountId ?? '', conversationId ?? ''),
     enabled: Boolean(accountId && conversationId),
     retry: false,
+    refetchInterval: CONVERSATION_DETAIL_POLL_INTERVAL_MS,
+    refetchIntervalInBackground: false,
   });
 };
 
@@ -84,6 +99,8 @@ export const useMessages = (accountId: string | null, conversationId: string | n
     queryFn: () => client.listMessages({ accountId: accountId ?? '', conversationId: conversationId ?? '', order: 'asc' }),
     enabled: Boolean(accountId && conversationId),
     retry: false,
+    refetchInterval: MESSAGE_THREAD_POLL_INTERVAL_MS,
+    refetchIntervalInBackground: false,
   });
 };
 
@@ -92,8 +109,7 @@ export const useSendTextMessage = (accountId: string | null, conversationId: str
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (text: string) => {
-      const clientMessageId = createClientMessageId();
+    mutationFn: ({ clientMessageId, text }: SendTextMessageInput) => {
       return client.sendTextMessage({
         accountId: accountId ?? '',
         conversationId: conversationId ?? '',
@@ -102,6 +118,7 @@ export const useSendTextMessage = (accountId: string | null, conversationId: str
         text,
       });
     },
+    retry: false,
     onSuccess: () => {
       if (!accountId || !conversationId) return;
       void queryClient.invalidateQueries({ queryKey: queryKeys.messages(accountId, conversationId) });
