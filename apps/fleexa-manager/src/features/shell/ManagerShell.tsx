@@ -122,10 +122,9 @@ export const ManagerShell = ({ config }: { config: FleexaRuntimeConfig }) => {
           </View>
 
           <View style={styles.metricsGrid}>
-            <Metric label="Open conversations" value={counters.data?.counters.openConversations ?? 0} />
-            <Metric label="Unread" value={counters.data?.counters.unreadConversations ?? 0} tone="warning" />
-            <Metric label="Active deals" value={counters.data?.counters.activeDeals ?? 0} />
-            <Metric label="Bookings today" value={counters.data?.counters.bookingsToday ?? 0} tone="success" />
+            <Metric label="Assigned conversations" value={counters.data?.counters.assigned ?? 0} />
+            <Metric label="Unassigned" value={counters.data?.counters.unassigned ?? 0} />
+            <Metric label="Unread" value={counters.data?.counters.unread ?? 0} tone="warning" />
           </View>
 
           <View style={styles.workGrid}>

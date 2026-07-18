@@ -27,6 +27,11 @@ For the real local Chatwoot vertical slice, use `EXPO_PUBLIC_FLEEXA_API_MODE=liv
 `EXPO_PUBLIC_FLEEXA_CHATWOOT_ACCOUNT_ID=1`. The login token is the Chatwoot
 `api_access_token`, not a Manager bearer token.
 
+For Stage 2 Manager API live mode, use `EXPO_PUBLIC_FLEEXA_API_DRIVER=manager`
+and point `EXPO_PUBLIC_FLEEXA_API_BASE_URL` at `/api/fleexa-manager/v1`. Until
+Manager-owned session endpoints exist, the token field accepts an existing
+Chatwoot user access token and sends it as `Authorization: Bearer ...`.
+
 ## Scripts
 
 - `npm --workspace @fleexa/manager run validate:env`

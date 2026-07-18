@@ -1,9 +1,15 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { ChatwootFleexaApiClient, HttpFleexaApiClient, MockFleexaApiClient } from './index';
+import { ChatwootFleexaApiClient, HttpFleexaApiClient, MockFleexaApiClient, createClientMessageId } from './index';
 import type { FleexaApiError } from './index';
 
 describe('@fleexa/api-client', () => {
+  it('creates UUID client message ids for idempotent sends', () => {
+    expect(createClientMessageId()).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
+    );
+  });
+
   it('sends bearer tokens and query params to the Manager API base path', async () => {
     const fetchImpl = vi.fn(async () =>
       new Response(
@@ -70,10 +76,75 @@ describe('@fleexa/api-client', () => {
     const client = new MockFleexaApiClient();
     const session = await client.getCurrentSession();
     const conversations = await client.listConversations({ accountId: 'acc_mock_fleexa' });
+    const counters = await client.getManagerCounters('acc_mock_fleexa');
 
     expect(session.apiVersion).toContain('mock');
     expect(conversations.data[0]?.linkedDeal?.id).toMatch(/^deal_/);
     expect(conversations.data[0]).not.toHaveProperty('custom_attributes');
+    expect(counters.counters).toEqual({ unread: 5, assigned: 14, unassigned: 3 });
+    expect(counters.counters).not.toHaveProperty('activeDeals');
+  });
+
+  it('sends Manager text messages with explicit idempotency metadata', async () => {
+    const fetchImpl = vi.fn(async () =>
+      new Response(
+        JSON.stringify({
+          data: {
+            id: 'msg_123',
+            conversationId: 'conv_81',
+            clientMessageId: '4f236d7a-7054-4ad2-a592-2a9bd5ac3051',
+            direction: 'outgoing',
+            visibility: 'customer',
+            type: 'text',
+            text: 'hello',
+            deliveryStatus: 'sent',
+            attachments: [],
+            createdAt: '2026-07-18T09:00:00Z',
+          },
+          idempotency: {
+            key: '4f236d7a-7054-4ad2-a592-2a9bd5ac3051',
+            duplicate: false,
+            originalMessageId: null,
+          },
+        }),
+        { status: 201 }
+      )
+    );
+    const client = new HttpFleexaApiClient({
+      baseUrl: 'https://api.example.com/api/fleexa-manager/v1',
+      tokenProvider: () => 'access-token',
+      fetchImpl,
+    });
+
+    const result = await client.sendTextMessage({
+      accountId: 'acc_1',
+      conversationId: 'conv_81',
+      idempotencyKey: '4f236d7a-7054-4ad2-a592-2a9bd5ac3051',
+      clientMessageId: '4f236d7a-7054-4ad2-a592-2a9bd5ac3051',
+      text: 'hello',
+    });
+
+    expect(fetchImpl).toHaveBeenCalledWith(
+      'https://api.example.com/api/fleexa-manager/v1/accounts/acc_1/conversations/conv_81/messages/text',
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({
+          Authorization: 'Bearer access-token',
+          'Idempotency-Key': '4f236d7a-7054-4ad2-a592-2a9bd5ac3051',
+          'Content-Type': 'application/json',
+        }),
+        body: JSON.stringify({
+          clientMessageId: '4f236d7a-7054-4ad2-a592-2a9bd5ac3051',
+          text: 'hello',
+          quotedMessageId: null,
+        }),
+      })
+    );
+    expect(result.idempotency).toEqual({
+      key: '4f236d7a-7054-4ad2-a592-2a9bd5ac3051',
+      duplicate: false,
+      originalMessageId: null,
+    });
   });
 
   it('maps Chatwoot profile and conversations into Manager DTOs', async () => {
@@ -156,6 +227,7 @@ describe('@fleexa/api-client', () => {
   });
 
   it('sends Chatwoot text messages with api_access_token and client ids', async () => {
+    const clientMessageId = '6f4107ac-6079-472a-bf08-7c3862ea35b1';
     const fetchImpl = vi.fn(async () =>
       new Response(
         JSON.stringify({
@@ -165,7 +237,7 @@ describe('@fleexa/api-client', () => {
           message_type: 1,
           status: 'sent',
           private: false,
-          content_attributes: { clientMessageId: 'client_1' },
+          content_attributes: { clientMessageId },
           created_at: 1784369978,
         })
       )
@@ -179,8 +251,8 @@ describe('@fleexa/api-client', () => {
     const result = await client.sendTextMessage({
       accountId: 'acc_1',
       conversationId: 'conv_81',
-      idempotencyKey: 'idem_1',
-      clientMessageId: 'client_1',
+      idempotencyKey: clientMessageId,
+      clientMessageId,
       text: 'hello',
     });
 
@@ -190,13 +262,13 @@ describe('@fleexa/api-client', () => {
         method: 'POST',
         headers: expect.objectContaining({
           api_access_token: 'chatwoot-token',
-          'Idempotency-Key': 'idem_1',
+          'Idempotency-Key': clientMessageId,
           'Content-Type': 'application/json',
         }),
         body: JSON.stringify({
           content: 'hello',
           private: false,
-          content_attributes: { clientMessageId: 'client_1', idempotencyKey: 'idem_1' },
+          content_attributes: { clientMessageId, idempotencyKey: clientMessageId },
         }),
       })
     );
@@ -205,7 +277,12 @@ describe('@fleexa/api-client', () => {
       conversationId: 'conv_81',
       text: 'hello',
       direction: 'outgoing',
-      clientMessageId: 'client_1',
+      clientMessageId,
+    });
+    expect(result.idempotency).toEqual({
+      key: clientMessageId,
+      duplicate: false,
+      originalMessageId: null,
     });
   });
 });

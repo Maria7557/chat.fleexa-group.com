@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { activeAccountIdForSession } from '@fleexa/domain';
+import { createClientMessageId } from '@fleexa/api-client';
 
 import { useAuth } from '@/src/auth/AuthProvider';
 import { useFleexaApiClient } from './client';
@@ -92,7 +93,7 @@ export const useSendTextMessage = (accountId: string | null, conversationId: str
 
   return useMutation({
     mutationFn: (text: string) => {
-      const clientMessageId = `msg_client_${Date.now()}`;
+      const clientMessageId = createClientMessageId();
       return client.sendTextMessage({
         accountId: accountId ?? '',
         conversationId: conversationId ?? '',

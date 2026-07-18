@@ -144,8 +144,10 @@ observed before any Stage 2 edits. They are not caused by this document.
    idempotency handling.
 9. Implement linked deal read by conversation using existing `CrmDeal` records,
    returning explicit link state rather than raw CRM/Chatwoot objects.
-10. Implement the minimal counters endpoint from backend-owned queries for open,
-    unread, assigned, unanswered, and reply-window-risk conversation counts.
+10. Implement the minimal counters endpoint from backend-owned queries for
+    unread, assigned, and unassigned conversation counts only. Do not add
+    answered/unanswered or reply-risk counters until that backend logic is
+    implemented and tested.
 11. Add Ruby syntax checks and request/serializer specs for the new patch files,
     including account isolation, forbidden account access, unauthenticated
     access, missing records, and send-message validation errors.

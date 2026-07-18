@@ -12,13 +12,21 @@ info:
     All account resources are isolated by `accountId`. The authenticated user
     must have an active membership in the requested account and the endpoint
     permission listed by `x-permission`.
+
+    Stage 2 uses temporary Chatwoot authentication through the Manager namespace:
+    existing Chatwoot user access tokens and same-origin Rails sessions are
+    accepted, but raw Chatwoot API payloads and routes are not the Manager
+    contract. Dedicated Manager session, refresh, and revoke endpoints must
+    replace this before production beta.
 servers:
   - url: https://api.fleexa.example.com/api/fleexa-manager/v1
     description: Production API base path placeholder.
   - url: http://localhost:3000/api/fleexa-manager/v1
     description: Local development API base path placeholder.
 security:
-  - bearerAuth: []
+  - chatwootBearerAuth: []
+  - chatwootApiAccessToken: []
+  - chatwootSessionCookie: []
 tags:
   - name: Session
   - name: Conversations
@@ -180,14 +188,19 @@ paths:
       operationId: sendTextMessage
       summary: Send a text message to the conversation contact.
       description: |
-        The client must provide both `Idempotency-Key` and `clientMessageId`.
-        Repeating the same request returns the original accepted message DTO.
+        The client must provide `clientMessageId` in the body and may also send
+        `Idempotency-Key`. Stage 2 SDKs send both as the same UUID value. The
+        backend must use `Idempotency-Key` when present, otherwise
+        `clientMessageId`, as the idempotency key. Repeating the same request
+        must return the original accepted message DTO and must not create a
+        second Chatwoot message. Reusing the same key with a different payload
+        returns `409 conflict`.
       x-account-isolation: required
       x-permission: messages:send
       parameters:
         - $ref: "#/components/parameters/AccountId"
         - $ref: "#/components/parameters/ConversationId"
-        - $ref: "#/components/parameters/IdempotencyKey"
+        - $ref: "#/components/parameters/OptionalIdempotencyKey"
       requestBody:
         required: true
         content:
@@ -385,7 +398,10 @@ paths:
         - Counters
       operationId: getManagerCounters
       summary: Get dashboard counters for the current manager/operator.
-      description: Counters are computed by the backend and filtered by permission.
+      description: |
+        Counters are computed by the backend and filtered by permission. Stage 2
+        exposes only reliable conversation counters: `unread`, `assigned`, and
+        `unassigned`.
       x-account-isolation: required
       x-permission: counters:read
       parameters:
@@ -452,10 +468,23 @@ webhooks:
 
 components:
   securitySchemes:
-    bearerAuth:
+    chatwootBearerAuth:
       type: http
       scheme: bearer
-      bearerFormat: JWT
+      bearerFormat: Chatwoot user access token
+      description: |
+        Temporary Stage 2 auth; use
+        `Authorization: Bearer <Chatwoot user access token>`.
+    chatwootApiAccessToken:
+      type: apiKey
+      in: header
+      name: api_access_token
+      description: Temporary Stage 2 compatibility header for Chatwoot user access tokens.
+    chatwootSessionCookie:
+      type: apiKey
+      in: cookie
+      name: _chatwoot_session
+      description: Temporary same-origin web auth using the existing Chatwoot Rails session cookie.
 
   parameters:
     AccountId:
@@ -1055,9 +1084,31 @@ components:
       type: object
       required:
         - data
+        - idempotency
       properties:
         data:
           $ref: "#/components/schemas/ManagerMessage"
+        idempotency:
+          $ref: "#/components/schemas/MessageSendIdempotency"
+
+    MessageSendIdempotency:
+      type: object
+      required:
+        - key
+        - duplicate
+      properties:
+        key:
+          type: string
+          minLength: 16
+          maxLength: 120
+        duplicate:
+          type: boolean
+          description: True when this response reused a previously created message.
+        originalMessageId:
+          type:
+            - string
+            - "null"
+          description: Original Manager message id when `duplicate` is true.
 
     ReplyWindow:
       type: object
@@ -1421,9 +1472,13 @@ components:
         endsAt:
           type: string
           format: date-time
+        timeZone:
+          type: string
 
     VehicleSummary:
       type: object
+      required:
+        - label
       properties:
         id:
           type:
@@ -1440,97 +1495,52 @@ components:
       type: object
       required:
         - accountId
-        - asOf
+        - generatedAt
         - counters
       properties:
         accountId:
           type: string
-        asOf:
+        generatedAt:
           type: string
           format: date-time
         counters:
-          type: object
-          required:
-            - conversations
-            - deals
-            - bookings
-          properties:
-            conversations:
-              $ref: "#/components/schemas/ConversationCounters"
-            deals:
-              $ref: "#/components/schemas/DealCounters"
-            bookings:
-              $ref: "#/components/schemas/BookingCounters"
+          $ref: "#/components/schemas/ManagerConversationCounters"
 
-    ConversationCounters:
+    ManagerConversationCounters:
       type: object
       required:
-        - open
-        - mine
-        - unassigned
         - unread
-        - overdueFirstResponse
+        - assigned
+        - unassigned
       properties:
-        open:
-          type: integer
-        mine:
-          type: integer
-        unassigned:
-          type: integer
         unread:
           type: integer
-        overdueFirstResponse:
+          minimum: 0
+          description: Count of conversations visible to the user with unread messages.
+        assigned:
           type: integer
-
-    DealCounters:
-      type: object
-      required:
-        - active
-        - wonToday
-        - lostToday
-        - byStage
-      properties:
-        active:
+          minimum: 0
+          description: Count of visible conversations assigned to a user.
+        unassigned:
           type: integer
-        wonToday:
-          type: integer
-        lostToday:
-          type: integer
-        byStage:
-          type: array
-          items:
-            $ref: "#/components/schemas/StageCounter"
-
-    StageCounter:
-      type: object
-      required:
-        - stageId
-        - count
-      properties:
-        stageId:
-          type: string
-        count:
-          type: integer
-
-    BookingCounters:
-      type: object
-      required:
-        - pickupToday
-        - returnToday
-        - active
-        - overdue
-      properties:
-        pickupToday:
-          type: integer
-        returnToday:
-          type: integer
-        active:
-          type: integer
-        overdue:
-          type: integer
+          minimum: 0
+          description: Count of visible conversations with no assignee.
+      description: |
+        Stage 2 exposes only counters that can be read reliably from existing
+        Chatwoot conversation state. Answered/unanswered, reply-risk, deal, and
+        booking counters are intentionally omitted until backend logic and tests
+        exist.
 
     SourceAttribution:
       type: object
+      required:
+        - trafficSourceKey
+        - trafficSourceLabel
+        - leadOriginKey
+        - leadOriginLabel
+        - sourceDetectionMethod
+        - sourceConfidence
+        - needsSourceClarification
       properties:
         trafficSourceKey:
           type:
@@ -1548,23 +1558,39 @@ components:
           type:
             - string
             - "null"
-        detectionMethod:
-          type:
-            - string
-            - "null"
-        needsClarification:
+        sourceDetectionMethod:
+          type: string
+          enum:
+            - click_id
+            - utm
+            - first_message_rule
+            - manual
+            - unknown
+        sourceConfidence:
+          type: string
+          enum:
+            - auto
+            - manual
+            - unknown
+        needsSourceClarification:
           type: boolean
           default: false
 
     LeadQualification:
       type: object
+      required:
+        - status
       properties:
         status:
           type: string
           enum:
-            - unknown
+            - pending
             - unqualified
             - qualified
+        reason:
+          type:
+            - string
+            - "null"
         lostReasonKey:
           type:
             - string
@@ -1697,10 +1723,10 @@ components:
           required:
             - code
             - message
-            - requestId
           properties:
             code:
               type: string
+              description: Server error code. SDKs may synthesize `network_error` when no HTTP response exists.
               enum:
                 - bad_request
                 - unauthenticated
@@ -1710,7 +1736,7 @@ components:
                 - validation_failed
                 - rate_limited
                 - invalid_webhook_signature
-                - internal_error
+                - unknown_error
             message:
               type: string
             requestId:

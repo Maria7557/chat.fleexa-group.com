@@ -191,6 +191,42 @@ const stableId = (prefix: string, value: unknown): string => `${prefix}_${primit
 const rawIdFromStableId = (prefix: string, value: string): string =>
   value.startsWith(`${prefix}_`) ? value.slice(prefix.length + 1) : value;
 
+const uuidFromBytes = (bytes: Uint8Array): string => {
+  bytes[6] = ((bytes[6] ?? 0) & 0x0f) | 0x40;
+  bytes[8] = ((bytes[8] ?? 0) & 0x3f) | 0x80;
+
+  const hex = Array.from(bytes, byte => byte.toString(16).padStart(2, '0'));
+  return [
+    hex.slice(0, 4).join(''),
+    hex.slice(4, 6).join(''),
+    hex.slice(6, 8).join(''),
+    hex.slice(8, 10).join(''),
+    hex.slice(10, 16).join(''),
+  ].join('-');
+};
+
+export const createClientMessageId = (): string => {
+  const cryptoSource = globalThis.crypto as
+    | {
+        randomUUID?: () => string;
+        getRandomValues?: <T extends Uint8Array>(array: T) => T;
+      }
+    | undefined;
+
+  if (typeof cryptoSource?.randomUUID === 'function') return cryptoSource.randomUUID();
+
+  const bytes = new Uint8Array(16);
+  if (typeof cryptoSource?.getRandomValues === 'function') {
+    cryptoSource.getRandomValues(bytes);
+  } else {
+    for (let index = 0; index < bytes.length; index += 1) {
+      bytes[index] = Math.floor(Math.random() * 256);
+    }
+  }
+
+  return uuidFromBytes(bytes);
+};
+
 const CHATWOOT_VERTICAL_SLICE_PERMISSIONS: Permission[] = [
   'session:read',
   'conversations:read',
@@ -587,6 +623,11 @@ export class ChatwootFleexaApiClient implements FleexaApiClient {
 
     return {
       data: messageFromChatwoot(message),
+      idempotency: {
+        key: params.idempotencyKey,
+        duplicate: false,
+        originalMessageId: null,
+      },
     };
   }
 
@@ -646,14 +687,10 @@ export class ChatwootFleexaApiClient implements FleexaApiClient {
     return {
       accountId,
       generatedAt: new Date().toISOString(),
-      scope: 'mine',
       counters: {
-        openConversations: numberFrom(meta.mine_count) ?? conversations.data.length,
-        unreadConversations: conversations.data.filter(conversation => conversation.unreadCount > 0).length,
-        activeDeals: 0,
-        overdueDeals: 0,
-        bookingsToday: 0,
-        bookingConflicts: 0,
+        unread: conversations.data.filter(conversation => conversation.unreadCount > 0).length,
+        assigned: numberFrom(meta.assigned_count) ?? numberFrom(meta.mine_count) ?? 0,
+        unassigned: numberFrom(meta.unassigned_count) ?? 0,
       },
     };
   }
@@ -1107,6 +1144,11 @@ export class MockFleexaApiClient implements FleexaApiClient {
         createdAt: now,
         updatedAt: now,
       },
+      idempotency: {
+        key: params.idempotencyKey,
+        duplicate: false,
+        originalMessageId: null,
+      },
     };
   }
 
@@ -1182,18 +1224,14 @@ export class MockFleexaApiClient implements FleexaApiClient {
     };
   }
 
-  async getManagerCounters(): Promise<ManagerCountersResponse> {
+  async getManagerCounters(_accountId?: string): Promise<ManagerCountersResponse> {
     return {
       accountId: 'acc_mock_fleexa',
       generatedAt: now,
-      scope: 'mine',
       counters: {
-        openConversations: 14,
-        unreadConversations: 5,
-        activeDeals: 21,
-        overdueDeals: 2,
-        bookingsToday: 4,
-        bookingConflicts: 1,
+        unread: 5,
+        assigned: 14,
+        unassigned: 3,
       },
     };
   }

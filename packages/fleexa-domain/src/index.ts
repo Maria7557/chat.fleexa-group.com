@@ -104,10 +104,10 @@ export interface PipelineStageRef {
 }
 
 export interface SourceAttribution {
-  trafficSourceKey: string;
-  trafficSourceLabel: string;
-  leadOriginKey: string;
-  leadOriginLabel: string;
+  trafficSourceKey: string | null;
+  trafficSourceLabel: string | null;
+  leadOriginKey: string | null;
+  leadOriginLabel: string | null;
   sourceDetectionMethod: 'click_id' | 'utm' | 'first_message_rule' | 'manual' | 'unknown';
   sourceConfidence: 'auto' | 'manual' | 'unknown';
   needsSourceClarification: boolean;
@@ -116,6 +116,8 @@ export interface SourceAttribution {
 export interface LeadQualification {
   status: 'pending' | 'qualified' | 'unqualified';
   reason?: string | null;
+  lostReasonKey?: string | null;
+  lostReasonLabel?: string | null;
 }
 
 export interface BookingRef {
@@ -250,6 +252,7 @@ export interface BookingSummary {
 
 export interface CursorPage {
   nextCursor: string | null;
+  previousCursor?: string | null;
   hasMore: boolean;
   limit: number;
 }
@@ -270,6 +273,11 @@ export interface MessageListResponse {
 
 export interface MessageSendResponse {
   data: ManagerMessage;
+  idempotency: {
+    key: string;
+    duplicate: boolean;
+    originalMessageId?: string | null;
+  };
 }
 
 export interface LinkedDealResponse {
@@ -310,18 +318,14 @@ export interface BookingByDealResponse {
 export interface ManagerCountersResponse {
   accountId: string;
   generatedAt: IsoDateTime;
-  scope: 'mine' | 'team' | 'account';
   counters: {
-    openConversations: number;
-    unreadConversations: number;
-    activeDeals: number;
-    overdueDeals: number;
-    bookingsToday: number;
-    bookingConflicts: number;
+    unread: number;
+    assigned: number;
+    unassigned: number;
   };
 }
 
-export type ApiErrorCode =
+export type ServerApiErrorCode =
   | 'bad_request'
   | 'unauthenticated'
   | 'forbidden'
@@ -330,8 +334,9 @@ export type ApiErrorCode =
   | 'validation_failed'
   | 'rate_limited'
   | 'invalid_webhook_signature'
-  | 'network_error'
   | 'unknown_error';
+
+export type ApiErrorCode = ServerApiErrorCode | 'network_error';
 
 export interface ApiErrorBody {
   code: ApiErrorCode;
