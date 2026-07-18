@@ -1250,6 +1250,7 @@ const mockContact: ContactSummary = {
 const mockDeal: DealSummary = {
   id: 'deal_mock_range_rover',
   accountId: 'acc_mock_fleexa',
+  conversationId: 'conv_mock_whatsapp',
   title: 'Range Rover weekly rental',
   clientName: 'Amina Noor',
   stage: {

@@ -151,6 +151,7 @@ export interface BookingRef {
 export interface DealSummary {
   id: string;
   accountId: string;
+  conversationId?: string | null;
   title: string;
   clientName: string | null;
   amount: Money | null;

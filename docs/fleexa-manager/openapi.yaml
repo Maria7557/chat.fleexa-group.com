@@ -1463,6 +1463,12 @@ components:
           type: string
         accountId:
           type: string
+        conversationId:
+          description: Stable Manager conversation id when the deal is linked to a conversation.
+          oneOf:
+            - type: string
+              pattern: "^conv_[A-Za-z0-9]+$"
+            - type: "null"
         title:
           type: string
         clientName:

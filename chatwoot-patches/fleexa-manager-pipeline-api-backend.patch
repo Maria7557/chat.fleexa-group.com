@@ -292,10 +292,16 @@ index 3353b56..bd1b3b6 100644
          config = (@account.settings || {})[MARKETING_CONFIG_KEY]
          return [] unless config.is_a?(Hash)
 diff --git a/app/services/fleexa_manager/v1/dto_serializer.rb b/app/services/fleexa_manager/v1/dto_serializer.rb
-index f5619cb..112539d 100644
+index f5619cb..b17ea6c 100644
 --- a/app/services/fleexa_manager/v1/dto_serializer.rb
 +++ b/app/services/fleexa_manager/v1/dto_serializer.rb
-@@ -104,8 +104,11 @@ module FleexaManager
+@@ -99,13 +99,17 @@ module FleexaManager
+           {
+             id: deal_id(deal),
+             accountId: account_id(deal.account),
++            conversationId: deal.conversation.present? ? conversation_id(deal.conversation) : nil,
+             title: deal.title.to_s,
+             clientName: deal.contact&.name.presence || deal.title.to_s,
              amount: money(deal.amount),
              currency: 'AED',
              stage: stage_summary(deal.stage),
@@ -307,7 +313,7 @@ index f5619cb..112539d 100644
              trafficSource: traffic_source,
              leadOrigin: lead_origin,
              lostReason: lost_reason,
-@@ -116,12 +119,35 @@ module FleexaManager
+@@ -116,12 +120,35 @@ module FleexaManager
              sourceAttribution: source_attribution(deal),
              qualification: lead_qualification(deal),
              lastActivityAt: iso8601(deal.updated_at),
@@ -343,7 +349,7 @@ index f5619cb..112539d 100644
          def message_id(message)
            "msg_#{message.id}"
          end
-@@ -274,6 +300,52 @@ module FleexaManager
+@@ -274,6 +301,52 @@ module FleexaManager
            }
          end
  
@@ -396,7 +402,7 @@ index f5619cb..112539d 100644
          def money(value)
            return if value.blank?
  
-@@ -378,6 +450,10 @@ module FleexaManager
+@@ -378,6 +451,10 @@ module FleexaManager
                 .gsub(/\A_+|_+\z/, '')
          end
  
@@ -423,10 +429,10 @@ index cb62ed2..c2152f1 100644
          end
        end
 diff --git a/spec/requests/api/fleexa_manager/v1/chat_api_spec.rb b/spec/requests/api/fleexa_manager/v1/chat_api_spec.rb
-index 36cb7b2..491fc63 100644
+index 36cb7b2..d4f5ec9 100644
 --- a/spec/requests/api/fleexa_manager/v1/chat_api_spec.rb
 +++ b/spec/requests/api/fleexa_manager/v1/chat_api_spec.rb
-@@ -717,4 +717,238 @@ RSpec.describe 'Fleexa Manager chat API', type: :request do
+@@ -717,4 +717,239 @@ RSpec.describe 'Fleexa Manager chat API', type: :request do
        expect(json_response['error']['code']).to eq('validation_failed')
      end
    end
@@ -539,6 +545,7 @@ index 36cb7b2..491fc63 100644
 +      expect(json_response['data'].map { |deal| deal['id'] }).to eq(["deal_#{account_deal.id}"])
 +      expect(json_response['data'].first).to include(
 +        'id' => "deal_#{account_deal.id}",
++        'conversationId' => "conv_#{conversation.display_id}",
 +        'title' => 'Account pipeline deal',
 +        'clientName' => contact.name,
 +        'stageId' => "stage_#{active_stage.id}",

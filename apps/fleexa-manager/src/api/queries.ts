@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { activeAccountIdForSession, type ConversationFilter, type DealDraft } from '@fleexa/domain';
+import { createClientMessageId, type ListDealsParams, type UpdateDealStageParams } from '@fleexa/api-client';
 
 import { useAuth } from '@/src/auth/AuthProvider';
 import { useFleexaApiClient } from './client';
@@ -23,6 +24,21 @@ export const queryKeys = {
   messages: (accountId: string, conversationId: string) => ['messages', accountId, conversationId] as const,
   linkedDeal: (accountId: string, conversationId: string) => ['linked-deal', accountId, conversationId] as const,
   stages: (accountId: string) => ['pipeline-stages', accountId] as const,
+  deals: (
+    accountId: string,
+    filters: {
+      stageId?: string;
+      stageKey?: string;
+      sort?: ListDealsParams['sort'];
+    } = {}
+  ) =>
+    [
+      'pipeline-deals',
+      accountId,
+      filters.stageId ?? 'all',
+      filters.stageKey ?? 'all',
+      filters.sort ?? 'last_activity_desc',
+    ] as const,
 };
 
 export const useCurrentSession = () => {
@@ -74,6 +90,36 @@ export const usePipelineStages = (accountId: string | null) => {
   return useQuery({
     queryKey: accountId ? queryKeys.stages(accountId) : ['pipeline-stages', 'missing'],
     queryFn: () => client.listPipelineStages(accountId ?? '', true),
+    enabled: Boolean(accountId),
+    retry: false,
+  });
+};
+
+export const usePipelineDeals = (
+  accountId: string | null,
+  options: {
+    stageId?: string;
+    stageKey?: string;
+    limit?: number;
+    sort?: ListDealsParams['sort'];
+  } = {}
+) => {
+  const client = useFleexaApiClient();
+
+  return useQuery({
+    queryKey: accountId ? queryKeys.deals(accountId, options) : ['pipeline-deals', 'missing'],
+    queryFn: () => {
+      const request: ListDealsParams = {
+        accountId: accountId ?? '',
+        limit: options.limit ?? 80,
+        sort: options.sort ?? 'last_activity_desc',
+      };
+
+      if (options.stageId) request.stageId = options.stageId;
+      if (options.stageKey) request.stageKey = options.stageKey;
+
+      return client.listDeals(request);
+    },
     enabled: Boolean(accountId),
     retry: false,
   });
@@ -155,6 +201,44 @@ export const useUpdateDeal = (accountId: string | null, conversationId: string |
       if (!accountId || !conversationId) return;
       void queryClient.invalidateQueries({ queryKey: queryKeys.linkedDeal(accountId, conversationId) });
       void queryClient.invalidateQueries({ queryKey: queryKeys.conversation(accountId, conversationId) });
+      void queryClient.invalidateQueries({ queryKey: ['conversations', accountId] });
+    },
+  });
+};
+
+export const useMoveDealStage = (accountId: string | null) => {
+  const client = useFleexaApiClient();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      dealId,
+      lostReasonLabel,
+      stageId,
+    }: {
+      dealId: string;
+      lostReasonLabel?: string | null;
+      stageId: string;
+    }) => {
+      const clientMutationId = createClientMessageId();
+      const request: UpdateDealStageParams = {
+        accountId: accountId ?? '',
+        dealId,
+        stageId,
+        clientMutationId,
+        idempotencyKey: `stage-move-${clientMutationId}`,
+      };
+      const trimmedLostReason = lostReasonLabel?.trim();
+      if (trimmedLostReason) request.lostReasonLabel = trimmedLostReason;
+
+      return client.updateDealStage(request);
+    },
+    retry: false,
+    onSuccess: () => {
+      if (!accountId) return;
+      void queryClient.invalidateQueries({ queryKey: ['pipeline-deals', accountId] });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.stages(accountId) });
+      void queryClient.invalidateQueries({ queryKey: ['linked-deal', accountId] });
       void queryClient.invalidateQueries({ queryKey: ['conversations', accountId] });
     },
   });

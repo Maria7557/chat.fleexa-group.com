@@ -382,3 +382,57 @@ Closeout verification for the pipeline API change:
 | New patch apply check | Pass | `git apply --check /tmp/fleexa-manager-pipeline-api-backend.patch` passed against the already-patched local Rails container before applying it for validation. |
 | `make crm-patch-check` | Blocked by local container state | The running Rails container was already patched from prior stages and rejects reapplying existing CRM files such as `app/models/crm_pipeline_stage.rb`. Clean host build remains the authoritative full-chain validation. |
 | Backend request specs | Authored, runner blocked | Host Ruby lacks Bundler 2.5.16. The Rails production image can install the test bundle, but it does not include Chatwoot `spec_helper.rb` or `rails_helper.rb`, so RSpec exits before examples with `cannot load such file -- spec_helper`. |
+
+## Manager Pipeline UI
+
+Added after the Manager pipeline API on branch
+`codex/fleexa-manager-core-stage-3`.
+
+### Implemented
+
+- Added the first Expo Manager pipeline screen at
+  `apps/fleexa-manager/src/features/pipeline/PipelineScreen.tsx`.
+- Wired the existing shell `Pipeline` section to the new screen without
+  replacing the chat or deal-panel screens.
+- Added Manager API query hooks for:
+  - `GET /api/fleexa-manager/v1/accounts/:account_id/pipeline/stages`
+  - `GET /api/fleexa-manager/v1/accounts/:account_id/pipeline/deals`
+  - `PATCH /api/fleexa-manager/v1/accounts/:account_id/deals/:deal_id/stage`
+- Desktop web renders a compact kanban/list hybrid using backend stage order,
+  names, colors, counters, and Manager deal DTOs.
+- Mobile width renders horizontal stage tabs plus a compact deal list and detail
+  panel.
+- Deal rows show title/client, amount, qualification, source, lead origin, and
+  last activity/message time.
+- Opening a deal shows a compact detail panel with amount, stage,
+  qualification, source, lead origin, assigned manager, and lost reason when
+  relevant.
+- Stage movement uses `updateDealStage` through `FleexaApiClient` with a
+  generated `clientMutationId` and `Idempotency-Key`. Backend remains the
+  validation source for allowed stages and lost/cancelled requirements.
+- Added optional `conversationId` to the Manager deal DTO contract and backend
+  serializer so the UI can link back to the chat when the API has a linked
+  conversation. The UI does not guess raw Chatwoot ids.
+- Source chips filter the currently loaded Manager API deal page. A production
+  global source filter still needs a backend query parameter before it can be
+  treated as complete account-wide filtering.
+- No booking placeholders were added.
+
+### Verification Notes
+
+Closeout verification for the pipeline UI change:
+
+| Check | Result | Notes |
+| --- | --- | --- |
+| `npm run lint` | Pass | ESLint completed with `--max-warnings=0`. |
+| `npm run typecheck` | Pass | Expo app and workspace packages typechecked. |
+| `npm test` | Pass | Vitest: 3 files, 25 tests. |
+| OpenAPI YAML parse | Pass | `docs/fleexa-manager/openapi.yaml` parsed successfully. |
+| `git diff --check` | Pass | No whitespace errors. |
+| `npm run smoke:web` | Pass | Expo web export produced `dist-web-smoke`; Expo force-exited after export as expected. |
+| `make crm-assets-build-host` | Pass | Clean Chatwoot host build applied the full patch chain, including the updated pipeline API patch, and built Vite assets. |
+| Ruby syntax | Pass | Pipeline controllers, deal controller, DTO serializer, deal mutation service, and request spec syntax checked from `/tmp/fleexa-chatwoot-app-build`. |
+| Local web smoke | Pass | Live mode at `localhost:8082` loaded through `/api/fleexa-manager/v1`, opened Pipeline, loaded 6 real stages and 44 real deals, opened a deal, moved it from `stage_1` to `stage_20`, refreshed, and confirmed the stage persisted. |
+| Desktop responsive smoke | Pass | `1280x720` showed desktop lanes, 44 deal rows, detail panel, and no page-level horizontal overflow. |
+| Mobile responsive smoke | Pass | `390x844` showed stage tabs, compact deal list, detail panel matching the active stage, and no horizontal overflow. |
+| Local Rails runtime note | Pass with restart | The running Rails container already contained the pipeline patch files but needed a Rails service restart before the new routes stopped returning `404`. |
