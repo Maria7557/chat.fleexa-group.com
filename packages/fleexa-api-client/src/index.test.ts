@@ -1,12 +1,32 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { ChatwootFleexaApiClient, HttpFleexaApiClient, MockFleexaApiClient, createClientMessageId } from './index';
+import {
+  ChatwootFleexaApiClient,
+  HttpFleexaApiClient,
+  ManagerApiClient,
+  MockFleexaApiClient,
+  createClientMessageId,
+  createFleexaApiClient,
+  safeFleexaApiErrorMessage,
+} from './index';
 import type { FleexaApiError } from './index';
 
 describe('@fleexa/api-client', () => {
   it('creates UUID client message ids for idempotent sends', () => {
     expect(createClientMessageId()).toMatch(
       /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
+    );
+  });
+
+  it('uses the Manager API client for live mode by default', () => {
+    const client = createFleexaApiClient({
+      baseUrl: 'https://api.example.com/api/fleexa-manager/v1',
+    });
+
+    expect(client).toBeInstanceOf(ManagerApiClient);
+    expect(client).not.toBeInstanceOf(ChatwootFleexaApiClient);
+    expect(new HttpFleexaApiClient({ baseUrl: 'https://api.example.com/api/fleexa-manager/v1' })).toBeInstanceOf(
+      ManagerApiClient
     );
   });
 
@@ -28,7 +48,7 @@ describe('@fleexa/api-client', () => {
         })
       )
     );
-    const client = new HttpFleexaApiClient({
+    const client = new ManagerApiClient({
       baseUrl: 'https://api.example.com/api/fleexa-manager/v1/',
       tokenProvider: () => 'access-token',
       fetchImpl,
@@ -60,7 +80,7 @@ describe('@fleexa/api-client', () => {
         { status: 403 }
       )
     );
-    const client = new HttpFleexaApiClient({
+    const client = new ManagerApiClient({
       baseUrl: 'https://api.example.com/api/fleexa-manager/v1',
       fetchImpl,
     });
@@ -70,6 +90,56 @@ describe('@fleexa/api-client', () => {
       code: 'forbidden',
       requestId: 'req_1',
     } satisfies Partial<FleexaApiError>);
+  });
+
+  it('sanitizes unavailable Manager API failures', async () => {
+    const fetchImpl = vi.fn(async () => {
+      throw new TypeError('connect ECONNREFUSED 127.0.0.1:3000');
+    });
+    const client = new ManagerApiClient({
+      baseUrl: 'http://localhost:3000/api/fleexa-manager/v1',
+      fetchImpl,
+    });
+
+    await expect(client.getCurrentSession()).rejects.toMatchObject({
+      status: 0,
+      code: 'network_error',
+      message: 'The Manager API is unavailable. Check the local backend and try again.',
+    } satisfies Partial<FleexaApiError>);
+  });
+
+  it('does not expose raw Manager API internals in user-facing messages', async () => {
+    const fetchImpl = vi.fn(async () =>
+      new Response(
+        JSON.stringify({
+          error: {
+            code: 'unknown_error',
+            message: 'PG::UndefinedColumn: raw backend internals',
+            requestId: 'req_500',
+          },
+        }),
+        { status: 500 }
+      )
+    );
+    const client = new ManagerApiClient({
+      baseUrl: 'http://localhost:3000/api/fleexa-manager/v1',
+      fetchImpl,
+    });
+
+    let capturedError: unknown;
+    try {
+      await client.getManagerCounters('acc_1');
+    } catch (error) {
+      capturedError = error;
+    }
+
+    expect(capturedError).toMatchObject({
+      status: 500,
+      code: 'unknown_error',
+      requestId: 'req_500',
+      message: 'Something went wrong. Please try again.',
+    } satisfies Partial<FleexaApiError>);
+    expect(safeFleexaApiErrorMessage(capturedError)).toBe('Something went wrong. Please try again.');
   });
 
   it('keeps mock mode explicit and Manager-shaped', async () => {
@@ -110,7 +180,7 @@ describe('@fleexa/api-client', () => {
         { status: 201 }
       )
     );
-    const client = new HttpFleexaApiClient({
+    const client = new ManagerApiClient({
       baseUrl: 'https://api.example.com/api/fleexa-manager/v1',
       tokenProvider: () => 'access-token',
       fetchImpl,

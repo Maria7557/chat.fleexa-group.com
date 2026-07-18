@@ -3,6 +3,7 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View, useWi
 import { router, type Href } from 'expo-router';
 import { ChevronRight, GitBranch, MessageSquareText, PanelLeftClose, PanelLeftOpen, RefreshCw, Settings, UserRound } from 'lucide-react-native';
 
+import { safeFleexaApiErrorMessage } from '@fleexa/api-client';
 import { Button, Screen, StatusPill, colors, spacing } from '@fleexa/ui';
 import { activeAccountIdForSession } from '@fleexa/domain';
 import type { FleexaRuntimeConfig } from '@fleexa/config';
@@ -44,6 +45,15 @@ export const ManagerShell = ({ config }: { config: FleexaRuntimeConfig }) => {
     if (!session.data || !accountId) return 'No account';
     return session.data.memberships.find(membership => membership.accountId === accountId)?.accountName ?? accountId;
   }, [accountId, session.data]);
+
+  if (session.error) {
+    return (
+      <Screen style={styles.loading}>
+        <Text style={styles.errorText}>{safeFleexaApiErrorMessage(session.error)}</Text>
+        <Button label="Sign out" variant="secondary" onPress={signOut} />
+      </Screen>
+    );
+  }
 
   if (session.isLoading || !session.data) {
     return (
@@ -133,7 +143,9 @@ export const ManagerShell = ({ config }: { config: FleexaRuntimeConfig }) => {
                 <MessageSquareText size={20} color={colors.teal} />
                 <Text style={styles.sectionTitle}>Conversation queue</Text>
               </View>
-              {conversations.error ? <EmptyState label={conversations.error.message} tone="danger" /> : null}
+              {conversations.error ? (
+                <EmptyState label={safeFleexaApiErrorMessage(conversations.error)} tone="danger" />
+              ) : null}
               {conversations.data?.data.map(item => (
                 <Pressable
                   accessibilityRole="button"

@@ -1,5 +1,6 @@
 import type {
   AccountMembership,
+  ApiErrorCode,
   Actor,
   AppRole,
   BookingByDealResponse,
@@ -111,6 +112,43 @@ export class FleexaApiError extends Error {
   }
 }
 
+const API_ERROR_CODES = new Set<ApiErrorCode>([
+  'bad_request',
+  'unauthenticated',
+  'forbidden',
+  'not_found',
+  'conflict',
+  'validation_failed',
+  'rate_limited',
+  'invalid_webhook_signature',
+  'unknown_error',
+  'network_error',
+]);
+
+const USER_FACING_API_ERROR_MESSAGES: Record<ApiErrorCode, string> = {
+  bad_request: 'The request could not be sent. Please try again.',
+  unauthenticated: 'Sign in again to continue.',
+  forbidden: 'You do not have access to this workspace.',
+  not_found: 'The requested item is no longer available.',
+  conflict: 'This action has already been handled. Refresh and try again.',
+  validation_failed: 'Check the entered details and try again.',
+  rate_limited: 'Too many requests. Wait a moment and try again.',
+  invalid_webhook_signature: 'The request could not be verified.',
+  unknown_error: 'Something went wrong. Please try again.',
+  network_error: 'The Manager API is unavailable. Check the local backend and try again.',
+};
+
+const userFacingApiErrorMessage = (code: ApiErrorCode): string =>
+  USER_FACING_API_ERROR_MESSAGES[code] ?? USER_FACING_API_ERROR_MESSAGES.unknown_error;
+
+export const safeFleexaApiErrorMessage = (error: unknown): string => {
+  if (error instanceof FleexaApiError) {
+    return userFacingApiErrorMessage(error.code as ApiErrorCode);
+  }
+
+  return USER_FACING_API_ERROR_MESSAGES.unknown_error;
+};
+
 const normalizeBaseUrl = (baseUrl: string): string => baseUrl.replace(/\/+$/, '');
 
 const pathWithQuery = (path: string, query: Record<string, string | number | boolean | undefined>): string => {
@@ -136,13 +174,6 @@ const safeJson = async (response: Response): Promise<unknown> => {
   }
 };
 
-const fallbackError = (status: number): ErrorResponse => ({
-  error: {
-    code: status === 401 ? 'unauthenticated' : 'unknown_error',
-    message: 'The request failed. Please try again.',
-  },
-});
-
 const chatwootErrorCodeForStatus = (status: number): ErrorResponse['error']['code'] => {
   if (status === 0) return 'network_error';
   if (status === 400 || status === 422) return 'validation_failed';
@@ -154,6 +185,29 @@ const chatwootErrorCodeForStatus = (status: number): ErrorResponse['error']['cod
   return 'unknown_error';
 };
 
+const apiErrorCodeForStatus = (status: number): ApiErrorCode => {
+  if (status === 0) return 'network_error';
+  if (status === 400) return 'bad_request';
+  if (status === 401) return 'unauthenticated';
+  if (status === 403) return 'forbidden';
+  if (status === 404) return 'not_found';
+  if (status === 409) return 'conflict';
+  if (status === 422) return 'validation_failed';
+  if (status === 429) return 'rate_limited';
+  return 'unknown_error';
+};
+
+const fallbackError = (status: number): ErrorResponse => {
+  const code = apiErrorCodeForStatus(status);
+
+  return {
+    error: {
+      code,
+      message: userFacingApiErrorMessage(code),
+    },
+  };
+};
+
 const recordFrom = (value: unknown): Record<string, unknown> =>
   typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : {};
 
@@ -163,6 +217,31 @@ const primitiveToString = (value: unknown): string | undefined => {
   if (typeof value === 'string' && value.trim()) return value;
   if (typeof value === 'number' && Number.isFinite(value)) return String(value);
   return undefined;
+};
+
+const normalizeManagerApiErrorCode = (value: unknown, status: number): ApiErrorCode => {
+  const code = primitiveToString(value);
+  if (code && API_ERROR_CODES.has(code as ApiErrorCode)) return code as ApiErrorCode;
+  return apiErrorCodeForStatus(status);
+};
+
+const managerErrorEnvelope = (status: number, json: unknown): ErrorResponse => {
+  const body = recordFrom(json);
+  const error = recordFrom(body.error);
+  const code = normalizeManagerApiErrorCode(error.code, status);
+  const requestId = primitiveToString(error.requestId);
+  const details = recordFrom(error.details);
+  const envelope: ErrorResponse = {
+    error: {
+      code,
+      message: userFacingApiErrorMessage(code),
+    },
+  };
+
+  if (requestId) envelope.error.requestId = requestId;
+  if (Object.keys(details).length) envelope.error.details = details;
+
+  return envelope;
 };
 
 const numberFrom = (value: unknown): number | undefined => {
@@ -750,7 +829,7 @@ export class ChatwootFleexaApiClient implements FleexaApiClient {
   }
 }
 
-export class HttpFleexaApiClient implements FleexaApiClient {
+export class ManagerApiClient implements FleexaApiClient {
   private readonly baseUrl: string;
   private readonly tokenProvider: TokenProvider | undefined;
   private readonly fetchImpl: typeof fetch;
@@ -758,7 +837,13 @@ export class HttpFleexaApiClient implements FleexaApiClient {
   constructor(options: FleexaApiClientOptions) {
     this.baseUrl = normalizeBaseUrl(options.baseUrl);
     this.tokenProvider = options.tokenProvider;
-    this.fetchImpl = options.fetchImpl ?? fetch;
+    this.fetchImpl =
+      options.fetchImpl ??
+      ((globalThis.fetch
+        ? globalThis.fetch.bind(globalThis)
+        : async () => {
+            throw new TypeError('fetch is not available');
+          }) as typeof fetch);
   }
 
   async getCurrentSession(activeAccountId?: string): Promise<CurrentSessionResponse> {
@@ -895,22 +980,19 @@ export class HttpFleexaApiClient implements FleexaApiClient {
     try {
       response = await this.fetchImpl(url, init);
     } catch {
-      throw new FleexaApiError(0, {
-        error: {
-          code: 'network_error',
-          message: 'Network connection failed.',
-        },
-      });
+      throw new FleexaApiError(0, managerErrorEnvelope(0, null));
     }
 
     const json = await safeJson(response);
     if (!response.ok) {
-      throw new FleexaApiError(response.status, (json as ErrorResponse | null) ?? fallbackError(response.status));
+      throw new FleexaApiError(response.status, managerErrorEnvelope(response.status, json));
     }
 
     return json as T;
   }
 }
+
+export class HttpFleexaApiClient extends ManagerApiClient {}
 
 const now = new Date('2026-07-18T09:00:00Z').toISOString();
 
@@ -1248,5 +1330,5 @@ export const createFleexaApiClient = (
     return new ChatwootFleexaApiClient(options);
   }
 
-  return new HttpFleexaApiClient(options);
+  return new ManagerApiClient(options);
 };

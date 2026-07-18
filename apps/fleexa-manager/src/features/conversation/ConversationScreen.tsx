@@ -14,6 +14,7 @@ import {
 import { router } from 'expo-router';
 import { ArrowLeft, SendHorizontal } from 'lucide-react-native';
 
+import { safeFleexaApiErrorMessage } from '@fleexa/api-client';
 import { Button, Screen, StatusPill, colors, spacing } from '@fleexa/ui';
 import { activeAccountIdForSession, type ManagerMessage } from '@fleexa/domain';
 
@@ -45,7 +46,7 @@ export const ConversationScreen = ({ conversationId }: { conversationId: string 
       await sendText.mutateAsync(text);
       setDraft('');
     } catch (error) {
-      setSendError(error instanceof Error ? error.message : 'Unable to send message');
+      setSendError(safeFleexaApiErrorMessage(error));
     }
   };
 
@@ -78,8 +79,8 @@ export const ConversationScreen = ({ conversationId }: { conversationId: string 
 
         <View style={[styles.body, isWide && styles.bodyWide]}>
           <View style={styles.thread}>
-            {detail.error ? <InlineError message={detail.error.message} /> : null}
-            {messages.error ? <InlineError message={messages.error.message} /> : null}
+            {detail.error ? <InlineError message={safeFleexaApiErrorMessage(detail.error)} /> : null}
+            {messages.error ? <InlineError message={safeFleexaApiErrorMessage(messages.error)} /> : null}
             {detail.isLoading || messages.isLoading ? (
               <View style={styles.center}>
                 <ActivityIndicator color={colors.teal} />

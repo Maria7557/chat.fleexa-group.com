@@ -1,5 +1,42 @@
 # Fleexa Manager Dev Notes
 
+## 2026-07-18 Manager API Live Mode
+
+Stage 2 live mode now uses `ManagerApiClient` against
+`/api/fleexa-manager/v1`.
+
+- Default local live config:
+  `EXPO_PUBLIC_FLEEXA_API_MODE=live`,
+  `EXPO_PUBLIC_FLEEXA_API_DRIVER=manager`,
+  `EXPO_PUBLIC_FLEEXA_API_BASE_URL=http://localhost:3000/api/fleexa-manager/v1`.
+- The token field still accepts an existing Chatwoot user access token for
+  Stage 2 and sends it as `Authorization: Bearer ...` to the Manager namespace.
+- `ChatwootFleexaApiClient` remains only as a legacy local-development adapter
+  for raw Chatwoot `/api/v1` routes. It is not the production/live default.
+- Mock mode remains available for UI development only and cannot satisfy
+  production acceptance.
+- The Manager namespace handles local Expo web CORS preflight for
+  `http://localhost:8082` and `http://127.0.0.1:8082`, including Chrome
+  private-network preflight when requested; production origins must be
+  configured through `FLEEXA_MANAGER_CORS_ORIGINS`.
+- Local API unavailable states are normalized to safe Manager API messages.
+- `ManagerApiClient` binds the runtime `globalThis.fetch` before storing it, so
+  Expo web does not depend on a detached fetch implementation.
+
+Local live smoke:
+
+- HTTP smoke passed through `/api/fleexa-manager/v1`: current session,
+  conversations, conversation detail, messages, send text, and repeated send
+  with the same `clientMessageId` returning one persisted message.
+- Browser smoke passed on `http://127.0.0.1:8082`: login, conversation queue,
+  open `conv_1`, messages render, and UI send renders the sent message.
+- Rails request spec execution is blocked in the local container:
+  `bundler: command not found: rspec`.
+- A clean `docker build -f Dockerfile.chatwoot` reached Chatwoot `vite:build_all`
+  but failed with Node heap OOM at `--max-old-space-size=2560`. The patch was
+  applied to the generated app tree and current Rails container for browser
+  verification.
+
 ## 2026-07-18 Chat Vertical Slice
 
 Local backend inspected:

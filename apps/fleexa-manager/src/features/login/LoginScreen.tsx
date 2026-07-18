@@ -3,10 +3,13 @@ import { KeyboardAvoidingView, Platform, StyleSheet, Text, View } from 'react-na
 import { Redirect, router } from 'expo-router';
 import { KeyRound, Server, ShieldCheck } from 'lucide-react-native';
 
+import { safeFleexaApiErrorMessage } from '@fleexa/api-client';
 import { Button, Screen, StatusPill, TextField, colors, spacing } from '@fleexa/ui';
 import type { FleexaRuntimeConfig } from '@fleexa/config';
 
 import { useAuth } from '@/src/auth/AuthProvider';
+
+const ACCESS_TOKEN_REQUIRED = 'Access token is required';
 
 export const LoginScreen = ({ config }: { config: FleexaRuntimeConfig }) => {
   const { isAuthenticated, isReady, signIn } = useAuth();
@@ -29,7 +32,11 @@ export const LoginScreen = ({ config }: { config: FleexaRuntimeConfig }) => {
       await signIn(token);
       router.replace('/home');
     } catch (submitError) {
-      setError(submitError instanceof Error ? submitError.message : 'Unable to sign in');
+      setError(
+        submitError instanceof Error && submitError.message === ACCESS_TOKEN_REQUIRED
+          ? ACCESS_TOKEN_REQUIRED
+          : safeFleexaApiErrorMessage(submitError)
+      );
     } finally {
       setIsSubmitting(false);
     }
