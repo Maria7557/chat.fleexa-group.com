@@ -1,14 +1,16 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { router, type Href } from 'expo-router';
 import { ChevronRight, GitBranch, MessageSquareText, PanelLeftClose, PanelLeftOpen, RefreshCw, Settings, UserRound } from 'lucide-react-native';
 
+import { FleexaApiError, safeFleexaApiErrorMessage } from '@fleexa/api-client';
 import { Button, Screen, StatusPill, colors, spacing } from '@fleexa/ui';
-import { activeAccountIdForSession } from '@fleexa/domain';
+import { activeAccountIdForSession, type ConversationFilter } from '@fleexa/domain';
 import type { FleexaRuntimeConfig } from '@fleexa/config';
 
 import { useConversations, useCurrentSession, useManagerCounters, usePipelineStages } from '@/src/api/queries';
 import { useAuth } from '@/src/auth/AuthProvider';
+import { PipelineScreen } from '@/src/features/pipeline/PipelineScreen';
 import { useUiStore, type ManagerSection } from '@/src/state/uiStore';
 
 const sections: Array<{ key: ManagerSection; label: string }> = [
@@ -18,14 +20,47 @@ const sections: Array<{ key: ManagerSection; label: string }> = [
   { key: 'bookings', label: 'Bookings' },
 ];
 
+const conversationFilters: Array<{ key: ConversationFilter; label: string }> = [
+  { key: 'mine', label: 'My' },
+  { key: 'unassigned', label: 'Unassigned' },
+  { key: 'unread', label: 'Unread' },
+  { key: 'all', label: 'All' },
+  { key: 'waiting_for_reply', label: 'Waiting' },
+];
+
 const formatAmount = (amount?: { amount: string; currency: string } | null): string => {
   if (!amount) return 'No value';
   return `${Number(amount.amount).toLocaleString()} ${amount.currency}`;
 };
 
+const replyStateLabel = (state: 'waiting_for_reply' | 'replied'): string =>
+  state === 'waiting_for_reply' ? 'Waiting' : 'Replied';
+
+const replyStateTone = (state: 'waiting_for_reply' | 'replied'): 'warning' | 'success' =>
+  state === 'waiting_for_reply' ? 'warning' : 'success';
+
+const initialsFor = (value: string): string => {
+  const words = value.trim().split(/\s+/).filter(Boolean);
+  const initials = words.slice(0, 2).map(word => word[0]?.toUpperCase()).join('');
+  return initials || '?';
+};
+
+const formatChatTime = (value: string | null | undefined): string => {
+  if (!value) return '';
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+
+  return new Intl.DateTimeFormat(undefined, {
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(date);
+};
+
 export const ManagerShell = ({ config }: { config: FleexaRuntimeConfig }) => {
   const { signOut } = useAuth();
   const { width } = useWindowDimensions();
+  const [conversationFilter, setConversationFilter] = useState<ConversationFilter>('mine');
   const activeSection = useUiStore(state => state.activeSection);
   const setActiveSection = useUiStore(state => state.setActiveSection);
   const sidebarCollapsed = useUiStore(state => state.sidebarCollapsed);
@@ -33,9 +68,13 @@ export const ManagerShell = ({ config }: { config: FleexaRuntimeConfig }) => {
   const session = useCurrentSession();
   const accountId = session.data ? activeAccountIdForSession(session.data) : null;
   const counters = useManagerCounters(accountId);
-  const conversations = useConversations(accountId);
+  const conversations = useConversations(accountId, conversationFilter);
   const stages = usePipelineStages(accountId);
   const isWide = width >= 900;
+  const isCompact = width < 620;
+  const sessionExpired =
+    session.error instanceof FleexaApiError &&
+    (session.error.code === 'unauthenticated' || session.error.code === 'invalid_credentials');
 
   const displayName = session.data?.user.name ?? 'Manager';
   const apiStatusLabel =
@@ -44,6 +83,28 @@ export const ManagerShell = ({ config }: { config: FleexaRuntimeConfig }) => {
     if (!session.data || !accountId) return 'No account';
     return session.data.memberships.find(membership => membership.accountId === accountId)?.accountName ?? accountId;
   }, [accountId, session.data]);
+
+  useEffect(() => {
+    if (sessionExpired) void signOut();
+  }, [sessionExpired, signOut]);
+
+  if (sessionExpired) {
+    return (
+      <Screen style={styles.loading}>
+        <ActivityIndicator color={colors.teal} />
+        <Text style={styles.loadingText}>Returning to sign in</Text>
+      </Screen>
+    );
+  }
+
+  if (session.error) {
+    return (
+      <Screen style={styles.loading}>
+        <Text style={styles.errorText}>{safeFleexaApiErrorMessage(session.error)}</Text>
+        <Button label="Sign out" variant="secondary" onPress={signOut} />
+      </Screen>
+    );
+  }
 
   if (session.isLoading || !session.data) {
     return (
@@ -102,7 +163,7 @@ export const ManagerShell = ({ config }: { config: FleexaRuntimeConfig }) => {
           </View>
         )}
 
-        <ScrollView contentContainerStyle={styles.content}>
+        <ScrollView contentContainerStyle={[styles.content, isCompact && styles.contentCompact]}>
           <View style={styles.header}>
             <View>
               <Text style={styles.eyebrow}>{accountName}</Text>
@@ -114,79 +175,139 @@ export const ManagerShell = ({ config }: { config: FleexaRuntimeConfig }) => {
             </View>
           </View>
 
-          <View style={styles.banner}>
-            <RefreshCw size={18} color={colors.teal} />
-            <Text style={styles.bannerText}>
-              API-first shell connected through TanStack Query. Mock responses are limited to UI development.
-            </Text>
-          </View>
-
-          <View style={styles.metricsGrid}>
-            <Metric label="Open conversations" value={counters.data?.counters.openConversations ?? 0} />
-            <Metric label="Unread" value={counters.data?.counters.unreadConversations ?? 0} tone="warning" />
-            <Metric label="Active deals" value={counters.data?.counters.activeDeals ?? 0} />
-            <Metric label="Bookings today" value={counters.data?.counters.bookingsToday ?? 0} tone="success" />
-          </View>
-
-          <View style={styles.workGrid}>
-            <View style={styles.surface}>
-              <View style={styles.sectionHeader}>
-                <MessageSquareText size={20} color={colors.teal} />
-                <Text style={styles.sectionTitle}>Conversation queue</Text>
+          {activeSection === 'pipeline' ? (
+            <PipelineScreen accountId={accountId} />
+          ) : (
+            <>
+              <View style={styles.metricsGrid}>
+                <Metric label="Assigned conversations" value={counters.data?.counters.assigned ?? 0} />
+                <Metric label="Unassigned" value={counters.data?.counters.unassigned ?? 0} />
+                <Metric label="Unread" value={counters.data?.counters.unread ?? 0} tone="warning" />
               </View>
-              {conversations.error ? <EmptyState label={conversations.error.message} tone="danger" /> : null}
-              {conversations.data?.data.map(item => (
-                <Pressable
-                  accessibilityRole="button"
-                  key={item.id}
-                  onPress={() =>
-                    router.push(`/conversation/${encodeURIComponent(item.id)}` as Href)
-                  }
-                  style={({ pressed }) => [styles.queueRow, pressed && styles.queueRowPressed]}
-                >
-                  <View style={styles.queueText}>
-                    <Text style={styles.rowTitle}>{item.contact.displayName}</Text>
-                    <Text numberOfLines={2} style={styles.rowMeta}>
-                      {item.lastMessage?.text || item.title || 'No messages yet'}
-                    </Text>
-                  </View>
-                  <StatusPill label={`${item.unreadCount} unread`} tone={item.unreadCount ? 'warning' : 'neutral'} />
-                  <ChevronRight size={18} color={colors.textMuted} />
-                </Pressable>
-              ))}
-              {!conversations.error && !conversations.data?.data.length ? (
-                <EmptyState label="No conversations returned by the chat API." />
-              ) : null}
-            </View>
 
-            <View style={styles.surface}>
-              <View style={styles.sectionHeader}>
-                <GitBranch size={20} color={colors.green} />
-                <Text style={styles.sectionTitle}>Pipeline stages</Text>
-              </View>
-              {stages.data?.data.map(stage => (
-                <View key={stage.id} style={styles.stageRow}>
-                  <View>
-                    <Text style={styles.rowTitle}>{stage.name}</Text>
-                    <Text style={styles.rowMeta}>{stage.kind}</Text>
+              <View style={styles.workGrid}>
+                <View style={[styles.surface, styles.chatSurface]}>
+                  <View style={styles.sectionHeader}>
+                    <View style={styles.sectionTitleGroup}>
+                      <MessageSquareText size={20} color={colors.teal} />
+                      <Text style={styles.sectionTitle}>Conversation queue</Text>
+                    </View>
+                    <Pressable
+                      accessibilityLabel="Refresh conversations"
+                      accessibilityRole="button"
+                      onPress={() => {
+                        void conversations.refetch();
+                        if (accountId) void counters.refetch();
+                      }}
+                      style={[styles.refreshButton, conversations.isFetching && styles.refreshButtonActive]}
+                    >
+                      <RefreshCw size={16} color={colors.text} />
+                    </Pressable>
                   </View>
-                  <Text style={styles.amountText}>{formatAmount(stage.counters?.totalAmount)}</Text>
+                  <View style={styles.filterTabs}>
+                    {conversationFilters.map(filter => {
+                      const selected = conversationFilter === filter.key;
+
+                      return (
+                        <Pressable
+                          accessibilityRole="button"
+                          accessibilityState={{ selected }}
+                          key={filter.key}
+                          onPress={() => setConversationFilter(filter.key)}
+                          style={[styles.filterTab, selected && styles.filterTabActive]}
+                        >
+                          <Text style={[styles.filterTabText, selected && styles.filterTabTextActive]}>
+                            {filter.label}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                  {conversations.error ? (
+                    <EmptyState label={safeFleexaApiErrorMessage(conversations.error)} tone="danger" />
+                  ) : null}
+                  {conversations.data?.data.map(item => {
+                    const unread = item.unreadCount > 0;
+                    const waiting = item.replyState === 'waiting_for_reply';
+                    const assignedLabel = item.assignedManager?.displayName ?? 'Unassigned';
+                    const latestAt = item.lastMessage?.createdAt ?? item.lastActivityAt;
+
+                    return (
+                      <Pressable
+                        accessibilityRole="button"
+                        key={item.id}
+                        onPress={() =>
+                          router.push(`/conversation/${encodeURIComponent(item.id)}` as Href)
+                        }
+                        style={({ pressed }) => [
+                          styles.queueRow,
+                          unread && styles.queueRowUnread,
+                          waiting && styles.queueRowWaiting,
+                          pressed && styles.queueRowPressed,
+                        ]}
+                      >
+                        <View style={[styles.queueAvatar, !item.assignedManager && styles.queueAvatarUnassigned]}>
+                          <Text style={styles.queueAvatarText}>{initialsFor(item.contact.displayName)}</Text>
+                        </View>
+                        <View style={styles.queueText}>
+                          <View style={styles.queueTopLine}>
+                            <Text numberOfLines={1} style={styles.rowTitle}>
+                              {item.contact.displayName}
+                            </Text>
+                            <Text style={styles.rowTime}>{formatChatTime(latestAt)}</Text>
+                          </View>
+                          <Text numberOfLines={1} style={[styles.rowMeta, unread && styles.rowMetaUnread]}>
+                            {item.lastMessage?.text || item.title || 'No messages yet'}
+                          </Text>
+                          <View style={styles.queueBadges}>
+                            <StatusPill label={replyStateLabel(item.replyState)} tone={replyStateTone(item.replyState)} />
+                            <View style={[styles.assignmentChip, !item.assignedManager && styles.assignmentChipUnassigned]}>
+                              <Text numberOfLines={1} style={styles.assignmentChipText}>
+                                {assignedLabel}
+                              </Text>
+                            </View>
+                            {unread ? <StatusPill label={`${item.unreadCount} unread`} tone="warning" /> : null}
+                          </View>
+                        </View>
+                        <ChevronRight size={18} color={colors.textMuted} />
+                      </Pressable>
+                    );
+                  })}
+                  {!conversations.error && !conversations.data?.data.length ? (
+                    <EmptyState label="No conversations returned by the chat API." />
+                  ) : null}
                 </View>
-              ))}
-              {!stages.data?.data.length ? <EmptyState label="No stages returned by the Manager API." /> : null}
-            </View>
-          </View>
 
-          <View style={styles.footerStrip}>
-            <View style={styles.footerItem}>
-              <UserRound size={18} color={colors.textMuted} />
-              <Text style={styles.footerText}>{displayName}</Text>
-            </View>
-            <View style={styles.footerItem}>
-              <Settings size={18} color={colors.textMuted} />
-              <Text style={styles.footerText}>{session.data.permissions.length} permissions</Text>
-            </View>
-          </View>
+                <View style={styles.surface}>
+                  <View style={styles.sectionHeader}>
+                    <GitBranch size={20} color={colors.green} />
+                    <Text style={styles.sectionTitle}>Pipeline stages</Text>
+                  </View>
+                  {stages.data?.data.map(stage => (
+                    <View key={stage.id} style={styles.stageRow}>
+                      <View>
+                        <Text style={styles.rowTitle}>{stage.name}</Text>
+                        <Text style={styles.rowMeta}>{stage.kind}</Text>
+                      </View>
+                      <Text style={styles.amountText}>{formatAmount(stage.counters?.totalAmount)}</Text>
+                    </View>
+                  ))}
+                  {!stages.data?.data.length ? <EmptyState label="No stages returned by the Manager API." /> : null}
+                </View>
+              </View>
+
+              <View style={styles.footerStrip}>
+                <View style={styles.footerItem}>
+                  <UserRound size={18} color={colors.textMuted} />
+                  <Text style={styles.footerText}>{displayName}</Text>
+                </View>
+                <View style={styles.footerItem}>
+                  <Settings size={18} color={colors.textMuted} />
+                  <Text style={styles.footerText}>{session.data.permissions.length} permissions</Text>
+                </View>
+              </View>
+            </>
+          )}
         </ScrollView>
       </View>
     </Screen>
@@ -298,6 +419,11 @@ const styles = StyleSheet.create({
     padding: spacing.xl,
     paddingBottom: spacing.xxl,
   },
+  contentCompact: {
+    gap: spacing.lg,
+    padding: spacing.md,
+    paddingBottom: spacing.xl,
+  },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -319,21 +445,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-  },
-  banner: {
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-    flexDirection: 'row',
-    gap: spacing.sm,
-    padding: spacing.md,
-    alignItems: 'center',
-  },
-  bannerText: {
-    color: colors.textMuted,
-    fontSize: 14,
-    flex: 1,
   },
   metricsGrid: {
     flexDirection: 'row',
@@ -374,7 +485,18 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
     gap: spacing.md,
   },
+  chatSurface: {
+    flexGrow: 1.4,
+  },
   sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+  },
+  sectionTitleGroup: {
+    flex: 1,
+    minWidth: 0,
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
@@ -384,31 +506,136 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '800',
   },
+  refreshButton: {
+    width: 34,
+    height: 34,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  refreshButtonActive: {
+    backgroundColor: '#E7F7F6',
+    borderColor: colors.teal,
+  },
+  filterTabs: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+  },
+  filterTab: {
+    minHeight: 34,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: spacing.md,
+  },
+  filterTabActive: {
+    borderColor: colors.teal,
+    backgroundColor: '#E7F7F6',
+  },
+  filterTabText: {
+    color: colors.textMuted,
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  filterTabTextActive: {
+    color: colors.text,
+  },
   queueRow: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     justifyContent: 'space-between',
-    gap: spacing.md,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-    paddingTop: spacing.md,
+    gap: spacing.sm,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  queueRowUnread: {
+    borderColor: '#BFEDEB',
+    backgroundColor: '#F3FCFB',
+  },
+  queueRowWaiting: {
+    borderLeftWidth: 4,
+    borderLeftColor: colors.amber,
   },
   queueRowPressed: {
     opacity: 0.76,
+  },
+  queueAvatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#E7F7F6',
+  },
+  queueAvatarUnassigned: {
+    backgroundColor: colors.surfaceMuted,
+  },
+  queueAvatarText: {
+    color: colors.text,
+    fontSize: 12,
+    fontWeight: '900',
   },
   queueText: {
     flex: 1,
     minWidth: 0,
   },
+  queueTopLine: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
   rowTitle: {
+    flex: 1,
+    minWidth: 0,
     color: colors.text,
     fontSize: 15,
     fontWeight: '800',
+  },
+  rowTime: {
+    color: colors.textMuted,
+    fontSize: 11,
+    fontWeight: '700',
   },
   rowMeta: {
     color: colors.textMuted,
     fontSize: 13,
     marginTop: 2,
+  },
+  rowMetaUnread: {
+    color: colors.text,
+    fontWeight: '700',
+  },
+  queueBadges: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.xs,
+    marginTop: spacing.xs,
+  },
+  assignmentChip: {
+    maxWidth: 170,
+    borderRadius: 8,
+    backgroundColor: colors.surfaceMuted,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+  },
+  assignmentChipUnassigned: {
+    backgroundColor: '#FDE7EA',
+  },
+  assignmentChipText: {
+    color: colors.textMuted,
+    fontSize: 12,
+    fontWeight: '800',
   },
   stageRow: {
     flexDirection: 'row',

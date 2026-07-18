@@ -1,9 +1,12 @@
 import type {
   AccountMembership,
+  ApiErrorCode,
   Actor,
   AppRole,
   BookingByDealResponse,
   ChannelType,
+  ConversationFilter,
+  CreateConversationDealRequest,
   ConversationDetailResponse,
   ConversationListItem,
   ConversationListResponse,
@@ -11,10 +14,14 @@ import type {
   ContactSummary,
   DeliveryStatus,
   CurrentSessionResponse,
+  DealsListResponse,
+  DealMutationResponse,
   DealSummary,
   DealStageUpdateResponse,
   DealsByStageResponse,
   ErrorResponse,
+  LoginSessionRequest,
+  LoginSessionResponse,
   LinkedDealResponse,
   ManagerMessage,
   ManagerCountersResponse,
@@ -24,6 +31,7 @@ import type {
   Permission,
   PipelineStageRef,
   PipelineStagesResponse,
+  UpdateDealRequest,
 } from '@fleexa/domain';
 
 export type TokenProvider = () => string | null | Promise<string | null>;
@@ -42,6 +50,7 @@ export interface ListConversationsParams {
   cursor?: string;
   limit?: number;
   status?: string;
+  filter?: ConversationFilter;
   assignment?: 'mine' | 'unassigned' | 'all';
 }
 
@@ -69,7 +78,20 @@ export interface UpdateDealStageParams {
   clientMutationId: string;
   expectedVersion?: number | null;
   note?: string | null;
+  lostReason?: { key: string; label: string } | null;
+  lostReasonKey?: string;
+  lostReasonLabel?: string;
   idempotencyKey?: string;
+}
+
+export interface CreateConversationDealParams extends CreateConversationDealRequest {
+  accountId: string;
+  conversationId: string;
+}
+
+export interface UpdateDealParams extends UpdateDealRequest {
+  accountId: string;
+  dealId: string;
 }
 
 export interface ListDealsByStageParams {
@@ -81,15 +103,29 @@ export interface ListDealsByStageParams {
   sort?: 'last_activity_desc' | 'created_desc' | 'amount_desc' | 'amount_asc';
 }
 
+export interface ListDealsParams {
+  accountId: string;
+  cursor?: string;
+  limit?: number;
+  stageId?: string;
+  stageKey?: string;
+  assignedTo?: string;
+  sort?: 'last_activity_desc' | 'created_desc' | 'amount_desc' | 'amount_asc';
+}
+
 export interface FleexaApiClient {
+  login(params: LoginSessionRequest): Promise<LoginSessionResponse>;
   getCurrentSession(activeAccountId?: string): Promise<CurrentSessionResponse>;
   listConversations(params: ListConversationsParams): Promise<ConversationListResponse>;
   getConversationDetail(accountId: string, conversationId: string): Promise<ConversationDetailResponse>;
   listMessages(params: ListMessagesParams): Promise<MessageListResponse>;
   sendTextMessage(params: SendTextMessageParams): Promise<MessageSendResponse>;
   getLinkedDeal(accountId: string, conversationId: string): Promise<LinkedDealResponse>;
+  createDealFromConversation(params: CreateConversationDealParams): Promise<LinkedDealResponse>;
+  updateDeal(params: UpdateDealParams): Promise<DealMutationResponse>;
   updateDealStage(params: UpdateDealStageParams): Promise<DealStageUpdateResponse>;
   listPipelineStages(accountId: string, includeCounters?: boolean): Promise<PipelineStagesResponse>;
+  listDeals(params: ListDealsParams): Promise<DealsListResponse>;
   listDealsByStage(params: ListDealsByStageParams): Promise<DealsByStageResponse>;
   getBookingByDeal(accountId: string, dealId: string): Promise<BookingByDealResponse>;
   getManagerCounters(accountId: string, options?: { date?: string; timeZone?: string }): Promise<ManagerCountersResponse>;
@@ -110,6 +146,45 @@ export class FleexaApiError extends Error {
     this.details = body.error.details;
   }
 }
+
+const API_ERROR_CODES = new Set<ApiErrorCode>([
+  'bad_request',
+  'unauthenticated',
+  'invalid_credentials',
+  'forbidden',
+  'not_found',
+  'conflict',
+  'validation_failed',
+  'rate_limited',
+  'invalid_webhook_signature',
+  'unknown_error',
+  'network_error',
+]);
+
+const USER_FACING_API_ERROR_MESSAGES: Record<ApiErrorCode, string> = {
+  bad_request: 'The request could not be sent. Please try again.',
+  unauthenticated: 'Sign in again to continue.',
+  invalid_credentials: 'Email or password is incorrect.',
+  forbidden: 'You do not have access to this workspace.',
+  not_found: 'The requested item is no longer available.',
+  conflict: 'This action has already been handled. Refresh and try again.',
+  validation_failed: 'Check the entered details and try again.',
+  rate_limited: 'Too many requests. Wait a moment and try again.',
+  invalid_webhook_signature: 'The request could not be verified.',
+  unknown_error: 'Something went wrong. Please try again.',
+  network_error: 'The Manager API is unavailable. Check the local backend and try again.',
+};
+
+const userFacingApiErrorMessage = (code: ApiErrorCode): string =>
+  USER_FACING_API_ERROR_MESSAGES[code] ?? USER_FACING_API_ERROR_MESSAGES.unknown_error;
+
+export const safeFleexaApiErrorMessage = (error: unknown): string => {
+  if (error instanceof FleexaApiError) {
+    return userFacingApiErrorMessage(error.code as ApiErrorCode);
+  }
+
+  return USER_FACING_API_ERROR_MESSAGES.unknown_error;
+};
 
 const normalizeBaseUrl = (baseUrl: string): string => baseUrl.replace(/\/+$/, '');
 
@@ -136,13 +211,6 @@ const safeJson = async (response: Response): Promise<unknown> => {
   }
 };
 
-const fallbackError = (status: number): ErrorResponse => ({
-  error: {
-    code: status === 401 ? 'unauthenticated' : 'unknown_error',
-    message: 'The request failed. Please try again.',
-  },
-});
-
 const chatwootErrorCodeForStatus = (status: number): ErrorResponse['error']['code'] => {
   if (status === 0) return 'network_error';
   if (status === 400 || status === 422) return 'validation_failed';
@@ -154,6 +222,29 @@ const chatwootErrorCodeForStatus = (status: number): ErrorResponse['error']['cod
   return 'unknown_error';
 };
 
+const apiErrorCodeForStatus = (status: number): ApiErrorCode => {
+  if (status === 0) return 'network_error';
+  if (status === 400) return 'bad_request';
+  if (status === 401) return 'unauthenticated';
+  if (status === 403) return 'forbidden';
+  if (status === 404) return 'not_found';
+  if (status === 409) return 'conflict';
+  if (status === 422) return 'validation_failed';
+  if (status === 429) return 'rate_limited';
+  return 'unknown_error';
+};
+
+const fallbackError = (status: number): ErrorResponse => {
+  const code = apiErrorCodeForStatus(status);
+
+  return {
+    error: {
+      code,
+      message: userFacingApiErrorMessage(code),
+    },
+  };
+};
+
 const recordFrom = (value: unknown): Record<string, unknown> =>
   typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : {};
 
@@ -163,6 +254,31 @@ const primitiveToString = (value: unknown): string | undefined => {
   if (typeof value === 'string' && value.trim()) return value;
   if (typeof value === 'number' && Number.isFinite(value)) return String(value);
   return undefined;
+};
+
+const normalizeManagerApiErrorCode = (value: unknown, status: number): ApiErrorCode => {
+  const code = primitiveToString(value);
+  if (code && API_ERROR_CODES.has(code as ApiErrorCode)) return code as ApiErrorCode;
+  return apiErrorCodeForStatus(status);
+};
+
+const managerErrorEnvelope = (status: number, json: unknown): ErrorResponse => {
+  const body = recordFrom(json);
+  const error = recordFrom(body.error);
+  const code = normalizeManagerApiErrorCode(error.code, status);
+  const requestId = primitiveToString(error.requestId);
+  const details = recordFrom(error.details);
+  const envelope: ErrorResponse = {
+    error: {
+      code,
+      message: userFacingApiErrorMessage(code),
+    },
+  };
+
+  if (requestId) envelope.error.requestId = requestId;
+  if (Object.keys(details).length) envelope.error.details = details;
+
+  return envelope;
 };
 
 const numberFrom = (value: unknown): number | undefined => {
@@ -190,6 +306,42 @@ const stableId = (prefix: string, value: unknown): string => `${prefix}_${primit
 
 const rawIdFromStableId = (prefix: string, value: string): string =>
   value.startsWith(`${prefix}_`) ? value.slice(prefix.length + 1) : value;
+
+const uuidFromBytes = (bytes: Uint8Array): string => {
+  bytes[6] = ((bytes[6] ?? 0) & 0x0f) | 0x40;
+  bytes[8] = ((bytes[8] ?? 0) & 0x3f) | 0x80;
+
+  const hex = Array.from(bytes, byte => byte.toString(16).padStart(2, '0'));
+  return [
+    hex.slice(0, 4).join(''),
+    hex.slice(4, 6).join(''),
+    hex.slice(6, 8).join(''),
+    hex.slice(8, 10).join(''),
+    hex.slice(10, 16).join(''),
+  ].join('-');
+};
+
+export const createClientMessageId = (): string => {
+  const cryptoSource = globalThis.crypto as
+    | {
+        randomUUID?: () => string;
+        getRandomValues?: <T extends Uint8Array>(array: T) => T;
+      }
+    | undefined;
+
+  if (typeof cryptoSource?.randomUUID === 'function') return cryptoSource.randomUUID();
+
+  const bytes = new Uint8Array(16);
+  if (typeof cryptoSource?.getRandomValues === 'function') {
+    cryptoSource.getRandomValues(bytes);
+  } else {
+    for (let index = 0; index < bytes.length; index += 1) {
+      bytes[index] = Math.floor(Math.random() * 256);
+    }
+  }
+
+  return uuidFromBytes(bytes);
+};
 
 const CHATWOOT_VERTICAL_SLICE_PERMISSIONS: Permission[] = [
   'session:read',
@@ -391,6 +543,28 @@ const messagePreviewFromChatwoot = (raw: unknown): MessagePreview | null => {
   };
 };
 
+const lastVisibleChatwootMessageAt = (messages: unknown[], direction: ManagerMessage['direction']): string | null => {
+  const messageType = direction === 'incoming' ? 0 : 1;
+  const timestamps = messages
+    .map(recordFrom)
+    .filter(record => numberFrom(record.message_type) === messageType && booleanFrom(record.private) !== true)
+    .map(record => timestampToIso(record.created_at))
+    .sort();
+
+  return timestamps[timestamps.length - 1] ?? null;
+};
+
+const chatwootReplyState = (
+  lastCustomerMessageAt: string | null,
+  lastAgentReplyAt: string | null
+): ConversationListItem['replyState'] => {
+  if (lastCustomerMessageAt && (!lastAgentReplyAt || lastCustomerMessageAt > lastAgentReplyAt)) {
+    return 'waiting_for_reply';
+  }
+
+  return 'replied';
+};
+
 const conversationFromChatwoot = (raw: unknown): ConversationListItem => {
   const record = recordFrom(raw);
   const meta = recordFrom(record.meta);
@@ -398,7 +572,10 @@ const conversationFromChatwoot = (raw: unknown): ConversationListItem => {
   const accountId = primitiveToString(record.account_id) ?? 'unknown';
   const channel = meta.channel;
   const contact = contactFromChatwoot(meta.sender);
-  const lastRawMessage = arrayFrom(record.messages)[0] ?? record.last_non_activity_message;
+  const rawMessages = arrayFrom(record.messages);
+  const lastCustomerMessageAt = lastVisibleChatwootMessageAt(rawMessages, 'incoming');
+  const lastAgentReplyAt = lastVisibleChatwootMessageAt(rawMessages, 'outgoing');
+  const lastRawMessage = rawMessages[0] ?? record.last_non_activity_message;
   const canReply = booleanFrom(record.can_reply) ?? false;
 
   return {
@@ -413,9 +590,13 @@ const conversationFromChatwoot = (raw: unknown): ConversationListItem => {
     },
     contact,
     assignee: actorFromChatwoot(meta.assignee, 'user'),
+    assignedManager: actorFromChatwoot(meta.assignee, 'user'),
     lastMessage: messagePreviewFromChatwoot(lastRawMessage),
     linkedDeal: null,
     unreadCount: numberFrom(record.unread_count) ?? 0,
+    lastCustomerMessageAt,
+    lastAgentReplyAt,
+    replyState: chatwootReplyState(lastCustomerMessageAt, lastAgentReplyAt),
     canReply,
     replyWindow: {
       canReply,
@@ -459,6 +640,15 @@ export class ChatwootFleexaApiClient implements FleexaApiClient {
     this.accountId = options.chatwootAccountId;
     this.tokenProvider = options.tokenProvider;
     this.fetchImpl = options.fetchImpl ?? fetch;
+  }
+
+  async login(_params: LoginSessionRequest): Promise<LoginSessionResponse> {
+    throw new FleexaApiError(422, {
+      error: {
+        code: 'validation_failed',
+        message: 'Email/password login requires the Fleexa Manager API driver.',
+      },
+    });
   }
 
   async getCurrentSession(activeAccountId?: string): Promise<CurrentSessionResponse> {
@@ -512,7 +702,16 @@ export class ChatwootFleexaApiClient implements FleexaApiClient {
   async listConversations(params: ListConversationsParams): Promise<ConversationListResponse> {
     const accountId = rawIdFromStableId('acc', params.accountId);
     const page = numberFrom(params.cursor) ?? 1;
-    const assignment = params.assignment === 'mine' ? 'me' : params.assignment === 'unassigned' ? 'unassigned' : undefined;
+    if (params.filter === 'unread' || params.filter === 'waiting_for_reply') {
+      throw new FleexaApiError(422, {
+        error: {
+          code: 'validation_failed',
+          message: 'Unread and reply-state filters require the Fleexa Manager API.',
+        },
+      });
+    }
+    const assignmentParam = params.filter ?? params.assignment;
+    const assignment = assignmentParam === 'mine' ? 'me' : assignmentParam === 'unassigned' ? 'unassigned' : undefined;
     const response = recordFrom(
       await this.request(
         pathWithQuery(`/accounts/${accountId}/conversations`, {
@@ -587,6 +786,11 @@ export class ChatwootFleexaApiClient implements FleexaApiClient {
 
     return {
       data: messageFromChatwoot(message),
+      idempotency: {
+        key: params.idempotencyKey,
+        duplicate: false,
+        originalMessageId: null,
+      },
     };
   }
 
@@ -596,6 +800,24 @@ export class ChatwootFleexaApiClient implements FleexaApiClient {
       linkState: 'missing',
       deal: null,
     };
+  }
+
+  async createDealFromConversation(_params: CreateConversationDealParams): Promise<LinkedDealResponse> {
+    throw new FleexaApiError(501, {
+      error: {
+        code: 'unknown_error',
+        message: 'Creating linked deals requires the Fleexa Manager API layer.',
+      },
+    });
+  }
+
+  async updateDeal(_params: UpdateDealParams): Promise<DealMutationResponse> {
+    throw new FleexaApiError(501, {
+      error: {
+        code: 'unknown_error',
+        message: 'Updating deals requires the Fleexa Manager API layer.',
+      },
+    });
   }
 
   async updateDealStage(_params: UpdateDealStageParams): Promise<DealStageUpdateResponse> {
@@ -609,6 +831,17 @@ export class ChatwootFleexaApiClient implements FleexaApiClient {
 
   async listPipelineStages(_accountId: string): Promise<PipelineStagesResponse> {
     return { data: [] };
+  }
+
+  async listDeals(params: ListDealsParams): Promise<DealsListResponse> {
+    return {
+      data: [],
+      page: {
+        nextCursor: null,
+        hasMore: false,
+        limit: params.limit ?? 30,
+      },
+    };
   }
 
   async listDealsByStage(params: ListDealsByStageParams): Promise<DealsByStageResponse> {
@@ -646,14 +879,10 @@ export class ChatwootFleexaApiClient implements FleexaApiClient {
     return {
       accountId,
       generatedAt: new Date().toISOString(),
-      scope: 'mine',
       counters: {
-        openConversations: numberFrom(meta.mine_count) ?? conversations.data.length,
-        unreadConversations: conversations.data.filter(conversation => conversation.unreadCount > 0).length,
-        activeDeals: 0,
-        overdueDeals: 0,
-        bookingsToday: 0,
-        bookingConflicts: 0,
+        unread: conversations.data.filter(conversation => conversation.unreadCount > 0).length,
+        assigned: numberFrom(meta.assigned_count) ?? numberFrom(meta.mine_count) ?? 0,
+        unassigned: numberFrom(meta.unassigned_count) ?? 0,
       },
     };
   }
@@ -713,7 +942,7 @@ export class ChatwootFleexaApiClient implements FleexaApiClient {
   }
 }
 
-export class HttpFleexaApiClient implements FleexaApiClient {
+export class ManagerApiClient implements FleexaApiClient {
   private readonly baseUrl: string;
   private readonly tokenProvider: TokenProvider | undefined;
   private readonly fetchImpl: typeof fetch;
@@ -721,7 +950,25 @@ export class HttpFleexaApiClient implements FleexaApiClient {
   constructor(options: FleexaApiClientOptions) {
     this.baseUrl = normalizeBaseUrl(options.baseUrl);
     this.tokenProvider = options.tokenProvider;
-    this.fetchImpl = options.fetchImpl ?? fetch;
+    this.fetchImpl =
+      options.fetchImpl ??
+      ((globalThis.fetch
+        ? globalThis.fetch.bind(globalThis)
+        : async () => {
+            throw new TypeError('fetch is not available');
+      }) as typeof fetch);
+  }
+
+  async login(params: LoginSessionRequest): Promise<LoginSessionResponse> {
+    return this.request('/session', {
+      method: 'POST',
+      auth: false,
+      body: {
+        email: params.email,
+        password: params.password,
+        accountHint: params.accountHint ?? null,
+      },
+    });
   }
 
   async getCurrentSession(activeAccountId?: string): Promise<CurrentSessionResponse> {
@@ -736,6 +983,7 @@ export class HttpFleexaApiClient implements FleexaApiClient {
         cursor: params.cursor,
         limit: params.limit,
         status: params.status,
+        filter: params.filter,
         assignment: params.assignment,
       })
     );
@@ -770,7 +1018,25 @@ export class HttpFleexaApiClient implements FleexaApiClient {
   }
 
   async getLinkedDeal(accountId: string, conversationId: string): Promise<LinkedDealResponse> {
-    return this.request(`/accounts/${accountId}/conversations/${conversationId}/linked-deal`);
+    return this.request(`/accounts/${accountId}/conversations/${conversationId}/deal`);
+  }
+
+  async createDealFromConversation(params: CreateConversationDealParams): Promise<LinkedDealResponse> {
+    return this.request(`/accounts/${params.accountId}/conversations/${params.conversationId}/deal`, {
+      method: 'POST',
+      body: {
+        deal: params.deal ?? {},
+      },
+    });
+  }
+
+  async updateDeal(params: UpdateDealParams): Promise<DealMutationResponse> {
+    return this.request(`/accounts/${params.accountId}/deals/${params.dealId}`, {
+      method: 'PATCH',
+      body: {
+        deal: params.deal,
+      },
+    });
   }
 
   async updateDealStage(params: UpdateDealStageParams): Promise<DealStageUpdateResponse> {
@@ -782,6 +1048,9 @@ export class HttpFleexaApiClient implements FleexaApiClient {
         clientMutationId: params.clientMutationId,
         expectedVersion: params.expectedVersion ?? null,
         note: params.note ?? null,
+        lostReason: params.lostReason ?? null,
+        lostReasonKey: params.lostReasonKey,
+        lostReasonLabel: params.lostReasonLabel,
       },
     });
   }
@@ -790,6 +1059,19 @@ export class HttpFleexaApiClient implements FleexaApiClient {
     return this.request(
       pathWithQuery(`/accounts/${accountId}/pipeline/stages`, {
         includeCounters,
+      })
+    );
+  }
+
+  async listDeals(params: ListDealsParams): Promise<DealsListResponse> {
+    return this.request(
+      pathWithQuery(`/accounts/${params.accountId}/pipeline/deals`, {
+        cursor: params.cursor,
+        limit: params.limit,
+        stageId: params.stageId,
+        stageKey: params.stageKey,
+        assignedTo: params.assignedTo,
+        sort: params.sort,
       })
     );
   }
@@ -828,9 +1110,10 @@ export class HttpFleexaApiClient implements FleexaApiClient {
       query?: Record<string, string | number | boolean | undefined>;
       headers?: Record<string, string> | undefined;
       body?: unknown;
+      auth?: boolean;
     } = {}
   ): Promise<T> {
-    const token = await this.tokenProvider?.();
+    const token = options.auth === false ? null : await this.tokenProvider?.();
     const url = `${this.baseUrl}${options.query ? pathWithQuery(path, options.query) : path}`;
     const headers: Record<string, string> = {
       Accept: 'application/json',
@@ -858,22 +1141,19 @@ export class HttpFleexaApiClient implements FleexaApiClient {
     try {
       response = await this.fetchImpl(url, init);
     } catch {
-      throw new FleexaApiError(0, {
-        error: {
-          code: 'network_error',
-          message: 'Network connection failed.',
-        },
-      });
+      throw new FleexaApiError(0, managerErrorEnvelope(0, null));
     }
 
     const json = await safeJson(response);
     if (!response.ok) {
-      throw new FleexaApiError(response.status, (json as ErrorResponse | null) ?? fallbackError(response.status));
+      throw new FleexaApiError(response.status, managerErrorEnvelope(response.status, json));
     }
 
     return json as T;
   }
 }
+
+export class HttpFleexaApiClient extends ManagerApiClient {}
 
 const now = new Date('2026-07-18T09:00:00Z').toISOString();
 
@@ -895,6 +1175,7 @@ const mockSession: CurrentSessionResponse = {
         'conversations:read',
         'messages:send',
         'deals:read',
+        'deals:update',
         'deals:update_stage',
         'pipeline:read',
         'bookings:read',
@@ -908,6 +1189,7 @@ const mockSession: CurrentSessionResponse = {
     'conversations:read',
     'messages:send',
     'deals:read',
+    'deals:update',
     'deals:update_stage',
     'pipeline:read',
     'bookings:read',
@@ -929,6 +1211,7 @@ const mockStages: PipelineStagesResponse = {
       id: 'stage_new',
       key: 'new',
       name: 'New',
+      color: '#0EA5A0',
       position: 1,
       kind: 'intake',
       isTerminal: false,
@@ -938,6 +1221,7 @@ const mockStages: PipelineStagesResponse = {
       id: 'stage_reserved',
       key: 'reserved',
       name: 'Reserved',
+      color: '#3B82F6',
       position: 2,
       kind: 'successful',
       isTerminal: false,
@@ -947,6 +1231,7 @@ const mockStages: PipelineStagesResponse = {
       id: 'stage_lost',
       key: 'lost',
       name: 'Lost',
+      color: '#DC2626',
       position: 3,
       kind: 'lost',
       isTerminal: true,
@@ -965,30 +1250,53 @@ const mockContact: ContactSummary = {
 const mockDeal: DealSummary = {
   id: 'deal_mock_range_rover',
   accountId: 'acc_mock_fleexa',
+  conversationId: 'conv_mock_whatsapp',
   title: 'Range Rover weekly rental',
+  clientName: 'Amina Noor',
   stage: {
     id: 'stage_reserved',
     key: 'reserved',
     name: 'Reserved',
   },
+  stageId: 'stage_reserved',
+  stageKey: 'reserved',
+  stageLabel: 'Reserved',
   amount: {
     amount: '14000',
     currency: 'AED',
   },
+  currency: 'AED',
+  qualificationStatus: 'qualified',
+  source: {
+    key: 'meta_ads',
+    label: 'Meta Ads',
+  },
+  trafficSource: {
+    key: 'meta_ads',
+    label: 'Meta Ads',
+  },
+  leadOrigin: {
+    key: 'whatsapp',
+    label: 'WhatsApp',
+  },
+  lostReason: null,
+  assignedManager: { id: 'user_mock_manager', displayName: 'Fleexa Manager', type: 'user' },
   bookingRef: {
     bookingId: 'booking_mock_2048',
     status: 'confirmed' as const,
     externalBookingId: 'BK-2048',
   },
   contact: mockContact,
+  assignee: { id: 'user_mock_manager', displayName: 'Fleexa Manager', type: 'user' },
   lastActivityAt: now,
+  lastMessageAt: now,
   createdAt: now,
   updatedAt: now,
-  permissions: ['deals:read', 'deals:update_stage'],
+  permissions: ['deals:read', 'deals:update', 'deals:update_stage'],
 };
 
 const mockStageRefFor = (stageId: string): PipelineStageRef => {
-  const stage = mockStages.data.find(item => item.id === stageId) ?? mockStages.data[0];
+  const stage = mockStages.data.find(item => item.id === stageId || item.key === stageId) ?? mockStages.data[0];
 
   return {
     id: stage?.id ?? 'stage_new',
@@ -998,47 +1306,63 @@ const mockStageRefFor = (stageId: string): PipelineStageRef => {
 };
 
 export class MockFleexaApiClient implements FleexaApiClient {
+  async login(_params: LoginSessionRequest): Promise<LoginSessionResponse> {
+    return {
+      accessToken: 'mock-development-token',
+      tokenType: 'Bearer',
+      session: mockSession,
+    };
+  }
+
   async getCurrentSession(): Promise<CurrentSessionResponse> {
     return mockSession;
   }
 
-  async listConversations(_params: ListConversationsParams): Promise<ConversationListResponse> {
-    return {
-      data: [
-        {
-          id: 'conv_mock_whatsapp',
-          accountId: 'acc_mock_fleexa',
-          title: 'WhatsApp client',
-          status: 'open',
-          priority: 'high',
-          channel: {
-            type: 'whatsapp',
-            displayName: 'Main WhatsApp',
-          },
-          contact: mockContact,
-          assignee: {
-            id: 'user_mock_manager',
-            displayName: 'Fleexa Manager',
-            type: 'user',
-          },
-          lastMessage: {
-            id: 'msg_mock_latest',
-            text: 'Can you confirm the Range Rover booking?',
-            direction: 'incoming',
-            createdAt: now,
-          },
-          linkedDeal: mockDeal,
-          unreadCount: 2,
-          canReply: true,
-          replyWindow: {
-            canReply: true,
-            reason: 'open',
-            closesAt: '2026-07-18T19:00:00Z',
-          },
-          lastActivityAt: now,
-          permissions: ['conversations:read', 'messages:send'],
+  async listConversations(params: ListConversationsParams): Promise<ConversationListResponse> {
+    const assignedManager = {
+      id: 'user_mock_manager',
+      displayName: 'Fleexa Manager',
+      type: 'user' as const,
+    };
+    const data: ConversationListItem[] = [
+      {
+        id: 'conv_mock_whatsapp',
+        accountId: 'acc_mock_fleexa',
+        title: 'WhatsApp client',
+        status: 'open',
+        priority: 'high',
+        channel: {
+          type: 'whatsapp',
+          displayName: 'Main WhatsApp',
         },
-      ],
+        contact: mockContact,
+        assignee: assignedManager,
+        assignedManager,
+        lastMessage: {
+          id: 'msg_mock_latest',
+          text: 'Can you confirm the Range Rover booking?',
+          direction: 'incoming',
+          createdAt: now,
+        },
+        linkedDeal: mockDeal,
+        unreadCount: 2,
+        lastCustomerMessageAt: now,
+        lastAgentReplyAt: null,
+        replyState: 'waiting_for_reply',
+        canReply: true,
+        replyWindow: {
+          canReply: true,
+          reason: 'open',
+          closesAt: '2026-07-18T19:00:00Z',
+        },
+        lastActivityAt: now,
+        permissions: ['conversations:read', 'messages:send'],
+      },
+    ];
+    const filteredData = params.filter === 'unassigned' ? [] : data;
+
+    return {
+      data: filteredData,
       page: {
         nextCursor: null,
         hasMore: false,
@@ -1107,6 +1431,11 @@ export class MockFleexaApiClient implements FleexaApiClient {
         createdAt: now,
         updatedAt: now,
       },
+      idempotency: {
+        key: params.idempotencyKey,
+        duplicate: false,
+        originalMessageId: null,
+      },
     };
   }
 
@@ -1118,15 +1447,57 @@ export class MockFleexaApiClient implements FleexaApiClient {
     };
   }
 
-  async updateDealStage(params: UpdateDealStageParams): Promise<DealStageUpdateResponse> {
+  async createDealFromConversation(params: CreateConversationDealParams): Promise<LinkedDealResponse> {
+    return {
+      conversationId: params.conversationId,
+      linkState: 'linked',
+      deal: {
+        ...mockDeal,
+        title: params.deal?.title ?? mockDeal.title,
+        clientName: params.deal?.clientName ?? mockDeal.clientName,
+        amount: params.deal?.amount ?? mockDeal.amount,
+        currency: params.deal?.currency ?? mockDeal.currency,
+        qualificationStatus: params.deal?.qualificationStatus ?? mockDeal.qualificationStatus,
+      },
+    };
+  }
+
+  async updateDeal(params: UpdateDealParams): Promise<DealMutationResponse> {
+    const stage =
+      params.deal.stageId || params.deal.stageKey
+        ? mockStageRefFor(params.deal.stageId ?? params.deal.stageKey ?? mockDeal.stage.id)
+        : mockDeal.stage;
+
     return {
       data: {
         ...mockDeal,
-        stage: mockStageRefFor(params.stageId),
+        title: params.deal.title ?? mockDeal.title,
+        clientName: params.deal.clientName ?? mockDeal.clientName,
+        amount: params.deal.amount ?? mockDeal.amount,
+        currency: params.deal.currency ?? mockDeal.currency,
+        stage,
+        stageId: stage.id,
+        stageKey: stage.key,
+        stageLabel: stage.name,
+        qualificationStatus: params.deal.qualificationStatus ?? mockDeal.qualificationStatus,
+      },
+    };
+  }
+
+  async updateDealStage(params: UpdateDealStageParams): Promise<DealStageUpdateResponse> {
+    const stage = mockStageRefFor(params.stageId);
+
+    return {
+      data: {
+        ...mockDeal,
+        stage,
+        stageId: stage.id,
+        stageKey: stage.key,
+        stageLabel: stage.name,
       },
       transition: {
         fromStage: mockDeal.stage,
-        toStage: mockStageRefFor(params.stageId),
+        toStage: stage,
         changedAt: now,
         changedBy: { id: 'user_mock_manager', displayName: 'Fleexa Manager', type: 'user' },
       },
@@ -1136,6 +1507,17 @@ export class MockFleexaApiClient implements FleexaApiClient {
 
   async listPipelineStages(): Promise<PipelineStagesResponse> {
     return mockStages;
+  }
+
+  async listDeals(params: ListDealsParams): Promise<DealsListResponse> {
+    return {
+      data: [mockDeal],
+      page: {
+        nextCursor: null,
+        hasMore: false,
+        limit: params.limit ?? 30,
+      },
+    };
   }
 
   async listDealsByStage(params: ListDealsByStageParams): Promise<DealsByStageResponse> {
@@ -1182,18 +1564,14 @@ export class MockFleexaApiClient implements FleexaApiClient {
     };
   }
 
-  async getManagerCounters(): Promise<ManagerCountersResponse> {
+  async getManagerCounters(_accountId?: string): Promise<ManagerCountersResponse> {
     return {
       accountId: 'acc_mock_fleexa',
       generatedAt: now,
-      scope: 'mine',
       counters: {
-        openConversations: 14,
-        unreadConversations: 5,
-        activeDeals: 21,
-        overdueDeals: 2,
-        bookingsToday: 4,
-        bookingConflicts: 1,
+        unread: 5,
+        assigned: 14,
+        unassigned: 3,
       },
     };
   }
@@ -1210,5 +1588,5 @@ export const createFleexaApiClient = (
     return new ChatwootFleexaApiClient(options);
   }
 
-  return new HttpFleexaApiClient(options);
+  return new ManagerApiClient(options);
 };

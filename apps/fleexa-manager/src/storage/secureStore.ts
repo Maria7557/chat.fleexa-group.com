@@ -9,15 +9,27 @@ export interface SecureValueStore {
 
 const memoryStore = new Map<string, string>();
 
-const webMemoryStore: SecureValueStore = {
+const browserSessionStorage = (): Storage | null => {
+  if (typeof window === 'undefined') return null;
+
+  try {
+    return window.sessionStorage;
+  } catch {
+    return null;
+  }
+};
+
+const webSessionStore: SecureValueStore = {
   async getItem(key) {
-    return memoryStore.get(key) ?? null;
+    return browserSessionStorage()?.getItem(key) ?? memoryStore.get(key) ?? null;
   },
   async setItem(key, value) {
     memoryStore.set(key, value);
+    browserSessionStorage()?.setItem(key, value);
   },
   async deleteItem(key) {
     memoryStore.delete(key);
+    browserSessionStorage()?.removeItem(key);
   },
 };
 
@@ -36,4 +48,4 @@ const nativeSecureStore: SecureValueStore = {
 };
 
 export const createSecureValueStore = (): SecureValueStore =>
-  Platform.OS === 'web' ? webMemoryStore : nativeSecureStore;
+  Platform.OS === 'web' ? webSessionStore : nativeSecureStore;

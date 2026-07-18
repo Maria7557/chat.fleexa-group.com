@@ -3,6 +3,7 @@ export const PERMISSIONS = [
   'conversations:read',
   'messages:send',
   'deals:read',
+  'deals:update',
   'deals:update_stage',
   'pipeline:read',
   'bookings:read',
@@ -50,7 +51,21 @@ export interface CurrentSessionResponse {
   apiVersion: string;
 }
 
+export interface LoginSessionRequest {
+  email: string;
+  password: string;
+  accountHint?: string | null;
+}
+
+export interface LoginSessionResponse {
+  accessToken: string;
+  tokenType: 'Bearer';
+  session: CurrentSessionResponse;
+}
+
 export type ConversationStatus = 'open' | 'pending' | 'resolved' | 'snoozed';
+export type ConversationFilter = 'mine' | 'unassigned' | 'unread' | 'all' | 'waiting_for_reply';
+export type ReplyState = 'waiting_for_reply' | 'replied';
 export type ChannelType =
   | 'whatsapp'
   | 'instagram'
@@ -104,18 +119,27 @@ export interface PipelineStageRef {
 }
 
 export interface SourceAttribution {
-  trafficSourceKey: string;
-  trafficSourceLabel: string;
-  leadOriginKey: string;
-  leadOriginLabel: string;
+  trafficSourceKey: string | null;
+  trafficSourceLabel: string | null;
+  leadOriginKey: string | null;
+  leadOriginLabel: string | null;
   sourceDetectionMethod: 'click_id' | 'utm' | 'first_message_rule' | 'manual' | 'unknown';
   sourceConfidence: 'auto' | 'manual' | 'unknown';
   needsSourceClarification: boolean;
 }
 
+export type QualificationStatus = 'pending' | 'qualified' | 'unqualified';
+
 export interface LeadQualification {
-  status: 'pending' | 'qualified' | 'unqualified';
+  status: QualificationStatus;
   reason?: string | null;
+  lostReasonKey?: string | null;
+  lostReasonLabel?: string | null;
+}
+
+export interface AttributionRef {
+  key: string;
+  label: string;
 }
 
 export interface BookingRef {
@@ -127,15 +151,28 @@ export interface BookingRef {
 export interface DealSummary {
   id: string;
   accountId: string;
+  conversationId?: string | null;
   title: string;
-  stage: PipelineStageRef;
+  clientName: string | null;
   amount: Money | null;
+  currency: string;
+  stage: PipelineStageRef;
+  stageId: string;
+  stageKey: string;
+  stageLabel: string;
+  qualificationStatus: QualificationStatus;
+  source: AttributionRef | null;
+  trafficSource: AttributionRef | null;
+  leadOrigin: AttributionRef | null;
+  lostReason: AttributionRef | null;
+  assignedManager: Actor | null;
   bookingRef?: BookingRef | null;
   contact?: ContactSummary | null;
   assignee?: Actor | null;
   sourceAttribution?: SourceAttribution | null;
   qualification?: LeadQualification | null;
   lastActivityAt?: IsoDateTime | null;
+  lastMessageAt: IsoDateTime | null;
   createdAt: IsoDateTime;
   updatedAt: IsoDateTime;
   permissions: Permission[];
@@ -150,9 +187,13 @@ export interface ConversationListItem {
   channel: ChannelSummary;
   contact: ContactSummary;
   assignee?: Actor | null;
+  assignedManager?: Actor | null;
   lastMessage?: MessagePreview | null;
   linkedDeal?: DealSummary | null;
   unreadCount: number;
+  lastCustomerMessageAt?: IsoDateTime | null;
+  lastAgentReplyAt?: IsoDateTime | null;
+  replyState: ReplyState;
   canReply?: boolean;
   replyWindow?: ReplyWindow | null;
   lastActivityAt: IsoDateTime;
@@ -199,6 +240,7 @@ export interface PipelineStage {
   id: string;
   key: string;
   name: string;
+  color: string;
   position: number;
   kind: 'intake' | 'active' | 'successful' | 'lost';
   isTerminal: boolean;
@@ -250,6 +292,7 @@ export interface BookingSummary {
 
 export interface CursorPage {
   nextCursor: string | null;
+  previousCursor?: string | null;
   hasMore: boolean;
   limit: number;
 }
@@ -270,12 +313,47 @@ export interface MessageListResponse {
 
 export interface MessageSendResponse {
   data: ManagerMessage;
+  idempotency: {
+    key: string;
+    duplicate: boolean;
+    originalMessageId?: string | null;
+  };
 }
 
 export interface LinkedDealResponse {
   conversationId: string;
   linkState: 'linked' | 'missing' | 'inaccessible';
   deal: DealSummary | null;
+}
+
+export interface DealDraft {
+  title?: string;
+  clientName?: string;
+  amount?: Money | null;
+  currency?: string;
+  stageId?: string;
+  stageKey?: string;
+  qualificationStatus?: QualificationStatus;
+  trafficSource?: AttributionRef;
+  trafficSourceKey?: string;
+  leadOrigin?: AttributionRef;
+  leadOriginKey?: string;
+  lostReason?: AttributionRef;
+  lostReasonKey?: string;
+  lostReasonLabel?: string;
+  assignedManagerId?: string | null;
+}
+
+export interface CreateConversationDealRequest {
+  deal?: DealDraft;
+}
+
+export interface UpdateDealRequest {
+  deal: DealDraft;
+}
+
+export interface DealMutationResponse {
+  data: DealSummary;
 }
 
 export interface DealStageTransition {
@@ -295,6 +373,11 @@ export interface PipelineStagesResponse {
   data: PipelineStage[];
 }
 
+export interface DealsListResponse {
+  data: DealSummary[];
+  page: CursorPage;
+}
+
 export interface DealsByStageResponse {
   stage: PipelineStageRef;
   data: DealSummary[];
@@ -310,28 +393,26 @@ export interface BookingByDealResponse {
 export interface ManagerCountersResponse {
   accountId: string;
   generatedAt: IsoDateTime;
-  scope: 'mine' | 'team' | 'account';
   counters: {
-    openConversations: number;
-    unreadConversations: number;
-    activeDeals: number;
-    overdueDeals: number;
-    bookingsToday: number;
-    bookingConflicts: number;
+    unread: number;
+    assigned: number;
+    unassigned: number;
   };
 }
 
-export type ApiErrorCode =
+export type ServerApiErrorCode =
   | 'bad_request'
   | 'unauthenticated'
+  | 'invalid_credentials'
   | 'forbidden'
   | 'not_found'
   | 'conflict'
   | 'validation_failed'
   | 'rate_limited'
   | 'invalid_webhook_signature'
-  | 'network_error'
   | 'unknown_error';
+
+export type ApiErrorCode = ServerApiErrorCode | 'network_error';
 
 export interface ApiErrorBody {
   code: ApiErrorCode;

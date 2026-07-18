@@ -41,6 +41,7 @@ export class EnvironmentConfigError extends Error {
 }
 
 const DEFAULT_LOCAL_API_BASE_URL = 'http://localhost:3000/api/fleexa-manager/v1';
+const MANAGER_API_BASE_PATH = '/api/fleexa-manager/v1';
 const APP_ENVS = new Set<AppEnvironment>(['development', 'preview', 'production']);
 const API_MODES = new Set<ApiMode>(['live', 'mock']);
 const API_DRIVERS = new Set<ApiDriver>(['manager', 'chatwoot']);
@@ -121,6 +122,10 @@ export const createRuntimeConfig = (raw: RawRuntimeEnv = {}): FleexaRuntimeConfi
 
   if (apiDriver === 'chatwoot' && !chatwootAccountId) {
     issues.push('EXPO_PUBLIC_FLEEXA_CHATWOOT_ACCOUNT_ID is required when API driver is chatwoot');
+  }
+
+  if (apiDriver === 'manager' && !apiBaseUrl.endsWith(MANAGER_API_BASE_PATH)) {
+    issues.push('Manager API base URL must end with /api/fleexa-manager/v1');
   }
 
   if (isProduction && !apiBaseUrl.startsWith('https://')) {

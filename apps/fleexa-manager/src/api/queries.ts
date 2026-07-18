@@ -1,17 +1,44 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
-import { activeAccountIdForSession } from '@fleexa/domain';
+import { activeAccountIdForSession, type ConversationFilter, type DealDraft } from '@fleexa/domain';
+import { createClientMessageId, type ListDealsParams, type UpdateDealStageParams } from '@fleexa/api-client';
 
 import { useAuth } from '@/src/auth/AuthProvider';
 import { useFleexaApiClient } from './client';
 
+const CONVERSATION_LIST_POLL_INTERVAL_MS = 7_000;
+const CONVERSATION_DETAIL_POLL_INTERVAL_MS = 7_000;
+const MESSAGE_THREAD_POLL_INTERVAL_MS = 5_000;
+const COUNTERS_POLL_INTERVAL_MS = 10_000;
+
+export interface SendTextMessageInput {
+  clientMessageId: string;
+  text: string;
+}
+
 export const queryKeys = {
   session: ['session', 'current'] as const,
   counters: (accountId: string) => ['manager-counters', accountId] as const,
-  conversations: (accountId: string) => ['conversations', accountId] as const,
+  conversations: (accountId: string, filter?: ConversationFilter) => ['conversations', accountId, filter ?? 'all'] as const,
   conversation: (accountId: string, conversationId: string) => ['conversation', accountId, conversationId] as const,
   messages: (accountId: string, conversationId: string) => ['messages', accountId, conversationId] as const,
+  linkedDeal: (accountId: string, conversationId: string) => ['linked-deal', accountId, conversationId] as const,
   stages: (accountId: string) => ['pipeline-stages', accountId] as const,
+  deals: (
+    accountId: string,
+    filters: {
+      stageId?: string;
+      stageKey?: string;
+      sort?: ListDealsParams['sort'];
+    } = {}
+  ) =>
+    [
+      'pipeline-deals',
+      accountId,
+      filters.stageId ?? 'all',
+      filters.stageKey ?? 'all',
+      filters.sort ?? 'last_activity_desc',
+    ] as const,
 };
 
 export const useCurrentSession = () => {
@@ -39,17 +66,21 @@ export const useManagerCounters = (accountId: string | null) => {
     queryFn: () => client.getManagerCounters(accountId ?? ''),
     enabled: Boolean(accountId),
     retry: false,
+    refetchInterval: COUNTERS_POLL_INTERVAL_MS,
+    refetchIntervalInBackground: false,
   });
 };
 
-export const useConversations = (accountId: string | null) => {
+export const useConversations = (accountId: string | null, filter: ConversationFilter = 'all') => {
   const client = useFleexaApiClient();
 
   return useQuery({
-    queryKey: accountId ? queryKeys.conversations(accountId) : ['conversations', 'missing'],
-    queryFn: () => client.listConversations({ accountId: accountId ?? '', limit: 12, assignment: 'mine' }),
+    queryKey: accountId ? queryKeys.conversations(accountId, filter) : ['conversations', 'missing', filter],
+    queryFn: () => client.listConversations({ accountId: accountId ?? '', limit: 20, filter }),
     enabled: Boolean(accountId),
     retry: false,
+    refetchInterval: CONVERSATION_LIST_POLL_INTERVAL_MS,
+    refetchIntervalInBackground: false,
   });
 };
 
@@ -64,6 +95,36 @@ export const usePipelineStages = (accountId: string | null) => {
   });
 };
 
+export const usePipelineDeals = (
+  accountId: string | null,
+  options: {
+    stageId?: string;
+    stageKey?: string;
+    limit?: number;
+    sort?: ListDealsParams['sort'];
+  } = {}
+) => {
+  const client = useFleexaApiClient();
+
+  return useQuery({
+    queryKey: accountId ? queryKeys.deals(accountId, options) : ['pipeline-deals', 'missing'],
+    queryFn: () => {
+      const request: ListDealsParams = {
+        accountId: accountId ?? '',
+        limit: options.limit ?? 80,
+        sort: options.sort ?? 'last_activity_desc',
+      };
+
+      if (options.stageId) request.stageId = options.stageId;
+      if (options.stageKey) request.stageKey = options.stageKey;
+
+      return client.listDeals(request);
+    },
+    enabled: Boolean(accountId),
+    retry: false,
+  });
+};
+
 export const useConversationDetail = (accountId: string | null, conversationId: string | null) => {
   const client = useFleexaApiClient();
 
@@ -72,6 +133,8 @@ export const useConversationDetail = (accountId: string | null, conversationId: 
     queryFn: () => client.getConversationDetail(accountId ?? '', conversationId ?? ''),
     enabled: Boolean(accountId && conversationId),
     retry: false,
+    refetchInterval: CONVERSATION_DETAIL_POLL_INTERVAL_MS,
+    refetchIntervalInBackground: false,
   });
 };
 
@@ -83,6 +146,101 @@ export const useMessages = (accountId: string | null, conversationId: string | n
     queryFn: () => client.listMessages({ accountId: accountId ?? '', conversationId: conversationId ?? '', order: 'asc' }),
     enabled: Boolean(accountId && conversationId),
     retry: false,
+    refetchInterval: MESSAGE_THREAD_POLL_INTERVAL_MS,
+    refetchIntervalInBackground: false,
+  });
+};
+
+export const useLinkedDeal = (accountId: string | null, conversationId: string | null) => {
+  const client = useFleexaApiClient();
+
+  return useQuery({
+    queryKey: accountId && conversationId ? queryKeys.linkedDeal(accountId, conversationId) : ['linked-deal', 'missing'],
+    queryFn: () => client.getLinkedDeal(accountId ?? '', conversationId ?? ''),
+    enabled: Boolean(accountId && conversationId),
+    retry: false,
+  });
+};
+
+export const useCreateLinkedDeal = (accountId: string | null, conversationId: string | null) => {
+  const client = useFleexaApiClient();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: () => {
+      return client.createDealFromConversation({
+        accountId: accountId ?? '',
+        conversationId: conversationId ?? '',
+        deal: {},
+      });
+    },
+    retry: false,
+    onSuccess: () => {
+      if (!accountId || !conversationId) return;
+      void queryClient.invalidateQueries({ queryKey: queryKeys.linkedDeal(accountId, conversationId) });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.conversation(accountId, conversationId) });
+      void queryClient.invalidateQueries({ queryKey: ['conversations', accountId] });
+    },
+  });
+};
+
+export const useUpdateDeal = (accountId: string | null, conversationId: string | null) => {
+  const client = useFleexaApiClient();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ dealId, deal }: { dealId: string; deal: DealDraft }) => {
+      return client.updateDeal({
+        accountId: accountId ?? '',
+        dealId,
+        deal,
+      });
+    },
+    retry: false,
+    onSuccess: () => {
+      if (!accountId || !conversationId) return;
+      void queryClient.invalidateQueries({ queryKey: queryKeys.linkedDeal(accountId, conversationId) });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.conversation(accountId, conversationId) });
+      void queryClient.invalidateQueries({ queryKey: ['conversations', accountId] });
+    },
+  });
+};
+
+export const useMoveDealStage = (accountId: string | null) => {
+  const client = useFleexaApiClient();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      dealId,
+      lostReasonLabel,
+      stageId,
+    }: {
+      dealId: string;
+      lostReasonLabel?: string | null;
+      stageId: string;
+    }) => {
+      const clientMutationId = createClientMessageId();
+      const request: UpdateDealStageParams = {
+        accountId: accountId ?? '',
+        dealId,
+        stageId,
+        clientMutationId,
+        idempotencyKey: `stage-move-${clientMutationId}`,
+      };
+      const trimmedLostReason = lostReasonLabel?.trim();
+      if (trimmedLostReason) request.lostReasonLabel = trimmedLostReason;
+
+      return client.updateDealStage(request);
+    },
+    retry: false,
+    onSuccess: () => {
+      if (!accountId) return;
+      void queryClient.invalidateQueries({ queryKey: ['pipeline-deals', accountId] });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.stages(accountId) });
+      void queryClient.invalidateQueries({ queryKey: ['linked-deal', accountId] });
+      void queryClient.invalidateQueries({ queryKey: ['conversations', accountId] });
+    },
   });
 };
 
@@ -91,8 +249,7 @@ export const useSendTextMessage = (accountId: string | null, conversationId: str
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (text: string) => {
-      const clientMessageId = `msg_client_${Date.now()}`;
+    mutationFn: ({ clientMessageId, text }: SendTextMessageInput) => {
       return client.sendTextMessage({
         accountId: accountId ?? '',
         conversationId: conversationId ?? '',
@@ -101,11 +258,12 @@ export const useSendTextMessage = (accountId: string | null, conversationId: str
         text,
       });
     },
+    retry: false,
     onSuccess: () => {
       if (!accountId || !conversationId) return;
       void queryClient.invalidateQueries({ queryKey: queryKeys.messages(accountId, conversationId) });
       void queryClient.invalidateQueries({ queryKey: queryKeys.conversation(accountId, conversationId) });
-      void queryClient.invalidateQueries({ queryKey: queryKeys.conversations(accountId) });
+      void queryClient.invalidateQueries({ queryKey: ['conversations', accountId] });
       void queryClient.invalidateQueries({ queryKey: queryKeys.counters(accountId) });
     },
   });

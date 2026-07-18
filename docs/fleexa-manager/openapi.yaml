@@ -12,13 +12,22 @@ info:
     All account resources are isolated by `accountId`. The authenticated user
     must have an active membership in the requested account and the endpoint
     permission listed by `x-permission`.
+
+    Stage 3 keeps temporary Chatwoot authentication through the Manager
+    namespace while replacing token-paste UX with `POST /session` email/password
+    exchange. Existing Chatwoot user access tokens and same-origin Rails sessions
+    are still accepted for compatibility, but raw Chatwoot API payloads and
+    routes are not the Manager contract. Dedicated Manager refresh and revoke
+    endpoints must replace this before production beta.
 servers:
   - url: https://api.fleexa.example.com/api/fleexa-manager/v1
     description: Production API base path placeholder.
   - url: http://localhost:3000/api/fleexa-manager/v1
     description: Local development API base path placeholder.
 security:
-  - bearerAuth: []
+  - chatwootBearerAuth: []
+  - chatwootApiAccessToken: []
+  - chatwootSessionCookie: []
 tags:
   - name: Session
   - name: Conversations
@@ -29,6 +38,45 @@ tags:
   - name: Counters
 
 paths:
+  /session:
+    post:
+      tags:
+        - Session
+      operationId: createSession
+      summary: Exchange manager email/password credentials for a temporary Manager session.
+      description: |
+        Stage 3 uses this endpoint as a narrow adapter over the existing
+        Chatwoot user authentication model. The manager submits email and
+        password, the backend verifies active Chatwoot credentials and account
+        membership, and the response returns a Manager session DTO plus a
+        temporary bearer token for the Expo client to store internally.
+
+        This endpoint is not the final production-beta auth system: it does not
+        implement refresh-token rotation, server-side session inventory, or
+        token revoke. Expo UI must never display the returned token.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginSessionRequest"
+      responses:
+        "201":
+          description: Session created from valid Chatwoot credentials.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginSessionResponse"
+        "401":
+          $ref: "#/components/responses/InvalidCredentials"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
   /session/current:
     get:
       tags:
@@ -70,9 +118,17 @@ paths:
           in: query
           schema:
             $ref: "#/components/schemas/ConversationStatus"
+        - name: filter
+          in: query
+          description: |
+            Manager conversation bucket. The backend owns unread and reply-state
+            calculations; clients must not approximate these filters locally.
+          schema:
+            $ref: "#/components/schemas/ConversationFilter"
+            default: all
         - name: assignment
           in: query
-          description: Filter conversations by ownership bucket.
+          description: Deprecated Stage 2 ownership filter kept for temporary compatibility; prefer `filter`.
           schema:
             type: string
             enum:
@@ -180,14 +236,19 @@ paths:
       operationId: sendTextMessage
       summary: Send a text message to the conversation contact.
       description: |
-        The client must provide both `Idempotency-Key` and `clientMessageId`.
-        Repeating the same request returns the original accepted message DTO.
+        The client must provide `clientMessageId` in the body and may also send
+        `Idempotency-Key`. Stage 2 SDKs send both as the same UUID value. The
+        backend must use `Idempotency-Key` when present, otherwise
+        `clientMessageId`, as the idempotency key. Repeating the same request
+        must return the original accepted message DTO and must not create a
+        second Chatwoot message. Reusing the same key with a different payload
+        returns `409 conflict`.
       x-account-isolation: required
       x-permission: messages:send
       parameters:
         - $ref: "#/components/parameters/AccountId"
         - $ref: "#/components/parameters/ConversationId"
-        - $ref: "#/components/parameters/IdempotencyKey"
+        - $ref: "#/components/parameters/OptionalIdempotencyKey"
       requestBody:
         required: true
         content:
@@ -216,12 +277,16 @@ paths:
         "429":
           $ref: "#/components/responses/RateLimited"
 
-  /accounts/{accountId}/conversations/{conversationId}/linked-deal:
+  /accounts/{accountId}/conversations/{conversationId}/deal:
     get:
       tags:
         - Deals
       operationId: getLinkedDeal
       summary: Get the CRM deal linked to a conversation.
+      description: |
+        Returns the account-scoped Manager deal DTO linked to the conversation,
+        or `missing` when the conversation has no CRM deal yet. The response is
+        not a raw Chatwoot or CRM model payload.
       x-account-isolation: required
       x-permission: deals:read
       parameters:
@@ -240,6 +305,89 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
+    post:
+      tags:
+        - Deals
+      operationId: createConversationDeal
+      summary: Create or return the CRM deal linked to a conversation.
+      description: |
+        Creates a deal from the conversation when none exists. If the
+        conversation already has a linked deal, the existing deal is returned
+        without creating a duplicate. Stage, source, lead origin, and assignment
+        are validated backend-side against account-owned data.
+      x-account-isolation: required
+      x-permission: deals:update
+      parameters:
+        - $ref: "#/components/parameters/AccountId"
+        - $ref: "#/components/parameters/ConversationId"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateConversationDealRequest"
+      responses:
+        "200":
+          description: Existing linked deal returned.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LinkedDealResponse"
+        "201":
+          description: Deal created and linked to the conversation.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LinkedDealResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+
+  /accounts/{accountId}/deals/{dealId}:
+    patch:
+      tags:
+        - Deals
+      operationId: updateDeal
+      summary: Update Manager-visible CRM deal fields.
+      description: |
+        Updates the minimal deal fields needed by Fleexa Manager. The backend
+        owns validation for stage, qualification, source attribution, lead
+        origin, lost reason, assignment, and tenant isolation.
+      x-account-isolation: required
+      x-permission: deals:update
+      parameters:
+        - $ref: "#/components/parameters/AccountId"
+        - $ref: "#/components/parameters/DealId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateDealRequest"
+      responses:
+        "200":
+          description: Deal updated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DealMutationResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
 
   /accounts/{accountId}/deals/{dealId}/stage:
     patch:
@@ -315,7 +463,11 @@ paths:
       tags:
         - Pipeline
       operationId: listDealsByStage
-      summary: List deals in one stage.
+      summary: List deals in one stage through the Stage 2 compatibility alias.
+      description: |
+        Compatibility alias for older clients that already hold a stage id.
+        New Stage 3 clients should prefer `/accounts/{accountId}/pipeline/deals`
+        with `stageId` or `stageKey` query parameters.
       x-account-isolation: required
       x-permission: deals:read
       parameters:
@@ -354,6 +506,65 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /accounts/{accountId}/pipeline/deals:
+    get:
+      tags:
+        - Pipeline
+      operationId: listPipelineDeals
+      summary: List account-scoped Manager deal list DTOs.
+      description: |
+        Returns normalized deal list items for Manager pipeline surfaces.
+        Pipeline stages remain backend-owned: clients must use stage ids,
+        keys, labels, colors, order, and terminal semantics returned by the
+        Manager API and must not hardcode stage names or colors.
+      x-account-isolation: required
+      x-permission: deals:read
+      parameters:
+        - $ref: "#/components/parameters/AccountId"
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+        - name: stageId
+          in: query
+          schema:
+            type: string
+            pattern: "^stage_[A-Za-z0-9]+$"
+        - name: stageKey
+          in: query
+          schema:
+            type: string
+        - name: assignedTo
+          in: query
+          schema:
+            type: string
+            examples:
+              - me
+              - user_01J5N2C9X3H3STQW1MGJ8B6RWD
+        - name: sort
+          in: query
+          schema:
+            type: string
+            enum:
+              - last_activity_desc
+              - created_desc
+              - amount_desc
+              - amount_asc
+            default: last_activity_desc
+      responses:
+        "200":
+          description: Paginated account deal list DTOs.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DealsListResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   /accounts/{accountId}/deals/{dealId}/booking:
     get:
       tags:
@@ -385,7 +596,10 @@ paths:
         - Counters
       operationId: getManagerCounters
       summary: Get dashboard counters for the current manager/operator.
-      description: Counters are computed by the backend and filtered by permission.
+      description: |
+        Counters are computed by the backend and filtered by permission. Stage 2
+        exposes only reliable conversation counters: `unread`, `assigned`, and
+        `unassigned`.
       x-account-isolation: required
       x-permission: counters:read
       parameters:
@@ -452,10 +666,23 @@ webhooks:
 
 components:
   securitySchemes:
-    bearerAuth:
+    chatwootBearerAuth:
       type: http
       scheme: bearer
-      bearerFormat: JWT
+      bearerFormat: Chatwoot user access token
+      description: |
+        Temporary Stage 3 compatibility auth. Expo obtains this internally from
+        `POST /session` and sends `Authorization: Bearer <Chatwoot user access token>`.
+    chatwootApiAccessToken:
+      type: apiKey
+      in: header
+      name: api_access_token
+      description: Temporary compatibility header for Chatwoot user access tokens.
+    chatwootSessionCookie:
+      type: apiKey
+      in: cookie
+      name: _chatwoot_session
+      description: Temporary same-origin web auth using the existing Chatwoot Rails session cookie.
 
   parameters:
     AccountId:
@@ -554,6 +781,12 @@ components:
         application/json:
           schema:
             $ref: "#/components/schemas/ErrorResponse"
+    InvalidCredentials:
+      description: Email/password credentials were rejected by the temporary Chatwoot auth adapter.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
     Forbidden:
       description: Authenticated user lacks the required account permission.
       content:
@@ -596,6 +829,44 @@ components:
             $ref: "#/components/schemas/ErrorResponse"
 
   schemas:
+    LoginSessionRequest:
+      type: object
+      required:
+        - email
+        - password
+      additionalProperties: false
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 1
+          writeOnly: true
+        accountHint:
+          type:
+            - string
+            - "null"
+          description: Optional account id such as `acc_1` or exact workspace name when the user belongs to multiple accounts.
+
+    LoginSessionResponse:
+      type: object
+      required:
+        - accessToken
+        - tokenType
+        - session
+      properties:
+        accessToken:
+          type: string
+          readOnly: true
+          description: Temporary Chatwoot user access token. Expo stores this internally and never displays it.
+        tokenType:
+          type: string
+          enum:
+            - Bearer
+        session:
+          $ref: "#/components/schemas/CurrentSessionResponse"
+
     CurrentSessionResponse:
       type: object
       required:
@@ -692,6 +963,7 @@ components:
         - conversations:read
         - messages:send
         - deals:read
+        - deals:update
         - deals:update_stage
         - pipeline:read
         - bookings:read
@@ -752,6 +1024,10 @@ components:
         - contact
         - lastActivityAt
         - unreadCount
+        - assignedManager
+        - lastCustomerMessageAt
+        - lastAgentReplyAt
+        - replyState
         - permissions
       properties:
         id:
@@ -778,6 +1054,10 @@ components:
           oneOf:
             - $ref: "#/components/schemas/Actor"
             - type: "null"
+        assignedManager:
+          oneOf:
+            - $ref: "#/components/schemas/Actor"
+            - type: "null"
         lastMessage:
           oneOf:
             - $ref: "#/components/schemas/MessagePreview"
@@ -789,6 +1069,20 @@ components:
         unreadCount:
           type: integer
           minimum: 0
+        lastCustomerMessageAt:
+          type:
+            - string
+            - "null"
+          format: date-time
+          description: Latest customer-visible incoming message timestamp for backend reply-state logic.
+        lastAgentReplyAt:
+          type:
+            - string
+            - "null"
+          format: date-time
+          description: Latest customer-visible outgoing manager reply timestamp for backend reply-state logic.
+        replyState:
+          $ref: "#/components/schemas/ReplyState"
         canReply:
           type: boolean
         replyWindow:
@@ -835,6 +1129,25 @@ components:
         - pending
         - resolved
         - snoozed
+
+    ConversationFilter:
+      type: string
+      enum:
+        - mine
+        - unassigned
+        - unread
+        - all
+        - waiting_for_reply
+
+    ReplyState:
+      type: string
+      description: |
+        Backend-owned reply state. A new customer message after a manager reply
+        moves the conversation back to `waiting_for_reply`; no separate
+        `customer_replied_again` state is exposed.
+      enum:
+        - waiting_for_reply
+        - replied
 
     ChannelSummary:
       type: object
@@ -1055,9 +1368,31 @@ components:
       type: object
       required:
         - data
+        - idempotency
       properties:
         data:
           $ref: "#/components/schemas/ManagerMessage"
+        idempotency:
+          $ref: "#/components/schemas/MessageSendIdempotency"
+
+    MessageSendIdempotency:
+      type: object
+      required:
+        - key
+        - duplicate
+      properties:
+        key:
+          type: string
+          minLength: 16
+          maxLength: 120
+        duplicate:
+          type: boolean
+          description: True when this response reused a previously created message.
+        originalMessageId:
+          type:
+            - string
+            - "null"
+          description: Original Manager message id when `duplicate` is true.
 
     ReplyWindow:
       type: object
@@ -1106,8 +1441,20 @@ components:
         - id
         - accountId
         - title
-        - stage
+        - clientName
         - amount
+        - currency
+        - stage
+        - stageId
+        - stageKey
+        - stageLabel
+        - qualificationStatus
+        - source
+        - trafficSource
+        - leadOrigin
+        - lostReason
+        - assignedManager
+        - lastMessageAt
         - createdAt
         - updatedAt
         - permissions
@@ -1116,13 +1463,59 @@ components:
           type: string
         accountId:
           type: string
+        conversationId:
+          description: Stable Manager conversation id when the deal is linked to a conversation.
+          oneOf:
+            - type: string
+              pattern: "^conv_[A-Za-z0-9]+$"
+            - type: "null"
         title:
           type: string
+        clientName:
+          type:
+            - string
+            - "null"
         stage:
           $ref: "#/components/schemas/PipelineStageRef"
+        stageId:
+          type: string
+          pattern: "^stage_[A-Za-z0-9]+$"
+        stageKey:
+          type: string
+        stageLabel:
+          type: string
         amount:
           oneOf:
             - $ref: "#/components/schemas/Money"
+            - type: "null"
+        currency:
+          type: string
+          minLength: 3
+          maxLength: 3
+          examples:
+            - AED
+        qualificationStatus:
+          $ref: "#/components/schemas/QualificationStatus"
+        source:
+          description: Alias for the primary traffic source used by compact pipeline list DTOs.
+          oneOf:
+            - $ref: "#/components/schemas/AttributionRef"
+            - type: "null"
+        trafficSource:
+          oneOf:
+            - $ref: "#/components/schemas/AttributionRef"
+            - type: "null"
+        leadOrigin:
+          oneOf:
+            - $ref: "#/components/schemas/AttributionRef"
+            - type: "null"
+        lostReason:
+          oneOf:
+            - $ref: "#/components/schemas/AttributionRef"
+            - type: "null"
+        assignedManager:
+          oneOf:
+            - $ref: "#/components/schemas/Actor"
             - type: "null"
         bookingRef:
           oneOf:
@@ -1149,6 +1542,11 @@ components:
             - string
             - "null"
           format: date-time
+        lastMessageAt:
+          type:
+            - string
+            - "null"
+          format: date-time
         createdAt:
           type: string
           format: date-time
@@ -1159,6 +1557,97 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/Permission"
+
+    AttributionRef:
+      type: object
+      required:
+        - key
+        - label
+      properties:
+        key:
+          type: string
+        label:
+          type: string
+
+    QualificationStatus:
+      type: string
+      enum:
+        - pending
+        - qualified
+        - unqualified
+
+    DealDraft:
+      type: object
+      additionalProperties: false
+      properties:
+        title:
+          type: string
+          maxLength: 255
+        clientName:
+          type: string
+          maxLength: 255
+          description: Optional title alias used by mobile clients.
+        amount:
+          oneOf:
+            - $ref: "#/components/schemas/Money"
+            - type: "null"
+        currency:
+          type: string
+          enum:
+            - AED
+          description: Stage 3 supports AED only; multi-currency belongs in backend domain work.
+        stageId:
+          type: string
+          pattern: "^stage_[A-Za-z0-9]+$"
+        stageKey:
+          type: string
+        qualificationStatus:
+          $ref: "#/components/schemas/QualificationStatus"
+        trafficSource:
+          $ref: "#/components/schemas/AttributionRef"
+        trafficSourceKey:
+          type: string
+          description: Must match active Attribution Settings values when they exist.
+        leadOrigin:
+          $ref: "#/components/schemas/AttributionRef"
+        leadOriginKey:
+          type: string
+          description: Must match active Attribution Settings values when they exist.
+        lostReason:
+          $ref: "#/components/schemas/AttributionRef"
+        lostReasonKey:
+          type: string
+        lostReasonLabel:
+          type: string
+        assignedManagerId:
+          type:
+            - string
+            - "null"
+          pattern: "^user_[A-Za-z0-9]+$"
+
+    CreateConversationDealRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        deal:
+          $ref: "#/components/schemas/DealDraft"
+
+    UpdateDealRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - deal
+      properties:
+        deal:
+          $ref: "#/components/schemas/DealDraft"
+
+    DealMutationResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          $ref: "#/components/schemas/DealSummary"
 
     PipelineStageRef:
       type: object
@@ -1194,6 +1683,13 @@ components:
             - string
             - "null"
           maxLength: 1000
+        lostReason:
+          $ref: "#/components/schemas/AttributionRef"
+        lostReasonKey:
+          type: string
+        lostReasonLabel:
+          type: string
+          description: Required when moving into lost/cancelled stages if account loss-reason rules are configured.
 
     DealStageUpdateResponse:
       type: object
@@ -1246,6 +1742,7 @@ components:
         - id
         - key
         - name
+        - color
         - position
         - kind
         - isTerminal
@@ -1256,6 +1753,9 @@ components:
           type: string
         name:
           type: string
+        color:
+          type: string
+          pattern: "^#[0-9A-Fa-f]{6}$"
         position:
           type: integer
         kind:
@@ -1298,6 +1798,19 @@ components:
           type: string
         label:
           type: string
+
+    DealsListResponse:
+      type: object
+      required:
+        - data
+        - page
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/DealSummary"
+        page:
+          $ref: "#/components/schemas/CursorPage"
 
     DealsByStageResponse:
       type: object
@@ -1421,9 +1934,13 @@ components:
         endsAt:
           type: string
           format: date-time
+        timeZone:
+          type: string
 
     VehicleSummary:
       type: object
+      required:
+        - label
       properties:
         id:
           type:
@@ -1440,97 +1957,52 @@ components:
       type: object
       required:
         - accountId
-        - asOf
+        - generatedAt
         - counters
       properties:
         accountId:
           type: string
-        asOf:
+        generatedAt:
           type: string
           format: date-time
         counters:
-          type: object
-          required:
-            - conversations
-            - deals
-            - bookings
-          properties:
-            conversations:
-              $ref: "#/components/schemas/ConversationCounters"
-            deals:
-              $ref: "#/components/schemas/DealCounters"
-            bookings:
-              $ref: "#/components/schemas/BookingCounters"
+          $ref: "#/components/schemas/ManagerConversationCounters"
 
-    ConversationCounters:
+    ManagerConversationCounters:
       type: object
       required:
-        - open
-        - mine
-        - unassigned
         - unread
-        - overdueFirstResponse
+        - assigned
+        - unassigned
       properties:
-        open:
-          type: integer
-        mine:
-          type: integer
-        unassigned:
-          type: integer
         unread:
           type: integer
-        overdueFirstResponse:
+          minimum: 0
+          description: Count of conversations visible to the user with unread messages.
+        assigned:
           type: integer
-
-    DealCounters:
-      type: object
-      required:
-        - active
-        - wonToday
-        - lostToday
-        - byStage
-      properties:
-        active:
+          minimum: 0
+          description: Count of visible conversations assigned to a user.
+        unassigned:
           type: integer
-        wonToday:
-          type: integer
-        lostToday:
-          type: integer
-        byStage:
-          type: array
-          items:
-            $ref: "#/components/schemas/StageCounter"
-
-    StageCounter:
-      type: object
-      required:
-        - stageId
-        - count
-      properties:
-        stageId:
-          type: string
-        count:
-          type: integer
-
-    BookingCounters:
-      type: object
-      required:
-        - pickupToday
-        - returnToday
-        - active
-        - overdue
-      properties:
-        pickupToday:
-          type: integer
-        returnToday:
-          type: integer
-        active:
-          type: integer
-        overdue:
-          type: integer
+          minimum: 0
+          description: Count of visible conversations with no assignee.
+      description: |
+        Stage 2 exposes only counters that can be read reliably from existing
+        Chatwoot conversation state. Answered/unanswered, reply-risk, deal, and
+        booking counters are intentionally omitted until backend logic and tests
+        exist.
 
     SourceAttribution:
       type: object
+      required:
+        - trafficSourceKey
+        - trafficSourceLabel
+        - leadOriginKey
+        - leadOriginLabel
+        - sourceDetectionMethod
+        - sourceConfidence
+        - needsSourceClarification
       properties:
         trafficSourceKey:
           type:
@@ -1548,23 +2020,39 @@ components:
           type:
             - string
             - "null"
-        detectionMethod:
-          type:
-            - string
-            - "null"
-        needsClarification:
+        sourceDetectionMethod:
+          type: string
+          enum:
+            - click_id
+            - utm
+            - first_message_rule
+            - manual
+            - unknown
+        sourceConfidence:
+          type: string
+          enum:
+            - auto
+            - manual
+            - unknown
+        needsSourceClarification:
           type: boolean
           default: false
 
     LeadQualification:
       type: object
+      required:
+        - status
       properties:
         status:
           type: string
           enum:
-            - unknown
+            - pending
             - unqualified
             - qualified
+        reason:
+          type:
+            - string
+            - "null"
         lostReasonKey:
           type:
             - string
@@ -1697,20 +2185,21 @@ components:
           required:
             - code
             - message
-            - requestId
           properties:
             code:
               type: string
+              description: Server error code. SDKs may synthesize `network_error` when no HTTP response exists.
               enum:
                 - bad_request
                 - unauthenticated
+                - invalid_credentials
                 - forbidden
                 - not_found
                 - conflict
                 - validation_failed
                 - rate_limited
                 - invalid_webhook_signature
-                - internal_error
+                - unknown_error
             message:
               type: string
             requestId:
