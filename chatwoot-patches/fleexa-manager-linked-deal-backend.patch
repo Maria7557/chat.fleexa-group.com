@@ -1,0 +1,889 @@
+diff --git a/app/controllers/api/fleexa_manager/v1/accounts/conversations/deals_controller.rb b/app/controllers/api/fleexa_manager/v1/accounts/conversations/deals_controller.rb
+new file mode 100644
+index 0000000..a1303d8
+--- /dev/null
++++ b/app/controllers/api/fleexa_manager/v1/accounts/conversations/deals_controller.rb
+@@ -0,0 +1,80 @@
++class Api::FleexaManager::V1::Accounts::Conversations::DealsController < Api::FleexaManager::V1::BaseController
++  before_action :set_current_account_from_params
++  before_action :ensure_crm_deals_available!
++  before_action :set_conversation
++
++  def show
++    return unless ensure_deal_read_permission
++
++    deal = linked_deal
++    render json: linked_deal_response(deal)
++  end
++
++  def create
++    return unless ensure_deal_write_permission
++
++    result = deal_mutation_service.create_from_conversation(
++      conversation: @conversation,
++      payload: params
++    )
++
++    render json: linked_deal_response(result.deal), status: result.created ? :created : :ok
++  rescue FleexaManager::V1::DealMutationService::InvalidPayload => e
++    render_manager_error('validation_failed', e.message, status: :unprocessable_entity, details: e.details)
++  rescue ActiveRecord::RecordInvalid => e
++    render_manager_error('validation_failed', e.record.errors.full_messages.join(', '), status: :unprocessable_entity)
++  end
++
++  private
++
++  def set_conversation
++    @conversation = find_visible_conversation!(params[:conversation_id])
++  end
++
++  def linked_deal
++    CrmDeal.for_account(Current.account.id)
++           .includes(:stage, :contact, :conversation, :assignee)
++           .where(conversation_id: @conversation.id)
++           .order(updated_at: :desc)
++           .first
++  end
++
++  def linked_deal_response(deal)
++    {
++      conversationId: FleexaManager::V1::DtoSerializer.conversation_id(@conversation),
++      linkState: deal.present? ? 'linked' : 'missing',
++      deal: deal.present? ? FleexaManager::V1::DtoSerializer.deal(deal, permissions: deal_permissions) : nil
++    }
++  end
++
++  def deal_mutation_service
++    FleexaManager::V1::DealMutationService.new(
++      account: Current.account,
++      user: current_manager_user
++    )
++  end
++
++  def ensure_crm_deals_available!
++    return if defined?(CrmDeal) && defined?(CrmPipelineStage)
++
++    render_manager_error('not_found', 'CRM deals are not available.', status: :not_found)
++  end
++
++  def ensure_deal_read_permission
++    return true if manager_permissions(@current_account_user).include?('deals:read')
++
++    render_manager_error('forbidden', 'Deal access is not permitted.', status: :forbidden)
++    false
++  end
++
++  def ensure_deal_write_permission
++    return true if manager_permissions(@current_account_user).include?('deals:update')
++
++    render_manager_error('forbidden', 'Deal updates are not permitted.', status: :forbidden)
++    false
++  end
++
++  def deal_permissions
++    manager_permissions(@current_account_user) & %w[deals:read deals:update deals:update_stage]
++  end
++end
+diff --git a/app/controllers/api/fleexa_manager/v1/accounts/deals_controller.rb b/app/controllers/api/fleexa_manager/v1/accounts/deals_controller.rb
+new file mode 100644
+index 0000000..43ac6f8
+--- /dev/null
++++ b/app/controllers/api/fleexa_manager/v1/accounts/deals_controller.rb
+@@ -0,0 +1,59 @@
++class Api::FleexaManager::V1::Accounts::DealsController < Api::FleexaManager::V1::BaseController
++  before_action :set_current_account_from_params
++  before_action :ensure_crm_deals_available!
++
++  def update
++    return unless ensure_deal_write_permission
++
++    deal = find_deal
++    return if performed?
++
++    result = deal_mutation_service.update(deal: deal, payload: params)
++
++    render json: {
++      data: FleexaManager::V1::DtoSerializer.deal(result.deal, permissions: deal_permissions)
++    }
++  rescue FleexaManager::V1::DealMutationService::InvalidPayload => e
++    render_manager_error('validation_failed', e.message, status: :unprocessable_entity, details: e.details)
++  rescue ActiveRecord::RecordInvalid => e
++    render_manager_error('validation_failed', e.record.errors.full_messages.join(', '), status: :unprocessable_entity)
++  end
++
++  private
++
++  def find_deal
++    deal_id = stable_id_value(params[:id], 'deal')
++    return render_manager_error('bad_request', 'Invalid dealId.', status: :bad_request) if deal_id.blank?
++
++    deal = CrmDeal.for_account(Current.account.id)
++                  .includes(:stage, :contact, :conversation, :assignee)
++                  .find_by(id: deal_id)
++    return render_manager_error('not_found', 'Deal was not found.', status: :not_found) if deal.blank?
++
++    deal
++  end
++
++  def deal_mutation_service
++    FleexaManager::V1::DealMutationService.new(
++      account: Current.account,
++      user: current_manager_user
++    )
++  end
++
++  def ensure_crm_deals_available!
++    return if defined?(CrmDeal) && defined?(CrmPipelineStage)
++
++    render_manager_error('not_found', 'CRM deals are not available.', status: :not_found)
++  end
++
++  def ensure_deal_write_permission
++    return true if manager_permissions(@current_account_user).include?('deals:update')
++
++    render_manager_error('forbidden', 'Deal updates are not permitted.', status: :forbidden)
++    false
++  end
++
++  def deal_permissions
++    manager_permissions(@current_account_user) & %w[deals:read deals:update deals:update_stage]
++  end
++end
+diff --git a/app/controllers/api/fleexa_manager/v1/base_controller.rb b/app/controllers/api/fleexa_manager/v1/base_controller.rb
+index 8f8d7a2..133aeb1 100644
+--- a/app/controllers/api/fleexa_manager/v1/base_controller.rb
++++ b/app/controllers/api/fleexa_manager/v1/base_controller.rb
+@@ -5,7 +5,7 @@ class Api::FleexaManager::V1::BaseController < Api::BaseController
+   MANAGER_API_VERSION = '2026-07-18.stage2'.freeze
+   READ_PERMISSIONS = %w[session:read conversations:read counters:read].freeze
+   WRITE_PERMISSIONS = %w[messages:send].freeze
+-  OWNER_EXTRA_PERMISSIONS = %w[deals:read pipeline:read bookings:read settings:read settings:write].freeze
++  OWNER_EXTRA_PERMISSIONS = %w[deals:read deals:update deals:update_stage pipeline:read bookings:read settings:read settings:write].freeze
+   MAX_LIMIT = 100
+   DEFAULT_LIMIT = 30
+   FLEEXA_MANAGER_CORS_ALLOWED_ORIGINS = %w[
+diff --git a/app/services/fleexa_manager/v1/deal_mutation_service.rb b/app/services/fleexa_manager/v1/deal_mutation_service.rb
+new file mode 100644
+index 0000000..3d8e6bc
+--- /dev/null
++++ b/app/services/fleexa_manager/v1/deal_mutation_service.rb
+@@ -0,0 +1,283 @@
++module FleexaManager
++  module V1
++    class DealMutationService
++      DEFAULT_CURRENCY = 'AED'.freeze
++      MARKETING_CONFIG_KEY = 'crm_marketing_dashboard'.freeze
++      QUALIFICATION_STATUSES = %w[pending qualified unqualified].freeze
++
++      class InvalidPayload < StandardError
++        attr_reader :details
++
++        def initialize(message, details = nil)
++          @details = details
++          super(message)
++        end
++      end
++
++      Result = Struct.new(:deal, :created, keyword_init: true)
++
++      def initialize(account:, user:)
++        @account = account
++        @user = user
++      end
++
++      def create_from_conversation(conversation:, payload:)
++        existing_deal = linked_deal_for(conversation)
++        return Result.new(deal: existing_deal, created: false) if existing_deal.present?
++
++        normalized_payload = payload_hash(payload)
++        stage = stage_from_payload(normalized_payload) || default_stage
++        raise InvalidPayload, 'Pipeline stage is required.' if stage.blank?
++
++        deal = nil
++        ActiveRecord::Base.transaction do
++          deal = CrmDeal.create!(
++            account: @account,
++            conversation: conversation,
++            contact: conversation.contact,
++            stage: stage,
++            title: string_value(normalized_payload, 'title', 'clientName', 'client_name').presence || default_title_for(conversation),
++            assigned_to: assigned_manager_id(normalized_payload, fallback_id: conversation.assignee_id || @user.id),
++            amount: amount_value(normalized_payload),
++            custom_attributes: custom_attributes_for({}, normalized_payload, defaults: { 'qualification_status' => 'pending' })
++          )
++          create_activity(deal, 'created', to_stage: stage)
++        end
++
++        Result.new(deal: deal.reload, created: true)
++      end
++
++      def update(deal:, payload:)
++        normalized_payload = payload_hash(payload)
++        attrs = {}
++
++        if key_present?(normalized_payload, 'title', 'clientName', 'client_name')
++          attrs[:title] = string_value(normalized_payload, 'title', 'clientName', 'client_name')
++        end
++
++        stage = stage_from_payload(normalized_payload)
++        attrs[:stage] = stage if stage.present?
++        attrs[:amount] = amount_value(normalized_payload) if key_present?(normalized_payload, 'amount', 'amountValue', 'amount_value', 'currency')
++        attrs[:assigned_to] = assigned_manager_id(normalized_payload) if key_present?(normalized_payload, 'assignedManagerId', 'assigned_manager_id', 'assigned_to')
++
++        if attribution_or_qualification_payload?(normalized_payload)
++          attrs[:custom_attributes] = custom_attributes_for(deal.custom_attributes || {}, normalized_payload)
++        end
++
++        old_stage = deal.stage
++        ActiveRecord::Base.transaction do
++          deal.update!(attrs)
++          create_activity(deal, 'stage_changed', from_stage: old_stage, to_stage: deal.stage) if attrs.key?(:stage) && old_stage.id != deal.stage_id
++          create_activity(deal, 'updated') unless attrs.key?(:stage)
++        end
++
++        Result.new(deal: deal.reload, created: false)
++      end
++
++      private
++
++      def linked_deal_for(conversation)
++        CrmDeal.for_account(@account.id)
++               .includes(:stage, :contact, :conversation, :assignee)
++               .where(conversation_id: conversation.id)
++               .order(updated_at: :desc)
++               .first
++      end
++
++      def payload_hash(payload)
++        raw_payload = if payload.respond_to?(:to_unsafe_h)
++                        payload.to_unsafe_h
++                      elsif payload.respond_to?(:to_h)
++                        payload.to_h
++                      else
++                        {}
++                      end
++        raw_payload = raw_payload['deal'] || raw_payload[:deal] if (raw_payload['deal'] || raw_payload[:deal]).is_a?(Hash)
++
++        raw_payload.deep_stringify_keys
++      end
++
++      def default_stage
++        CrmPipelineStage.for_account(@account.id).ordered.first
++      end
++
++      def stage_from_payload(payload)
++        stage_ref = payload['stage'].is_a?(Hash) ? payload['stage'].deep_stringify_keys : {}
++        stage_id_value = string_value(payload, 'stageId', 'stage_id') || stage_ref['id']
++        stage_key = string_value(payload, 'stageKey', 'stage_key') || stage_ref['key']
++
++        return if stage_id_value.blank? && stage_key.blank?
++
++        stage = if stage_id_value.present?
++                  CrmPipelineStage.for_account(@account.id).find_by(id: stable_id_value(stage_id_value, 'stage') || stage_id_value)
++                else
++                  CrmPipelineStage.for_account(@account.id).find_by(slug: stage_key.to_s)
++                end
++        raise InvalidPayload, 'Pipeline stage is invalid.' if stage.blank?
++
++        stage
++      end
++
++      def amount_value(payload)
++        raw_amount = payload['amount']
++        amount_payload = raw_amount.is_a?(Hash) ? raw_amount.deep_stringify_keys : {}
++        currency = (amount_payload['currency'].presence || string_value(payload, 'currency')).to_s
++        raise InvalidPayload, 'Only AED deal currency is supported.' if currency.present? && currency != DEFAULT_CURRENCY
++
++        value = amount_payload['amount'].presence || string_value(payload, 'amountValue', 'amount_value')
++        value = raw_amount unless raw_amount.is_a?(Hash) || raw_amount.blank? || value.present?
++        return if value.blank?
++
++        BigDecimal(value.to_s)
++      rescue ArgumentError
++        raise InvalidPayload, 'Deal amount is invalid.'
++      end
++
++      def assigned_manager_id(payload, fallback_id: nil)
++        raw_value = string_value(payload, 'assignedManagerId', 'assigned_manager_id', 'assigned_to')
++        raw_value = payload.dig('assignedManager', 'id') if raw_value.blank? && payload['assignedManager'].is_a?(Hash)
++        raw_value = fallback_id if raw_value.blank? && fallback_id.present?
++        return if raw_value.blank?
++
++        user_id = stable_id_value(raw_value, 'user') || raw_value
++        account_user = @account.account_users.find_by(user_id: user_id)
++        raise InvalidPayload, 'Assigned manager is invalid.' if account_user.blank?
++
++        account_user.user_id
++      end
++
++      def custom_attributes_for(existing_attributes, payload, defaults: {})
++        attrs = existing_attributes.to_h.stringify_keys.merge(defaults)
++        apply_qualification(attrs, payload)
++        apply_attribution(attrs, payload, 'traffic_sources', 'trafficSource', 'traffic_source')
++        apply_attribution(attrs, payload, 'lead_origins', 'leadOrigin', 'lead_origin')
++        apply_lost_reason(attrs, payload)
++        attrs
++      end
++
++      def apply_qualification(attrs, payload)
++        status = string_value(payload, 'qualificationStatus', 'qualification_status')
++        status = payload.dig('qualification', 'status') if status.blank? && payload['qualification'].is_a?(Hash)
++        return if status.blank?
++        raise InvalidPayload, 'Qualification status is invalid.' unless QUALIFICATION_STATUSES.include?(status)
++
++        attrs['qualification_status'] = status
++      end
++
++      def apply_attribution(attrs, payload, collection_key, camel_key, snake_key)
++        nested = payload[camel_key].is_a?(Hash) ? payload[camel_key].deep_stringify_keys : {}
++        key = attribution_key(
++          string_value(payload, "#{camel_key}Key", "#{snake_key}_key", snake_key) ||
++          nested['key']
++        )
++        return if key.blank?
++
++        settings = attribution_settings(collection_key)
++        setting = settings.find { |item| item[:key] == key }
++        raise InvalidPayload, "#{camel_key} is invalid." if settings.present? && setting.blank?
++
++        label = setting&.dig(:label).presence ||
++                string_value(payload, "#{camel_key}Label", "#{snake_key}_label") ||
++                nested['label'].presence ||
++                key.humanize
++
++        attrs["#{snake_key}_key"] = key
++        attrs["#{snake_key}_label"] = label
++        attrs['source_detection_method'] = 'manual'
++        attrs['source_confidence'] = 'manual'
++        attrs['needs_source_clarification'] = false
++      end
++
++      def apply_lost_reason(attrs, payload)
++        nested = payload['lostReason'].is_a?(Hash) ? payload['lostReason'].deep_stringify_keys : {}
++        label = string_value(payload, 'lostReasonLabel', 'lost_reason_label') || nested['label']
++        key = attribution_key(string_value(payload, 'lostReasonKey', 'lost_reason_key', 'lost_reason') || nested['key'] || label)
++        return if key.blank? && label.blank?
++
++        attrs['lost_reason_key'] = key.presence || attribution_key(label)
++        attrs['lost_reason_label'] = label.presence || key.humanize
++      end
++
++      def attribution_settings(collection_key)
++        config = (@account.settings || {})[MARKETING_CONFIG_KEY]
++        return [] unless config.is_a?(Hash)
++
++        Array(config[collection_key] || config[collection_key.to_sym]).filter_map do |item|
++          record = item.respond_to?(:to_h) ? item.to_h.with_indifferent_access : {}
++          key = attribution_key(record[:key])
++          label = record[:label].to_s.strip
++          next if key.blank? || label.blank?
++          next if record.key?(:is_active) && ActiveModel::Type::Boolean.new.cast(record[:is_active]) == false
++
++          { key: key, label: label }
++        end
++      end
++
++      def attribution_or_qualification_payload?(payload)
++        key_present?(
++          payload,
++          'qualificationStatus',
++          'qualification_status',
++          'trafficSource',
++          'trafficSourceKey',
++          'traffic_source',
++          'traffic_source_key',
++          'leadOrigin',
++          'leadOriginKey',
++          'lead_origin',
++          'lead_origin_key',
++          'lostReason',
++          'lostReasonKey',
++          'lost_reason',
++          'lost_reason_key'
++        )
++      end
++
++      def create_activity(deal, activity_type, from_stage: nil, to_stage: nil)
++        return unless defined?(CrmDealActivity)
++
++        CrmDealActivity.create!(
++          account: @account,
++          crm_deal: deal,
++          user: @user,
++          activity_type: activity_type,
++          from_stage: from_stage,
++          to_stage: to_stage
++        )
++      end
++
++      def default_title_for(conversation)
++        conversation.contact&.name.presence ||
++          conversation.contact&.phone_number.presence ||
++          conversation.contact&.email.presence ||
++          "Conversation ##{conversation.display_id}"
++      end
++
++      def string_value(payload, *keys)
++        keys.each do |key|
++          value = payload[key.to_s]
++          return value.to_s.strip if value.present?
++        end
++
++        nil
++      end
++
++      def key_present?(payload, *keys)
++        keys.any? { |key| payload.key?(key.to_s) }
++      end
++
++      def stable_id_value(value, prefix)
++        match = value.to_s.match(/\A#{Regexp.escape(prefix)}_(\d+)\z/)
++        match&.[](1)&.to_i
++      end
++
++      def attribution_key(value)
++        value.to_s
++             .strip
++             .downcase
++             .gsub(/[^a-z0-9]+/, '_')
++             .gsub(/\A_+|_+\z/, '')
++      end
++    end
++  end
++end
+diff --git a/app/services/fleexa_manager/v1/dto_serializer.rb b/app/services/fleexa_manager/v1/dto_serializer.rb
+index 889bf02..f5619cb 100644
+--- a/app/services/fleexa_manager/v1/dto_serializer.rb
++++ b/app/services/fleexa_manager/v1/dto_serializer.rb
+@@ -1,6 +1,8 @@
+ module FleexaManager
+   module V1
+     class DtoSerializer
++      MARKETING_CONFIG_KEY = 'crm_marketing_dashboard'.freeze
++
+       class << self
+         def current_session(user:, memberships:, active_membership:, permissions_for:, role_for:, api_version:)
+           {
+@@ -87,6 +89,39 @@ module FleexaManager
+           }
+         end
+ 
++        def deal(deal, permissions:)
++          attrs = deal.custom_attributes || {}
++          traffic_source = attribution_ref(deal.account, 'traffic_sources', attrs['traffic_source_key'], attrs['traffic_source_label'])
++          lead_origin = attribution_ref(deal.account, 'lead_origins', attrs['lead_origin_key'], attrs['lead_origin_label'])
++          lost_reason = lost_reason_ref(attrs['lost_reason_key'], attrs['lost_reason_label'])
++          qualification_status = safe_qualification_status(attrs['qualification_status'].presence || attrs['lead_qualification_status'].presence)
++
++          {
++            id: deal_id(deal),
++            accountId: account_id(deal.account),
++            title: deal.title.to_s,
++            clientName: deal.contact&.name.presence || deal.title.to_s,
++            amount: money(deal.amount),
++            currency: 'AED',
++            stage: stage_summary(deal.stage),
++            stageKey: deal.stage&.slug.to_s,
++            qualificationStatus: qualification_status,
++            trafficSource: traffic_source,
++            leadOrigin: lead_origin,
++            lostReason: lost_reason,
++            assignedManager: actor(deal.assignee),
++            bookingRef: booking_ref(deal),
++            contact: deal.contact.present? ? contact_summary(deal.contact) : nil,
++            assignee: actor(deal.assignee),
++            sourceAttribution: source_attribution(deal),
++            qualification: lead_qualification(deal),
++            lastActivityAt: iso8601(deal.updated_at),
++            createdAt: iso8601(deal.created_at),
++            updatedAt: iso8601(deal.updated_at),
++            permissions: permissions
++          }
++        end
++
+         def message_id(message)
+           "msg_#{message.id}"
+         end
+@@ -226,22 +261,7 @@ module FleexaManager
+                         .first
+           return if deal.blank?
+ 
+-          {
+-            id: deal_id(deal),
+-            accountId: account_id(conversation.account),
+-            title: deal.title.to_s,
+-            stage: stage_summary(deal.stage),
+-            amount: money(deal.amount),
+-            bookingRef: booking_ref(deal),
+-            contact: deal.contact.present? ? contact_summary(deal.contact) : nil,
+-            assignee: actor(deal.assignee),
+-            sourceAttribution: source_attribution(deal),
+-            qualification: lead_qualification(deal),
+-            lastActivityAt: iso8601(deal.updated_at),
+-            createdAt: iso8601(deal.created_at),
+-            updatedAt: iso8601(deal.updated_at),
+-            permissions: %w[deals:read]
+-          }
++          deal(deal, permissions: %w[deals:read])
+         end
+ 
+         def stage_summary(stage)
+@@ -275,13 +295,15 @@ module FleexaManager
+ 
+         def source_attribution(deal)
+           attrs = deal.custom_attributes || {}
+-          return if attrs.blank?
++          traffic_source = attribution_ref(deal.account, 'traffic_sources', attrs['traffic_source_key'], attrs['traffic_source_label'])
++          lead_origin = attribution_ref(deal.account, 'lead_origins', attrs['lead_origin_key'], attrs['lead_origin_label'])
++          return if attrs.blank? && traffic_source.blank? && lead_origin.blank?
+ 
+           {
+-            trafficSourceKey: attrs['traffic_source_key'].presence,
+-            trafficSourceLabel: attrs['traffic_source_label'].presence,
+-            leadOriginKey: attrs['lead_origin_key'].presence,
+-            leadOriginLabel: attrs['lead_origin_label'].presence,
++            trafficSourceKey: traffic_source&.dig(:key),
++            trafficSourceLabel: traffic_source&.dig(:label),
++            leadOriginKey: lead_origin&.dig(:key),
++            leadOriginLabel: lead_origin&.dig(:label),
+             sourceDetectionMethod: safe_source_detection_method(attrs['source_detection_method']),
+             sourceConfidence: safe_source_confidence(attrs['source_confidence']),
+             needsSourceClarification: ActiveModel::Type::Boolean.new.cast(attrs['needs_source_clarification'])
+@@ -298,17 +320,64 @@ module FleexaManager
+ 
+         def lead_qualification(deal)
+           attrs = deal.custom_attributes || {}
+-          status = attrs['qualification_status'].presence || attrs['lead_qualification_status'].presence
+-          return if status.blank?
+ 
+           {
+-            status: %w[pending unqualified qualified].include?(status) ? status : 'pending',
++            status: safe_qualification_status(attrs['qualification_status'].presence || attrs['lead_qualification_status'].presence),
+             reason: attrs['qualification_reason'].presence,
+             lostReasonKey: attrs['lost_reason_key'].presence,
+             lostReasonLabel: attrs['lost_reason_label'].presence
+           }
+         end
+ 
++        def safe_qualification_status(status)
++          %w[pending unqualified qualified].include?(status) ? status : 'pending'
++        end
++
++        def attribution_ref(account, collection_key, key, fallback_label)
++          normalized_key = attribution_key(key)
++          return if normalized_key.blank?
++
++          setting = attribution_settings(account, collection_key).find { |item| item[:key] == normalized_key }
++
++          {
++            key: normalized_key,
++            label: setting&.dig(:label).presence || fallback_label.presence || normalized_key.humanize
++          }
++        end
++
++        def lost_reason_ref(key, label)
++          normalized_key = attribution_key(key.presence || label)
++          return if normalized_key.blank? && label.blank?
++
++          {
++            key: normalized_key.presence || attribution_key(label),
++            label: label.presence || normalized_key.humanize
++          }
++        end
++
++        def attribution_settings(account, collection_key)
++          config = (account.settings || {})[MARKETING_CONFIG_KEY]
++          items = config.is_a?(Hash) ? config[collection_key] || config[collection_key.to_sym] : []
++
++          Array(items).filter_map do |item|
++            record = item.respond_to?(:to_h) ? item.to_h.with_indifferent_access : {}
++            key = attribution_key(record[:key])
++            label = record[:label].to_s.strip
++            next if key.blank? || label.blank?
++            next if record.key?(:is_active) && ActiveModel::Type::Boolean.new.cast(record[:is_active]) == false
++
++            { key: key, label: label }
++          end
++        end
++
++        def attribution_key(value)
++          value.to_s
++               .strip
++               .downcase
++               .gsub(/[^a-z0-9]+/, '_')
++               .gsub(/\A_+|_+\z/, '')
++        end
++
+         def reply_window(conversation)
+           can_reply = conversation.can_reply?
+ 
+diff --git a/config/routes.rb b/config/routes.rb
+index ac67df7..cb62ed2 100644
+--- a/config/routes.rb
++++ b/config/routes.rb
+@@ -50,8 +50,11 @@ Rails.application.routes.draw do
+         scope 'accounts/:account_id', module: :accounts do
+           get 'conversations', to: 'conversations#index'
+           get 'conversations/:id', to: 'conversations#show'
++          get 'conversations/:conversation_id/deal', to: 'conversations/deals#show'
++          post 'conversations/:conversation_id/deal', to: 'conversations/deals#create'
+           get 'conversations/:conversation_id/messages', to: 'conversations/messages#index'
+           post 'conversations/:conversation_id/messages/text', to: 'conversations/messages#create_text'
++          patch 'deals/:id', to: 'deals#update'
+           get 'manager/counters', to: 'manager/counters#show'
+         end
+       end
+diff --git a/spec/requests/api/fleexa_manager/v1/chat_api_spec.rb b/spec/requests/api/fleexa_manager/v1/chat_api_spec.rb
+index 0752332..5171d5c 100644
+--- a/spec/requests/api/fleexa_manager/v1/chat_api_spec.rb
++++ b/spec/requests/api/fleexa_manager/v1/chat_api_spec.rb
+@@ -472,4 +472,249 @@ RSpec.describe 'Fleexa Manager chat API', type: :request do
+       expect(json_response['error']['code']).to eq('conflict')
+     end
+   end
++
++  describe 'conversation linked deal API' do
++    let!(:stage) do
++      CrmPipelineStage.create!(
++        account: account,
++        slug: 'new',
++        name: 'New',
++        color: '#0EA5A0',
++        position: 1
++      )
++    end
++    let!(:won_stage) do
++      CrmPipelineStage.create!(
++        account: account,
++        slug: 'won',
++        name: 'Won',
++        color: '#2F9E62',
++        position: 2
++      )
++    end
++    let(:deal_path) do
++      "/api/fleexa-manager/v1/accounts/acc_#{account.id}/conversations/conv_#{conversation.display_id}/deal"
++    end
++
++    before do
++      account.update!(
++        settings: {
++          'crm_marketing_dashboard' => {
++            'traffic_sources' => [
++              { 'key' => 'meta_ads', 'label' => 'Meta Ads', 'is_active' => true, 'sort_order' => 1 }
++            ],
++            'lead_origins' => [
++              { 'key' => 'whatsapp', 'label' => 'WhatsApp', 'is_active' => true, 'sort_order' => 1 }
++            ]
++          }
++        }
++      )
++    end
++
++    it 'returns a linked deal as a Manager DTO without raw CRM fields' do
++      deal = CrmDeal.create!(
++        account: account,
++        conversation: conversation,
++        contact: contact,
++        stage: stage,
++        assigned_to: user.id,
++        title: 'Range Rover weekly rental',
++        amount: 14_000,
++        custom_attributes: {
++          'qualification_status' => 'qualified',
++          'traffic_source_key' => 'meta_ads',
++          'traffic_source_label' => 'Old label',
++          'lead_origin_key' => 'whatsapp',
++          'lead_origin_label' => 'Old origin'
++        }
++      )
++
++      get deal_path, headers: headers
++
++      expect(response).to have_http_status(:ok)
++      expect(json_response['linkState']).to eq('linked')
++      expect(json_response['deal']).to include(
++        'id' => "deal_#{deal.id}",
++        'title' => 'Range Rover weekly rental',
++        'clientName' => contact.name,
++        'currency' => 'AED',
++        'stageKey' => 'new',
++        'qualificationStatus' => 'qualified',
++        'assignedManager' => include('id' => "user_#{user.id}")
++      )
++      expect(json_response['deal']['trafficSource']).to eq('key' => 'meta_ads', 'label' => 'Meta Ads')
++      expect(json_response['deal']['leadOrigin']).to eq('key' => 'whatsapp', 'label' => 'WhatsApp')
++      expect(json_response['deal']).not_to include(
++        'custom_attributes',
++        'stage_id',
++        'conversation_id',
++        'assigned_to',
++        'updated_at'
++      )
++    end
++
++    it 'returns missing when no deal is linked to the conversation' do
++      get deal_path, headers: headers
++
++      expect(response).to have_http_status(:ok)
++      expect(json_response).to include(
++        'conversationId' => "conv_#{conversation.display_id}",
++        'linkState' => 'missing',
++        'deal' => nil
++      )
++    end
++
++    it 'creates a deal from the conversation and links it to the same account' do
++      expect do
++        post deal_path,
++             params: {
++               deal: {
++                 title: 'New booking request',
++                 stageKey: 'new',
++                 amount: { amount: '1200', currency: 'AED' },
++                 trafficSourceKey: 'meta_ads',
++                 leadOriginKey: 'whatsapp'
++               }
++             },
++             headers: headers
++      end.to change { CrmDeal.for_account(account.id).count }.by(1)
++
++      deal = CrmDeal.for_account(account.id).order(:created_at).last
++      expect(response).to have_http_status(:created)
++      expect(deal.conversation_id).to eq(conversation.id)
++      expect(deal.contact_id).to eq(contact.id)
++      expect(json_response['linkState']).to eq('linked')
++      expect(json_response['deal']).to include(
++        'id' => "deal_#{deal.id}",
++        'accountId' => "acc_#{account.id}",
++        'stageKey' => 'new',
++        'currency' => 'AED'
++      )
++      expect(json_response['deal']).not_to include('custom_attributes', 'stage_id', 'conversation_id')
++    end
++
++    it 'returns the existing linked deal instead of creating another one' do
++      existing_deal = CrmDeal.create!(
++        account: account,
++        conversation: conversation,
++        contact: contact,
++        stage: stage,
++        title: 'Existing deal'
++      )
++
++      expect do
++        post deal_path, params: { deal: { title: 'Should not duplicate', stageKey: 'new' } }, headers: headers
++      end.not_to change { CrmDeal.for_account(account.id).count }
++
++      expect(response).to have_http_status(:ok)
++      expect(json_response['deal']['id']).to eq("deal_#{existing_deal.id}")
++    end
++
++    it 'updates deal fields through the Manager deal endpoint' do
++      deal = CrmDeal.create!(
++        account: account,
++        conversation: conversation,
++        contact: contact,
++        stage: stage,
++        title: 'Old title',
++        amount: 1000,
++        custom_attributes: { 'qualification_status' => 'pending' }
++      )
++
++      patch "/api/fleexa-manager/v1/accounts/acc_#{account.id}/deals/deal_#{deal.id}",
++            params: {
++              deal: {
++                title: 'Updated rental',
++                amount: { amount: '18000', currency: 'AED' },
++                stageKey: 'won',
++                qualificationStatus: 'qualified',
++                trafficSourceKey: 'meta_ads',
++                leadOriginKey: 'whatsapp',
++                lostReason: { key: 'no_reply', label: 'No reply' }
++              }
++            },
++            headers: headers
++
++      expect(response).to have_http_status(:ok)
++      deal.reload
++      expect(deal.title).to eq('Updated rental')
++      expect(deal.amount).to eq(BigDecimal('18000'))
++      expect(deal.stage_id).to eq(won_stage.id)
++      expect(deal.custom_attributes).to include(
++        'qualification_status' => 'qualified',
++        'traffic_source_key' => 'meta_ads',
++        'lead_origin_key' => 'whatsapp',
++        'lost_reason_key' => 'no_reply',
++        'lost_reason_label' => 'No reply'
++      )
++      expect(json_response['data']).to include(
++        'id' => "deal_#{deal.id}",
++        'stageKey' => 'won',
++        'qualificationStatus' => 'qualified'
++      )
++      expect(json_response['data']).not_to include('custom_attributes', 'stage_id', 'conversation_id')
++    end
++
++    it 'denies inaccessible accounts and conversation-account mismatches' do
++      other_inbox = create(:inbox, account: other_account)
++      other_contact = create(:contact, account: other_account)
++      other_contact_inbox = create(:contact_inbox, contact: other_contact, inbox: other_inbox)
++      other_conversation = create(
++        :conversation,
++        account: other_account,
++        inbox: other_inbox,
++        contact: other_contact,
++        contact_inbox: other_contact_inbox,
++        display_id: 99
++      )
++
++      get "/api/fleexa-manager/v1/accounts/acc_#{other_account.id}/conversations/conv_#{conversation.display_id}/deal",
++          headers: headers
++
++      expect(response).to have_http_status(:forbidden)
++      expect(json_response['error']['code']).to eq('forbidden')
++
++      get "/api/fleexa-manager/v1/accounts/acc_#{account.id}/conversations/conv_#{other_conversation.display_id}/deal",
++          headers: headers
++
++      expect(response).to have_http_status(:not_found)
++      expect(json_response['error']['code']).to eq('not_found')
++    end
++
++    it 'denies updating a deal through the wrong account' do
++      deal = CrmDeal.create!(
++        account: account,
++        conversation: conversation,
++        contact: contact,
++        stage: stage,
++        title: 'Account-owned deal'
++      )
++
++      patch "/api/fleexa-manager/v1/accounts/acc_#{other_account.id}/deals/deal_#{deal.id}",
++            params: { deal: { title: 'Wrong account update' } },
++            headers: headers
++
++      expect(response).to have_http_status(:forbidden)
++      expect(json_response['error']['code']).to eq('forbidden')
++      expect(deal.reload.title).to eq('Account-owned deal')
++    end
++
++    it 'denies invalid stages' do
++      post deal_path,
++           params: { deal: { title: 'Invalid stage', stageKey: 'does_not_exist' } },
++           headers: headers
++
++      expect(response).to have_http_status(:unprocessable_entity)
++      expect(json_response['error']['code']).to eq('validation_failed')
++    end
++
++    it 'denies invalid source keys when attribution settings exist' do
++      post deal_path,
++           params: { deal: { title: 'Invalid source', stageKey: 'new', trafficSourceKey: 'google_ads' } },
++           headers: headers
++
++      expect(response).to have_http_status(:unprocessable_entity)
++      expect(json_response['error']['code']).to eq('validation_failed')
++    end
++  end
+ end

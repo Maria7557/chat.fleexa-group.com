@@ -277,12 +277,16 @@ paths:
         "429":
           $ref: "#/components/responses/RateLimited"
 
-  /accounts/{accountId}/conversations/{conversationId}/linked-deal:
+  /accounts/{accountId}/conversations/{conversationId}/deal:
     get:
       tags:
         - Deals
       operationId: getLinkedDeal
       summary: Get the CRM deal linked to a conversation.
+      description: |
+        Returns the account-scoped Manager deal DTO linked to the conversation,
+        or `missing` when the conversation has no CRM deal yet. The response is
+        not a raw Chatwoot or CRM model payload.
       x-account-isolation: required
       x-permission: deals:read
       parameters:
@@ -301,6 +305,89 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
+    post:
+      tags:
+        - Deals
+      operationId: createConversationDeal
+      summary: Create or return the CRM deal linked to a conversation.
+      description: |
+        Creates a deal from the conversation when none exists. If the
+        conversation already has a linked deal, the existing deal is returned
+        without creating a duplicate. Stage, source, lead origin, and assignment
+        are validated backend-side against account-owned data.
+      x-account-isolation: required
+      x-permission: deals:update
+      parameters:
+        - $ref: "#/components/parameters/AccountId"
+        - $ref: "#/components/parameters/ConversationId"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateConversationDealRequest"
+      responses:
+        "200":
+          description: Existing linked deal returned.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LinkedDealResponse"
+        "201":
+          description: Deal created and linked to the conversation.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LinkedDealResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+
+  /accounts/{accountId}/deals/{dealId}:
+    patch:
+      tags:
+        - Deals
+      operationId: updateDeal
+      summary: Update Manager-visible CRM deal fields.
+      description: |
+        Updates the minimal deal fields needed by Fleexa Manager. The backend
+        owns validation for stage, qualification, source attribution, lead
+        origin, lost reason, assignment, and tenant isolation.
+      x-account-isolation: required
+      x-permission: deals:update
+      parameters:
+        - $ref: "#/components/parameters/AccountId"
+        - $ref: "#/components/parameters/DealId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateDealRequest"
+      responses:
+        "200":
+          description: Deal updated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DealMutationResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
 
   /accounts/{accountId}/deals/{dealId}/stage:
     patch:
@@ -813,6 +900,7 @@ components:
         - conversations:read
         - messages:send
         - deals:read
+        - deals:update
         - deals:update_stage
         - pipeline:read
         - bookings:read
@@ -1290,8 +1378,16 @@ components:
         - id
         - accountId
         - title
-        - stage
+        - clientName
         - amount
+        - currency
+        - stage
+        - stageKey
+        - qualificationStatus
+        - trafficSource
+        - leadOrigin
+        - lostReason
+        - assignedManager
         - createdAt
         - updatedAt
         - permissions
@@ -1302,11 +1398,41 @@ components:
           type: string
         title:
           type: string
+        clientName:
+          type:
+            - string
+            - "null"
         stage:
           $ref: "#/components/schemas/PipelineStageRef"
+        stageKey:
+          type: string
         amount:
           oneOf:
             - $ref: "#/components/schemas/Money"
+            - type: "null"
+        currency:
+          type: string
+          minLength: 3
+          maxLength: 3
+          examples:
+            - AED
+        qualificationStatus:
+          $ref: "#/components/schemas/QualificationStatus"
+        trafficSource:
+          oneOf:
+            - $ref: "#/components/schemas/AttributionRef"
+            - type: "null"
+        leadOrigin:
+          oneOf:
+            - $ref: "#/components/schemas/AttributionRef"
+            - type: "null"
+        lostReason:
+          oneOf:
+            - $ref: "#/components/schemas/AttributionRef"
+            - type: "null"
+        assignedManager:
+          oneOf:
+            - $ref: "#/components/schemas/Actor"
             - type: "null"
         bookingRef:
           oneOf:
@@ -1343,6 +1469,97 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/Permission"
+
+    AttributionRef:
+      type: object
+      required:
+        - key
+        - label
+      properties:
+        key:
+          type: string
+        label:
+          type: string
+
+    QualificationStatus:
+      type: string
+      enum:
+        - pending
+        - qualified
+        - unqualified
+
+    DealDraft:
+      type: object
+      additionalProperties: false
+      properties:
+        title:
+          type: string
+          maxLength: 255
+        clientName:
+          type: string
+          maxLength: 255
+          description: Optional title alias used by mobile clients.
+        amount:
+          oneOf:
+            - $ref: "#/components/schemas/Money"
+            - type: "null"
+        currency:
+          type: string
+          enum:
+            - AED
+          description: Stage 3 supports AED only; multi-currency belongs in backend domain work.
+        stageId:
+          type: string
+          pattern: "^stage_[A-Za-z0-9]+$"
+        stageKey:
+          type: string
+        qualificationStatus:
+          $ref: "#/components/schemas/QualificationStatus"
+        trafficSource:
+          $ref: "#/components/schemas/AttributionRef"
+        trafficSourceKey:
+          type: string
+          description: Must match active Attribution Settings values when they exist.
+        leadOrigin:
+          $ref: "#/components/schemas/AttributionRef"
+        leadOriginKey:
+          type: string
+          description: Must match active Attribution Settings values when they exist.
+        lostReason:
+          $ref: "#/components/schemas/AttributionRef"
+        lostReasonKey:
+          type: string
+        lostReasonLabel:
+          type: string
+        assignedManagerId:
+          type:
+            - string
+            - "null"
+          pattern: "^user_[A-Za-z0-9]+$"
+
+    CreateConversationDealRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        deal:
+          $ref: "#/components/schemas/DealDraft"
+
+    UpdateDealRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - deal
+      properties:
+        deal:
+          $ref: "#/components/schemas/DealDraft"
+
+    DealMutationResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          $ref: "#/components/schemas/DealSummary"
 
     PipelineStageRef:
       type: object

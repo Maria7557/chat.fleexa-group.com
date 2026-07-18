@@ -189,3 +189,72 @@ Closeout verification for the chat-polish change:
 The app still uses `ManagerApiClient` for production/live mode. No raw Chatwoot
 API calls were added to the UI. Polling remains a temporary Stage 3 strategy;
 ActionCable/WebSocket remains required before production beta.
+
+## Linked Deal Manager API
+
+Added after chat workflow polish on branch
+`codex/fleexa-manager-core-stage-3`.
+
+### Implemented
+
+- Added backend-first Manager API endpoints through
+  `chatwoot-patches/fleexa-manager-linked-deal-backend.patch`:
+  - `GET /api/fleexa-manager/v1/accounts/:account_id/conversations/:conversation_id/deal`
+  - `POST /api/fleexa-manager/v1/accounts/:account_id/conversations/:conversation_id/deal`
+  - `PATCH /api/fleexa-manager/v1/accounts/:account_id/deals/:deal_id`
+- Kept Chatwoot/Rails changes patch-only and wired the patch into
+  `Dockerfile.chatwoot`, `make crm-patch-check`, `make crm-patch`, and
+  `make crm-assets-build-host`.
+- The deal response is a Manager DTO, not a raw Chatwoot or CRM model payload.
+  The minimum stable fields now include `id`, `title`, `clientName`, `amount`,
+  `currency`, `stage`, `stageKey`, `qualificationStatus`, `trafficSource`,
+  `leadOrigin`, `lostReason`, `assignedManager`, `createdAt`, and `updatedAt`.
+- `GET` returns the existing linked deal when one exists and returns
+  `linkState: missing` when no deal is linked.
+- `POST` creates a deal from the conversation only when no linked deal exists;
+  repeated create calls return the existing deal instead of duplicating.
+- `PATCH` updates Manager-visible deal fields while keeping stage, assignment,
+  source attribution, lead origin, lost reason, qualification, and tenant
+  validation backend-owned.
+- Source and lead-origin labels are resolved from Attribution Settings when
+  account settings contain active values. The new API path does not use
+  legacy `source_request` or old `first_touch` fields as source of truth.
+- Updated `docs/fleexa-manager/openapi.yaml`, `@fleexa/domain`, and
+  `@fleexa/api-client` so Manager live mode uses `/deal`, plus typed create and
+  update methods. The raw Chatwoot compatibility adapter does not implement
+  linked-deal mutations.
+- Did not add the UI deal panel in this step.
+
+### Test Coverage Added
+
+The backend patch adds request specs for:
+
+- linked deal returned
+- missing linked deal response
+- create deal from conversation
+- duplicate create returning the existing linked deal
+- update deal fields
+- wrong account and conversation-account mismatch denial
+- wrong-account deal update denial
+- invalid stage rejection
+- invalid source rejection when Attribution Settings exist
+- DTO shape without raw CRM fields
+
+### Verification Notes
+
+Closeout verification for the linked-deal API change:
+
+| Check | Result | Notes |
+| --- | --- | --- |
+| `npm run lint` | Pass | ESLint completed with `--max-warnings=0`. |
+| `npm run typecheck` | Pass | Expo app and workspace packages typechecked. |
+| `npm test` | Pass | Vitest: 3 files, 24 tests. |
+| OpenAPI YAML parse | Pass | `docs/fleexa-manager/openapi.yaml` parsed successfully. |
+| `git diff --check` | Pass | No whitespace errors. |
+| Ruby syntax | Pass | New Manager deal controllers, mutation service, serializer, routes, and request spec syntax checked from `/tmp/fleexa-chatwoot-app-build`. |
+| Patch apply check | Pass | The new linked-deal patch applied cleanly to the already-patched local Rails container state and reverse-checked cleanly against the authored temp app. |
+| `make crm-assets-build-host` | Pass | Clean Chatwoot host build applied the full patch chain, including the linked-deal patch, and built Vite assets. |
+| `make crm-patch-check` | Blocked by local container state | The running Rails container is already patched and rejects reapplying existing CRM files such as `app/models/crm_pipeline_stage.rb`. Clean host build is the authoritative full-chain validation. |
+| Backend request specs | Authored, runner blocked | Host run requires Bundler 2.5.16; the running Rails container reports `bundler: command not found: rspec`. |
+| Manager API smoke | Pass | `GET` missing/read `200`, create `201`, update `200`, invalid stage `422`, invalid source `422`, wrong account `403`, and raw-field leak check `no`. |
+| DTO smoke | Pass | Smoke response included all required Manager deal fields and resolved `trafficSource`/`leadOrigin` labels from Attribution Settings. |

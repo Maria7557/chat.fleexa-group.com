@@ -6,6 +6,7 @@ import type {
   BookingByDealResponse,
   ChannelType,
   ConversationFilter,
+  CreateConversationDealRequest,
   ConversationDetailResponse,
   ConversationListItem,
   ConversationListResponse,
@@ -13,6 +14,7 @@ import type {
   ContactSummary,
   DeliveryStatus,
   CurrentSessionResponse,
+  DealMutationResponse,
   DealSummary,
   DealStageUpdateResponse,
   DealsByStageResponse,
@@ -28,6 +30,7 @@ import type {
   Permission,
   PipelineStageRef,
   PipelineStagesResponse,
+  UpdateDealRequest,
 } from '@fleexa/domain';
 
 export type TokenProvider = () => string | null | Promise<string | null>;
@@ -77,6 +80,16 @@ export interface UpdateDealStageParams {
   idempotencyKey?: string;
 }
 
+export interface CreateConversationDealParams extends CreateConversationDealRequest {
+  accountId: string;
+  conversationId: string;
+}
+
+export interface UpdateDealParams extends UpdateDealRequest {
+  accountId: string;
+  dealId: string;
+}
+
 export interface ListDealsByStageParams {
   accountId: string;
   stageId: string;
@@ -94,6 +107,8 @@ export interface FleexaApiClient {
   listMessages(params: ListMessagesParams): Promise<MessageListResponse>;
   sendTextMessage(params: SendTextMessageParams): Promise<MessageSendResponse>;
   getLinkedDeal(accountId: string, conversationId: string): Promise<LinkedDealResponse>;
+  createDealFromConversation(params: CreateConversationDealParams): Promise<LinkedDealResponse>;
+  updateDeal(params: UpdateDealParams): Promise<DealMutationResponse>;
   updateDealStage(params: UpdateDealStageParams): Promise<DealStageUpdateResponse>;
   listPipelineStages(accountId: string, includeCounters?: boolean): Promise<PipelineStagesResponse>;
   listDealsByStage(params: ListDealsByStageParams): Promise<DealsByStageResponse>;
@@ -772,6 +787,24 @@ export class ChatwootFleexaApiClient implements FleexaApiClient {
     };
   }
 
+  async createDealFromConversation(_params: CreateConversationDealParams): Promise<LinkedDealResponse> {
+    throw new FleexaApiError(501, {
+      error: {
+        code: 'unknown_error',
+        message: 'Creating linked deals requires the Fleexa Manager API layer.',
+      },
+    });
+  }
+
+  async updateDeal(_params: UpdateDealParams): Promise<DealMutationResponse> {
+    throw new FleexaApiError(501, {
+      error: {
+        code: 'unknown_error',
+        message: 'Updating deals requires the Fleexa Manager API layer.',
+      },
+    });
+  }
+
   async updateDealStage(_params: UpdateDealStageParams): Promise<DealStageUpdateResponse> {
     throw new FleexaApiError(501, {
       error: {
@@ -959,7 +992,25 @@ export class ManagerApiClient implements FleexaApiClient {
   }
 
   async getLinkedDeal(accountId: string, conversationId: string): Promise<LinkedDealResponse> {
-    return this.request(`/accounts/${accountId}/conversations/${conversationId}/linked-deal`);
+    return this.request(`/accounts/${accountId}/conversations/${conversationId}/deal`);
+  }
+
+  async createDealFromConversation(params: CreateConversationDealParams): Promise<LinkedDealResponse> {
+    return this.request(`/accounts/${params.accountId}/conversations/${params.conversationId}/deal`, {
+      method: 'POST',
+      body: {
+        deal: params.deal ?? {},
+      },
+    });
+  }
+
+  async updateDeal(params: UpdateDealParams): Promise<DealMutationResponse> {
+    return this.request(`/accounts/${params.accountId}/deals/${params.dealId}`, {
+      method: 'PATCH',
+      body: {
+        deal: params.deal,
+      },
+    });
   }
 
   async updateDealStage(params: UpdateDealStageParams): Promise<DealStageUpdateResponse> {
@@ -1082,6 +1133,7 @@ const mockSession: CurrentSessionResponse = {
         'conversations:read',
         'messages:send',
         'deals:read',
+        'deals:update',
         'deals:update_stage',
         'pipeline:read',
         'bookings:read',
@@ -1095,6 +1147,7 @@ const mockSession: CurrentSessionResponse = {
     'conversations:read',
     'messages:send',
     'deals:read',
+    'deals:update',
     'deals:update_stage',
     'pipeline:read',
     'bookings:read',
@@ -1153,29 +1206,44 @@ const mockDeal: DealSummary = {
   id: 'deal_mock_range_rover',
   accountId: 'acc_mock_fleexa',
   title: 'Range Rover weekly rental',
+  clientName: 'Amina Noor',
   stage: {
     id: 'stage_reserved',
     key: 'reserved',
     name: 'Reserved',
   },
+  stageKey: 'reserved',
   amount: {
     amount: '14000',
     currency: 'AED',
   },
+  currency: 'AED',
+  qualificationStatus: 'qualified',
+  trafficSource: {
+    key: 'meta_ads',
+    label: 'Meta Ads',
+  },
+  leadOrigin: {
+    key: 'whatsapp',
+    label: 'WhatsApp',
+  },
+  lostReason: null,
+  assignedManager: { id: 'user_mock_manager', displayName: 'Fleexa Manager', type: 'user' },
   bookingRef: {
     bookingId: 'booking_mock_2048',
     status: 'confirmed' as const,
     externalBookingId: 'BK-2048',
   },
   contact: mockContact,
+  assignee: { id: 'user_mock_manager', displayName: 'Fleexa Manager', type: 'user' },
   lastActivityAt: now,
   createdAt: now,
   updatedAt: now,
-  permissions: ['deals:read', 'deals:update_stage'],
+  permissions: ['deals:read', 'deals:update', 'deals:update_stage'],
 };
 
 const mockStageRefFor = (stageId: string): PipelineStageRef => {
-  const stage = mockStages.data.find(item => item.id === stageId) ?? mockStages.data[0];
+  const stage = mockStages.data.find(item => item.id === stageId || item.key === stageId) ?? mockStages.data[0];
 
   return {
     id: stage?.id ?? 'stage_new',
@@ -1326,15 +1394,53 @@ export class MockFleexaApiClient implements FleexaApiClient {
     };
   }
 
-  async updateDealStage(params: UpdateDealStageParams): Promise<DealStageUpdateResponse> {
+  async createDealFromConversation(params: CreateConversationDealParams): Promise<LinkedDealResponse> {
+    return {
+      conversationId: params.conversationId,
+      linkState: 'linked',
+      deal: {
+        ...mockDeal,
+        title: params.deal?.title ?? mockDeal.title,
+        clientName: params.deal?.clientName ?? mockDeal.clientName,
+        amount: params.deal?.amount ?? mockDeal.amount,
+        currency: params.deal?.currency ?? mockDeal.currency,
+        qualificationStatus: params.deal?.qualificationStatus ?? mockDeal.qualificationStatus,
+      },
+    };
+  }
+
+  async updateDeal(params: UpdateDealParams): Promise<DealMutationResponse> {
+    const stage =
+      params.deal.stageId || params.deal.stageKey
+        ? mockStageRefFor(params.deal.stageId ?? params.deal.stageKey ?? mockDeal.stage.id)
+        : mockDeal.stage;
+
     return {
       data: {
         ...mockDeal,
-        stage: mockStageRefFor(params.stageId),
+        title: params.deal.title ?? mockDeal.title,
+        clientName: params.deal.clientName ?? mockDeal.clientName,
+        amount: params.deal.amount ?? mockDeal.amount,
+        currency: params.deal.currency ?? mockDeal.currency,
+        stage,
+        stageKey: stage.key,
+        qualificationStatus: params.deal.qualificationStatus ?? mockDeal.qualificationStatus,
+      },
+    };
+  }
+
+  async updateDealStage(params: UpdateDealStageParams): Promise<DealStageUpdateResponse> {
+    const stage = mockStageRefFor(params.stageId);
+
+    return {
+      data: {
+        ...mockDeal,
+        stage,
+        stageKey: stage.key,
       },
       transition: {
         fromStage: mockDeal.stage,
-        toStage: mockStageRefFor(params.stageId),
+        toStage: stage,
         changedAt: now,
         changedBy: { id: 'user_mock_manager', displayName: 'Fleexa Manager', type: 'user' },
       },

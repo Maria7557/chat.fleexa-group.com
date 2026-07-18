@@ -3,6 +3,7 @@ export const PERMISSIONS = [
   'conversations:read',
   'messages:send',
   'deals:read',
+  'deals:update',
   'deals:update_stage',
   'pipeline:read',
   'bookings:read',
@@ -127,11 +128,18 @@ export interface SourceAttribution {
   needsSourceClarification: boolean;
 }
 
+export type QualificationStatus = 'pending' | 'qualified' | 'unqualified';
+
 export interface LeadQualification {
-  status: 'pending' | 'qualified' | 'unqualified';
+  status: QualificationStatus;
   reason?: string | null;
   lostReasonKey?: string | null;
   lostReasonLabel?: string | null;
+}
+
+export interface AttributionRef {
+  key: string;
+  label: string;
 }
 
 export interface BookingRef {
@@ -144,8 +152,16 @@ export interface DealSummary {
   id: string;
   accountId: string;
   title: string;
-  stage: PipelineStageRef;
+  clientName: string | null;
   amount: Money | null;
+  currency: string;
+  stage: PipelineStageRef;
+  stageKey: string;
+  qualificationStatus: QualificationStatus;
+  trafficSource: AttributionRef | null;
+  leadOrigin: AttributionRef | null;
+  lostReason: AttributionRef | null;
+  assignedManager: Actor | null;
   bookingRef?: BookingRef | null;
   contact?: ContactSummary | null;
   assignee?: Actor | null;
@@ -302,6 +318,36 @@ export interface LinkedDealResponse {
   conversationId: string;
   linkState: 'linked' | 'missing' | 'inaccessible';
   deal: DealSummary | null;
+}
+
+export interface DealDraft {
+  title?: string;
+  clientName?: string;
+  amount?: Money | null;
+  currency?: string;
+  stageId?: string;
+  stageKey?: string;
+  qualificationStatus?: QualificationStatus;
+  trafficSource?: AttributionRef;
+  trafficSourceKey?: string;
+  leadOrigin?: AttributionRef;
+  leadOriginKey?: string;
+  lostReason?: AttributionRef;
+  lostReasonKey?: string;
+  lostReasonLabel?: string;
+  assignedManagerId?: string | null;
+}
+
+export interface CreateConversationDealRequest {
+  deal?: DealDraft;
+}
+
+export interface UpdateDealRequest {
+  deal: DealDraft;
+}
+
+export interface DealMutationResponse {
+  data: DealSummary;
 }
 
 export interface DealStageTransition {

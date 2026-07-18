@@ -234,7 +234,16 @@ describe('@fleexa/api-client', () => {
 
     expect(login.accessToken).toContain('mock');
     expect(session.apiVersion).toContain('mock');
-    expect(conversations.data[0]?.linkedDeal?.id).toMatch(/^deal_/);
+    expect(conversations.data[0]?.linkedDeal).toMatchObject({
+      id: expect.stringMatching(/^deal_/),
+      clientName: 'Amina Noor',
+      currency: 'AED',
+      stageKey: 'reserved',
+      qualificationStatus: 'qualified',
+      trafficSource: { key: 'meta_ads', label: 'Meta Ads' },
+      leadOrigin: { key: 'whatsapp', label: 'WhatsApp' },
+      assignedManager: { id: 'user_mock_manager' },
+    });
     expect(conversations.data[0]).toMatchObject({
       assignedManager: { id: 'user_mock_manager' },
       lastCustomerMessageAt: '2026-07-18T09:00:00.000Z',
@@ -306,6 +315,109 @@ describe('@fleexa/api-client', () => {
       duplicate: false,
       originalMessageId: null,
     });
+  });
+
+  it('uses Manager deal endpoints for linked deal read, create, and update', async () => {
+    const managerDeal = {
+      id: 'deal_9',
+      accountId: 'acc_1',
+      title: 'Range Rover rental',
+      clientName: 'Amina Noor',
+      amount: { amount: '14000', currency: 'AED' },
+      currency: 'AED',
+      stage: { id: 'stage_new', key: 'new', name: 'New' },
+      stageKey: 'new',
+      qualificationStatus: 'qualified',
+      trafficSource: { key: 'meta_ads', label: 'Meta Ads' },
+      leadOrigin: { key: 'whatsapp', label: 'WhatsApp' },
+      lostReason: null,
+      assignedManager: { id: 'user_1', displayName: 'Manager', type: 'user' },
+      createdAt: '2026-07-18T09:00:00Z',
+      updatedAt: '2026-07-18T09:00:00Z',
+      permissions: ['deals:read', 'deals:update'],
+    };
+    const fetchImpl = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith('/deals/deal_9')) {
+        return new Response(JSON.stringify({ data: { ...managerDeal, title: 'Updated rental' } }));
+      }
+
+      return new Response(
+        JSON.stringify({
+          conversationId: 'conv_81',
+          linkState: 'linked',
+          deal: managerDeal,
+        }),
+        { status: init?.method === 'POST' ? 201 : 200 }
+      );
+    });
+    const client = new ManagerApiClient({
+      baseUrl: 'https://api.example.com/api/fleexa-manager/v1',
+      tokenProvider: () => 'access-token',
+      fetchImpl,
+    });
+
+    const linkedDeal = await client.getLinkedDeal('acc_1', 'conv_81');
+    await client.createDealFromConversation({
+      accountId: 'acc_1',
+      conversationId: 'conv_81',
+      deal: {
+        title: 'Range Rover rental',
+        amount: { amount: '14000', currency: 'AED' },
+        stageKey: 'new',
+        trafficSourceKey: 'meta_ads',
+        leadOriginKey: 'whatsapp',
+      },
+    });
+    const updatedDeal = await client.updateDeal({
+      accountId: 'acc_1',
+      dealId: 'deal_9',
+      deal: {
+        title: 'Updated rental',
+        qualificationStatus: 'qualified',
+      },
+    });
+
+    expect(fetchImpl).toHaveBeenNthCalledWith(
+      1,
+      'https://api.example.com/api/fleexa-manager/v1/accounts/acc_1/conversations/conv_81/deal',
+      expect.objectContaining({
+        method: 'GET',
+        headers: expect.objectContaining({ Authorization: 'Bearer access-token' }),
+      })
+    );
+    expect(fetchImpl).toHaveBeenNthCalledWith(
+      2,
+      'https://api.example.com/api/fleexa-manager/v1/accounts/acc_1/conversations/conv_81/deal',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({
+          deal: {
+            title: 'Range Rover rental',
+            amount: { amount: '14000', currency: 'AED' },
+            stageKey: 'new',
+            trafficSourceKey: 'meta_ads',
+            leadOriginKey: 'whatsapp',
+          },
+        }),
+      })
+    );
+    expect(fetchImpl).toHaveBeenNthCalledWith(
+      3,
+      'https://api.example.com/api/fleexa-manager/v1/accounts/acc_1/deals/deal_9',
+      expect.objectContaining({
+        method: 'PATCH',
+        body: JSON.stringify({
+          deal: {
+            title: 'Updated rental',
+            qualificationStatus: 'qualified',
+          },
+        }),
+      })
+    );
+    expect(fetchImpl.mock.calls.map(call => String(call[0])).join('\n')).not.toContain('linked-deal');
+    expect(linkedDeal.deal?.trafficSource).toEqual({ key: 'meta_ads', label: 'Meta Ads' });
+    expect(updatedDeal.data.title).toBe('Updated rental');
   });
 
   it('maps Chatwoot profile and conversations into Manager DTOs', async () => {
