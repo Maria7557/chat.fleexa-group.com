@@ -156,8 +156,11 @@ export interface DealSummary {
   amount: Money | null;
   currency: string;
   stage: PipelineStageRef;
+  stageId: string;
   stageKey: string;
+  stageLabel: string;
   qualificationStatus: QualificationStatus;
+  source: AttributionRef | null;
   trafficSource: AttributionRef | null;
   leadOrigin: AttributionRef | null;
   lostReason: AttributionRef | null;
@@ -168,6 +171,7 @@ export interface DealSummary {
   sourceAttribution?: SourceAttribution | null;
   qualification?: LeadQualification | null;
   lastActivityAt?: IsoDateTime | null;
+  lastMessageAt: IsoDateTime | null;
   createdAt: IsoDateTime;
   updatedAt: IsoDateTime;
   permissions: Permission[];
@@ -235,6 +239,7 @@ export interface PipelineStage {
   id: string;
   key: string;
   name: string;
+  color: string;
   position: number;
   kind: 'intake' | 'active' | 'successful' | 'lost';
   isTerminal: boolean;
@@ -365,6 +370,11 @@ export interface DealStageUpdateResponse {
 
 export interface PipelineStagesResponse {
   data: PipelineStage[];
+}
+
+export interface DealsListResponse {
+  data: DealSummary[];
+  page: CursorPage;
 }
 
 export interface DealsByStageResponse {

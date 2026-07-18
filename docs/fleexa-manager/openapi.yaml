@@ -463,7 +463,11 @@ paths:
       tags:
         - Pipeline
       operationId: listDealsByStage
-      summary: List deals in one stage.
+      summary: List deals in one stage through the Stage 2 compatibility alias.
+      description: |
+        Compatibility alias for older clients that already hold a stage id.
+        New Stage 3 clients should prefer `/accounts/{accountId}/pipeline/deals`
+        with `stageId` or `stageKey` query parameters.
       x-account-isolation: required
       x-permission: deals:read
       parameters:
@@ -495,6 +499,65 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/DealsByStageResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /accounts/{accountId}/pipeline/deals:
+    get:
+      tags:
+        - Pipeline
+      operationId: listPipelineDeals
+      summary: List account-scoped Manager deal list DTOs.
+      description: |
+        Returns normalized deal list items for Manager pipeline surfaces.
+        Pipeline stages remain backend-owned: clients must use stage ids,
+        keys, labels, colors, order, and terminal semantics returned by the
+        Manager API and must not hardcode stage names or colors.
+      x-account-isolation: required
+      x-permission: deals:read
+      parameters:
+        - $ref: "#/components/parameters/AccountId"
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+        - name: stageId
+          in: query
+          schema:
+            type: string
+            pattern: "^stage_[A-Za-z0-9]+$"
+        - name: stageKey
+          in: query
+          schema:
+            type: string
+        - name: assignedTo
+          in: query
+          schema:
+            type: string
+            examples:
+              - me
+              - user_01J5N2C9X3H3STQW1MGJ8B6RWD
+        - name: sort
+          in: query
+          schema:
+            type: string
+            enum:
+              - last_activity_desc
+              - created_desc
+              - amount_desc
+              - amount_asc
+            default: last_activity_desc
+      responses:
+        "200":
+          description: Paginated account deal list DTOs.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DealsListResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
@@ -1382,12 +1445,16 @@ components:
         - amount
         - currency
         - stage
+        - stageId
         - stageKey
+        - stageLabel
         - qualificationStatus
+        - source
         - trafficSource
         - leadOrigin
         - lostReason
         - assignedManager
+        - lastMessageAt
         - createdAt
         - updatedAt
         - permissions
@@ -1404,7 +1471,12 @@ components:
             - "null"
         stage:
           $ref: "#/components/schemas/PipelineStageRef"
+        stageId:
+          type: string
+          pattern: "^stage_[A-Za-z0-9]+$"
         stageKey:
+          type: string
+        stageLabel:
           type: string
         amount:
           oneOf:
@@ -1418,6 +1490,11 @@ components:
             - AED
         qualificationStatus:
           $ref: "#/components/schemas/QualificationStatus"
+        source:
+          description: Alias for the primary traffic source used by compact pipeline list DTOs.
+          oneOf:
+            - $ref: "#/components/schemas/AttributionRef"
+            - type: "null"
         trafficSource:
           oneOf:
             - $ref: "#/components/schemas/AttributionRef"
@@ -1455,6 +1532,11 @@ components:
             - $ref: "#/components/schemas/LeadQualification"
             - type: "null"
         lastActivityAt:
+          type:
+            - string
+            - "null"
+          format: date-time
+        lastMessageAt:
           type:
             - string
             - "null"
@@ -1595,6 +1677,13 @@ components:
             - string
             - "null"
           maxLength: 1000
+        lostReason:
+          $ref: "#/components/schemas/AttributionRef"
+        lostReasonKey:
+          type: string
+        lostReasonLabel:
+          type: string
+          description: Required when moving into lost/cancelled stages if account loss-reason rules are configured.
 
     DealStageUpdateResponse:
       type: object
@@ -1647,6 +1736,7 @@ components:
         - id
         - key
         - name
+        - color
         - position
         - kind
         - isTerminal
@@ -1657,6 +1747,9 @@ components:
           type: string
         name:
           type: string
+        color:
+          type: string
+          pattern: "^#[0-9A-Fa-f]{6}$"
         position:
           type: integer
         kind:
@@ -1699,6 +1792,19 @@ components:
           type: string
         label:
           type: string
+
+    DealsListResponse:
+      type: object
+      required:
+        - data
+        - page
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/DealSummary"
+        page:
+          $ref: "#/components/schemas/CursorPage"
 
     DealsByStageResponse:
       type: object

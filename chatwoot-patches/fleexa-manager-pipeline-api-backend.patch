@@ -1,0 +1,667 @@
+diff --git a/app/controllers/api/fleexa_manager/v1/accounts/deals_controller.rb b/app/controllers/api/fleexa_manager/v1/accounts/deals_controller.rb
+index 43ac6f8..b2a7c75 100644
+--- a/app/controllers/api/fleexa_manager/v1/accounts/deals_controller.rb
++++ b/app/controllers/api/fleexa_manager/v1/accounts/deals_controller.rb
+@@ -19,6 +19,32 @@ class Api::FleexaManager::V1::Accounts::DealsController < Api::FleexaManager::V1
+     render_manager_error('validation_failed', e.record.errors.full_messages.join(', '), status: :unprocessable_entity)
+   end
+ 
++  def stage
++    return unless ensure_deal_stage_permission
++    return render_manager_error('validation_failed', 'stageId or stageKey is required.', status: :unprocessable_entity) if params[:stageId].blank? && params[:stageKey].blank?
++
++    deal = find_deal
++    return if performed?
++
++    old_stage = deal.stage
++    result = deal_mutation_service.update(deal: deal, payload: stage_update_payload)
++
++    render json: {
++      data: FleexaManager::V1::DtoSerializer.deal(result.deal, permissions: deal_permissions),
++      transition: {
++        fromStage: FleexaManager::V1::DtoSerializer.stage_ref(old_stage),
++        toStage: FleexaManager::V1::DtoSerializer.stage_ref(result.deal.stage),
++        changedAt: Time.current.utc.iso8601,
++        changedBy: FleexaManager::V1::DtoSerializer.actor_ref(current_manager_user)
++      },
++      emittedEventId: nil
++    }
++  rescue FleexaManager::V1::DealMutationService::InvalidPayload => e
++    render_manager_error('validation_failed', e.message, status: :unprocessable_entity, details: e.details)
++  rescue ActiveRecord::RecordInvalid => e
++    render_manager_error('validation_failed', e.record.errors.full_messages.join(', '), status: :unprocessable_entity)
++  end
++
+   private
+ 
+   def find_deal
+@@ -53,6 +79,25 @@ class Api::FleexaManager::V1::Accounts::DealsController < Api::FleexaManager::V1
+     false
+   end
+ 
++  def ensure_deal_stage_permission
++    return true if manager_permissions(@current_account_user).include?('deals:update_stage')
++
++    render_manager_error('forbidden', 'Deal stage updates are not permitted.', status: :forbidden)
++    false
++  end
++
++  def stage_update_payload
++    {
++      deal: {
++        stageId: params[:stageId],
++        stageKey: params[:stageKey],
++        lostReason: params[:lostReason],
++        lostReasonKey: params[:lostReasonKey],
++        lostReasonLabel: params[:lostReasonLabel]
++      }.compact
++    }
++  end
++
+   def deal_permissions
+     manager_permissions(@current_account_user) & %w[deals:read deals:update deals:update_stage]
+   end
+diff --git a/app/controllers/api/fleexa_manager/v1/accounts/pipeline/deals_controller.rb b/app/controllers/api/fleexa_manager/v1/accounts/pipeline/deals_controller.rb
+new file mode 100644
+index 0000000..24cef73
+--- /dev/null
++++ b/app/controllers/api/fleexa_manager/v1/accounts/pipeline/deals_controller.rb
+@@ -0,0 +1,147 @@
++class Api::FleexaManager::V1::Accounts::Pipeline::DealsController < Api::FleexaManager::V1::BaseController
++  before_action :set_current_account_from_params
++  before_action :ensure_crm_pipeline_available!
++
++  def index
++    return unless ensure_deal_read_permission
++
++    limit = request_limit
++    return if performed?
++
++    scope = apply_deal_filters(deal_scope)
++    return if performed?
++
++    sorted_scope = apply_deal_sort(scope)
++    return if performed?
++
++    deals = sorted_scope.limit(limit + 1).to_a
++    visible_deals = deals.first(limit)
++    has_more = deals.length > limit
++    next_cursor = visible_deals.any? ? deal_cursor_for(visible_deals.last) : nil
++
++    payload = {
++      data: visible_deals.map do |deal|
++        FleexaManager::V1::DtoSerializer.deal(deal, permissions: deal_permissions)
++      end,
++      page: cursor_page(
++        items: visible_deals,
++        has_more: has_more,
++        limit: limit,
++        next_cursor: next_cursor
++      )
++    }
++    payload[:stage] = FleexaManager::V1::DtoSerializer.stage_ref(@filtered_stage) if params[:stage_id].present? && @filtered_stage.present?
++
++    render json: payload
++  end
++
++  private
++
++  def deal_scope
++    CrmDeal.for_account(Current.account.id)
++           .includes(:stage, :contact, :conversation, :assignee)
++           .left_joins(:conversation)
++  end
++
++  def apply_deal_filters(scope)
++    scope = apply_stage_filter(scope)
++    return scope if performed?
++
++    scope = apply_assignment_filter(scope)
++    return scope if performed?
++
++    apply_deal_cursor(scope)
++  end
++
++  def apply_stage_filter(scope)
++    stage_filter = params[:stageId].presence || params[:stage_id].presence || params[:stageKey].presence
++    return scope if stage_filter.blank?
++
++    stage = find_stage(stage_filter)
++    return scope.none if performed?
++
++    @filtered_stage = stage
++    scope.where(stage_id: stage.id)
++  end
++
++  def apply_assignment_filter(scope)
++    assigned_to = params[:assignedTo].presence
++    return scope if assigned_to.blank?
++
++    return scope.where(assigned_to: current_manager_user.id) if assigned_to == 'me'
++
++    user_id = stable_id_value(assigned_to, 'user')
++    return render_manager_error('bad_request', 'Invalid assignedTo.', status: :bad_request) if user_id.blank?
++
++    return scope.where(assigned_to: user_id) if Current.account.account_users.where(user_id: user_id).exists?
++
++    render_manager_error('forbidden', 'Assigned manager is not accessible.', status: :forbidden)
++    scope.none
++  end
++
++  def apply_deal_cursor(scope)
++    cursor = decoded_cursor
++    return scope if cursor.blank? && !performed?
++    return scope.none if performed?
++
++    id = cursor['id'].to_i
++    unless id.positive?
++      render_manager_error('bad_request', 'Invalid cursor.', status: :bad_request)
++      return scope.none
++    end
++
++    scope.where('crm_deals.id < ?', id)
++  end
++
++  def apply_deal_sort(scope)
++    case params[:sort].presence || 'last_activity_desc'
++    when 'last_activity_desc'
++      scope.reorder(Arel.sql('COALESCE(conversations.last_activity_at, crm_deals.updated_at) DESC'), id: :desc)
++    when 'created_desc'
++      scope.reorder(created_at: :desc, id: :desc)
++    when 'amount_desc'
++      scope.reorder(amount: :desc, id: :desc)
++    when 'amount_asc'
++      scope.reorder(amount: :asc, id: :desc)
++    else
++      render_manager_error('bad_request', 'Invalid deal sort.', status: :bad_request)
++      scope.none
++    end
++  end
++
++  def deal_cursor_for(deal)
++    encode_cursor({ id: deal.id })
++  end
++
++  def find_stage(stage_param)
++    stage_id = stable_id_value(stage_param, 'stage')
++    scope = CrmPipelineStage.for_account(Current.account.id)
++    stage = if stage_id.present?
++              scope.find_by(id: stage_id)
++            else
++              scope.find_by(slug: stage_param.to_s)
++            end
++
++    return stage if stage.present?
++
++    render_manager_error('not_found', 'Pipeline stage was not found.', status: :not_found)
++    nil
++  end
++
++  def ensure_crm_pipeline_available!
++    return if defined?(CrmPipelineStage) && defined?(CrmDeal)
++
++    render_manager_error('not_found', 'CRM pipeline is not available.', status: :not_found)
++  end
++
++  def ensure_deal_read_permission
++    return true if manager_permissions(@current_account_user).include?('deals:read')
++
++    render_manager_error('forbidden', 'Deal access is not permitted.', status: :forbidden)
++    false
++  end
++
++  def deal_permissions
++    manager_permissions(@current_account_user) & %w[deals:read deals:update deals:update_stage]
++  end
++end
+diff --git a/app/controllers/api/fleexa_manager/v1/accounts/pipeline/stages_controller.rb b/app/controllers/api/fleexa_manager/v1/accounts/pipeline/stages_controller.rb
+new file mode 100644
+index 0000000..2acc075
+--- /dev/null
++++ b/app/controllers/api/fleexa_manager/v1/accounts/pipeline/stages_controller.rb
+@@ -0,0 +1,35 @@
++class Api::FleexaManager::V1::Accounts::Pipeline::StagesController < Api::FleexaManager::V1::BaseController
++  before_action :set_current_account_from_params
++  before_action :ensure_crm_pipeline_available!
++
++  def index
++    return unless ensure_pipeline_read_permission
++
++    include_counters = ActiveModel::Type::Boolean.new.cast(params.fetch(:includeCounters, true))
++    stages = CrmPipelineStage.for_account(Current.account.id).ordered
++
++    render json: {
++      data: stages.map do |stage|
++        FleexaManager::V1::DtoSerializer.pipeline_stage(
++          stage,
++          include_counters: include_counters
++        )
++      end
++    }
++  end
++
++  private
++
++  def ensure_crm_pipeline_available!
++    return if defined?(CrmPipelineStage) && defined?(CrmDeal)
++
++    render_manager_error('not_found', 'CRM pipeline is not available.', status: :not_found)
++  end
++
++  def ensure_pipeline_read_permission
++    return true if manager_permissions(@current_account_user).include?('pipeline:read')
++
++    render_manager_error('forbidden', 'Pipeline access is not permitted.', status: :forbidden)
++    false
++  end
++end
+diff --git a/app/services/fleexa_manager/v1/deal_mutation_service.rb b/app/services/fleexa_manager/v1/deal_mutation_service.rb
+index 3353b56..bd1b3b6 100644
+--- a/app/services/fleexa_manager/v1/deal_mutation_service.rb
++++ b/app/services/fleexa_manager/v1/deal_mutation_service.rb
+@@ -64,6 +64,8 @@ module FleexaManager
+           attrs[:custom_attributes] = custom_attributes_for(deal.custom_attributes || {}, normalized_payload)
+         end
+ 
++        validate_lost_reason_for_stage!(stage, attrs[:custom_attributes] || deal.custom_attributes || {}, normalized_payload) if stage.present?
++
+         old_stage = deal.stage
+         ActiveRecord::Base.transaction do
+           deal.update!(attrs)
+@@ -198,6 +200,22 @@ module FleexaManager
+         attrs['lost_reason_label'] = label.presence || key.humanize
+       end
+ 
++      def validate_lost_reason_for_stage!(stage, attrs, payload)
++        return unless lost_reason_required_for?(stage)
++        return if attrs.to_h['lost_reason_key'].present? || attrs.to_h['lost_reason_label'].present?
++        return if key_present?(payload, 'lostReason', 'lostReasonKey', 'lostReasonLabel', 'lost_reason', 'lost_reason_key', 'lost_reason_label')
++
++        raise InvalidPayload, 'Lost reason is required when moving a deal to a lost or cancelled stage.'
++      end
++
++      def lost_reason_required_for?(stage)
++        return false unless defined?(CrmLossReasonOption)
++        return false unless CrmLossReasonOption.for_account(@account.id).active.exists?
++
++        stage_text = [stage.slug, stage.name, stage.try(:fleet_status_trigger)].compact.join(' ').downcase
++        stage_text.include?('lost') || stage_text.include?('cancel')
++      end
++
+       def attribution_settings(collection_key)
+         config = (@account.settings || {})[MARKETING_CONFIG_KEY]
+         return [] unless config.is_a?(Hash)
+diff --git a/app/services/fleexa_manager/v1/dto_serializer.rb b/app/services/fleexa_manager/v1/dto_serializer.rb
+index f5619cb..112539d 100644
+--- a/app/services/fleexa_manager/v1/dto_serializer.rb
++++ b/app/services/fleexa_manager/v1/dto_serializer.rb
+@@ -104,8 +104,11 @@ module FleexaManager
+             amount: money(deal.amount),
+             currency: 'AED',
+             stage: stage_summary(deal.stage),
++            stageId: stage_id(deal.stage),
+             stageKey: deal.stage&.slug.to_s,
++            stageLabel: deal.stage&.name.to_s,
+             qualificationStatus: qualification_status,
++            source: traffic_source,
+             trafficSource: traffic_source,
+             leadOrigin: lead_origin,
+             lostReason: lost_reason,
+@@ -116,12 +119,35 @@ module FleexaManager
+             sourceAttribution: source_attribution(deal),
+             qualification: lead_qualification(deal),
+             lastActivityAt: iso8601(deal.updated_at),
++            lastMessageAt: iso8601(last_message_at_for_deal(deal)),
+             createdAt: iso8601(deal.created_at),
+             updatedAt: iso8601(deal.updated_at),
+             permissions: permissions
+           }
+         end
+ 
++        def pipeline_stage(stage, include_counters:)
++          {
++            id: stage_id(stage),
++            key: stage.slug.to_s,
++            name: stage.name.to_s,
++            color: stage.color.to_s,
++            position: stage.position.to_i,
++            kind: stage_kind(stage),
++            isTerminal: terminal_stage?(stage),
++            counters: include_counters ? stage_counters(stage) : nil,
++            requiredFields: stage_required_fields(stage)
++          }
++        end
++
++        def stage_ref(stage)
++          stage_summary(stage)
++        end
++
++        def actor_ref(record)
++          actor(record)
++        end
++
+         def message_id(message)
+           "msg_#{message.id}"
+         end
+@@ -274,6 +300,52 @@ module FleexaManager
+           }
+         end
+ 
++        def stage_kind(stage)
++          text = stage_text(stage)
++          return 'successful' if text.include?('won') || text.include?('done') || text.include?('success')
++          return 'lost' if text.include?('lost') || text.include?('cancel')
++          return 'intake' if stage.position.to_i <= 1 || text.include?('new') || text.include?('unassigned')
++
++          'active'
++        end
++
++        def terminal_stage?(stage)
++          stage_kind(stage).in?(%w[successful lost]) || stage.position.to_i >= 999
++        end
++
++        def stage_text(stage)
++          [stage.slug, stage.name, stage.try(:fleet_status_trigger)].compact.join(' ').downcase
++        end
++
++        def stage_counters(stage)
++          scope = CrmDeal.for_account(stage.account_id).where(stage_id: stage.id)
++
++          {
++            dealCount: scope.count,
++            totalAmount: money(scope.sum(:amount)) || { amount: '0.00', currency: 'AED' }
++          }
++        end
++
++        def stage_required_fields(stage)
++          return [] unless defined?(CrmDealFieldDefinition) && defined?(CrmPipelineStageRequiredField)
++
++          CrmDealFieldDefinition
++            .for_account(stage.account_id)
++            .active
++            .joins(:crm_pipeline_stage_required_fields)
++            .where(crm_pipeline_stage_required_fields: {
++              account_id: stage.account_id,
++              stage_id: stage.id
++            })
++            .order(:position)
++            .map do |field|
++              {
++                key: field.key.to_s,
++                label: field.label.to_s
++              }
++            end
++        end
++
+         def money(value)
+           return if value.blank?
+ 
+@@ -378,6 +450,10 @@ module FleexaManager
+                .gsub(/\A_+|_+\z/, '')
+         end
+ 
++        def last_message_at_for_deal(deal)
++          deal.conversation&.last_activity_at || deal.updated_at
++        end
++
+         def reply_window(conversation)
+           can_reply = conversation.can_reply?
+ 
+diff --git a/config/routes.rb b/config/routes.rb
+index cb62ed2..c2152f1 100644
+--- a/config/routes.rb
++++ b/config/routes.rb
+@@ -55,6 +55,10 @@ Rails.application.routes.draw do
+           get 'conversations/:conversation_id/messages', to: 'conversations/messages#index'
+           post 'conversations/:conversation_id/messages/text', to: 'conversations/messages#create_text'
+           patch 'deals/:id', to: 'deals#update'
++          patch 'deals/:id/stage', to: 'deals#stage'
++          get 'pipeline/stages', to: 'pipeline/stages#index'
++          get 'pipeline/deals', to: 'pipeline/deals#index'
++          get 'pipeline/stages/:stage_id/deals', to: 'pipeline/deals#index'
+           get 'manager/counters', to: 'manager/counters#show'
+         end
+       end
+diff --git a/spec/requests/api/fleexa_manager/v1/chat_api_spec.rb b/spec/requests/api/fleexa_manager/v1/chat_api_spec.rb
+index 36cb7b2..491fc63 100644
+--- a/spec/requests/api/fleexa_manager/v1/chat_api_spec.rb
++++ b/spec/requests/api/fleexa_manager/v1/chat_api_spec.rb
+@@ -717,4 +717,238 @@ RSpec.describe 'Fleexa Manager chat API', type: :request do
+       expect(json_response['error']['code']).to eq('validation_failed')
+     end
+   end
++
++  describe 'pipeline Manager API' do
++    let!(:intake_stage) do
++      CrmPipelineStage.create!(
++        account: account,
++        slug: 'new',
++        name: 'New',
++        color: '#0EA5A0',
++        position: 1
++      )
++    end
++    let!(:active_stage) do
++      CrmPipelineStage.create!(
++        account: account,
++        slug: 'in_progress',
++        name: 'In progress',
++        color: '#3B82F6',
++        position: 2
++      )
++    end
++    let!(:lost_stage) do
++      CrmPipelineStage.create!(
++        account: account,
++        slug: 'closed_lost',
++        name: 'Cancelled',
++        color: '#DC2626',
++        position: 1000,
++        fleet_status_trigger: 'cancel'
++      )
++    end
++    let(:pipeline_deals_path) { "/api/fleexa-manager/v1/accounts/acc_#{account.id}/pipeline/deals" }
++
++    before do
++      account.update!(
++        settings: {
++          'crm_marketing_dashboard' => {
++            'traffic_sources' => [
++              { 'key' => 'meta_ads', 'label' => 'Meta Ads', 'is_active' => true, 'sort_order' => 1 }
++            ],
++            'lead_origins' => [
++              { 'key' => 'whatsapp', 'label' => 'WhatsApp', 'is_active' => true, 'sort_order' => 1 }
++            ]
++          }
++        }
++      )
++    end
++
++    it 'returns pipeline stages in real backend order with backend colors' do
++      CrmDeal.create!(
++        account: account,
++        conversation: conversation,
++        contact: contact,
++        stage: active_stage,
++        title: 'Pipeline deal',
++        amount: 2500
++      )
++
++      get "/api/fleexa-manager/v1/accounts/acc_#{account.id}/pipeline/stages", headers: headers
++
++      expect(response).to have_http_status(:ok)
++      expect(json_response['data'].map { |stage| stage['id'] }).to eq(
++        ["stage_#{intake_stage.id}", "stage_#{active_stage.id}", "stage_#{lost_stage.id}"]
++      )
++      expect(json_response['data'].map { |stage| stage['color'] }).to eq(%w[#0EA5A0 #3B82F6 #DC2626])
++      expect(json_response['data'].second).to include(
++        'key' => 'in_progress',
++        'name' => 'In progress',
++        'kind' => 'active',
++        'isTerminal' => false,
++        'counters' => include('dealCount' => 1, 'totalAmount' => include('amount' => '2500.00', 'currency' => 'AED'))
++      )
++      expect(json_response['data'].second).not_to include('account_id', 'created_at', 'updated_at')
++    end
++
++    it 'returns only account-owned deal list DTOs' do
++      account_deal = CrmDeal.create!(
++        account: account,
++        conversation: conversation,
++        contact: contact,
++        stage: active_stage,
++        assigned_to: user.id,
++        title: 'Account pipeline deal',
++        amount: 7800,
++        custom_attributes: {
++          'qualification_status' => 'qualified',
++          'traffic_source_key' => 'meta_ads',
++          'lead_origin_key' => 'whatsapp'
++        }
++      )
++      other_stage = CrmPipelineStage.create!(
++        account: other_account,
++        slug: 'in_progress',
++        name: 'Other progress',
++        color: '#64748B',
++        position: 2
++      )
++      CrmDeal.create!(
++        account: other_account,
++        stage: other_stage,
++        title: 'Other account deal',
++        amount: 9999
++      )
++
++      get "#{pipeline_deals_path}?stageId=stage_#{active_stage.id}", headers: headers
++
++      expect(response).to have_http_status(:ok)
++      expect(json_response['data'].map { |deal| deal['id'] }).to eq(["deal_#{account_deal.id}"])
++      expect(json_response['data'].first).to include(
++        'id' => "deal_#{account_deal.id}",
++        'title' => 'Account pipeline deal',
++        'clientName' => contact.name,
++        'stageId' => "stage_#{active_stage.id}",
++        'stageKey' => 'in_progress',
++        'stageLabel' => 'In progress',
++        'source' => { 'key' => 'meta_ads', 'label' => 'Meta Ads' },
++        'leadOrigin' => { 'key' => 'whatsapp', 'label' => 'WhatsApp' },
++        'qualificationStatus' => 'qualified',
++        'assignedManager' => include('id' => "user_#{user.id}")
++      )
++      expect(json_response['data'].first['lastMessageAt']).to be_present
++      expect(json_response['data'].first).not_to include('custom_attributes', 'stage_id', 'account_id', 'conversation_id')
++    end
++
++    it 'moves a deal to another validated stage' do
++      deal = CrmDeal.create!(
++        account: account,
++        conversation: conversation,
++        contact: contact,
++        stage: intake_stage,
++        title: 'Move me'
++      )
++
++      patch "/api/fleexa-manager/v1/accounts/acc_#{account.id}/deals/deal_#{deal.id}/stage",
++            params: {
++              stageId: "stage_#{active_stage.id}",
++              clientMutationId: SecureRandom.uuid
++            },
++            headers: headers
++
++      expect(response).to have_http_status(:ok)
++      expect(deal.reload.stage_id).to eq(active_stage.id)
++      expect(json_response['data']).to include(
++        'id' => "deal_#{deal.id}",
++        'stageId' => "stage_#{active_stage.id}",
++        'stageKey' => 'in_progress',
++        'stageLabel' => 'In progress'
++      )
++      expect(json_response['transition']).to include(
++        'fromStage' => include('id' => "stage_#{intake_stage.id}"),
++        'toStage' => include('id' => "stage_#{active_stage.id}"),
++        'changedBy' => include('id' => "user_#{user.id}")
++      )
++      expect(json_response['data']).not_to include('custom_attributes', 'stage_id', 'updated_at')
++    end
++
++    it 'requires a lost reason when current loss-reason rules are configured' do
++      CrmLossReasonOption.create!(account: account, label: 'No reply', position: 1, is_active: true)
++      deal = CrmDeal.create!(
++        account: account,
++        conversation: conversation,
++        contact: contact,
++        stage: active_stage,
++        title: 'Needs loss reason'
++      )
++
++      patch "/api/fleexa-manager/v1/accounts/acc_#{account.id}/deals/deal_#{deal.id}/stage",
++            params: {
++              stageId: "stage_#{lost_stage.id}",
++              clientMutationId: SecureRandom.uuid
++            },
++            headers: headers
++
++      expect(response).to have_http_status(:unprocessable_entity)
++      expect(json_response['error']['code']).to eq('validation_failed')
++      expect(deal.reload.stage_id).to eq(active_stage.id)
++
++      patch "/api/fleexa-manager/v1/accounts/acc_#{account.id}/deals/deal_#{deal.id}/stage",
++            params: {
++              stageId: "stage_#{lost_stage.id}",
++              clientMutationId: SecureRandom.uuid,
++              lostReasonLabel: 'No reply'
++            },
++            headers: headers
++
++      expect(response).to have_http_status(:ok)
++      expect(deal.reload.stage_id).to eq(lost_stage.id)
++      expect(deal.custom_attributes).to include(
++        'lost_reason_key' => 'no_reply',
++        'lost_reason_label' => 'No reply'
++      )
++    end
++
++    it 'denies invalid stages and wrong-account stage moves' do
++      deal = CrmDeal.create!(
++        account: account,
++        conversation: conversation,
++        contact: contact,
++        stage: intake_stage,
++        title: 'Protected deal'
++      )
++
++      patch "/api/fleexa-manager/v1/accounts/acc_#{account.id}/deals/deal_#{deal.id}/stage",
++            params: {
++              stageId: 'stage_999999',
++              clientMutationId: SecureRandom.uuid
++            },
++            headers: headers
++
++      expect(response).to have_http_status(:unprocessable_entity)
++      expect(json_response['error']['code']).to eq('validation_failed')
++
++      patch "/api/fleexa-manager/v1/accounts/acc_#{other_account.id}/deals/deal_#{deal.id}/stage",
++            params: {
++              stageId: "stage_#{active_stage.id}",
++              clientMutationId: SecureRandom.uuid
++            },
++            headers: headers
++
++      expect(response).to have_http_status(:forbidden)
++      expect(json_response['error']['code']).to eq('forbidden')
++      expect(deal.reload.stage_id).to eq(intake_stage.id)
++    end
++
++    it 'denies pipeline access without deal permissions' do
++      operator = create(:user)
++      create(:account_user, account: account, user: operator, role: :agent)
++      operator_token = create(:access_token, owner: operator)
++
++      get pipeline_deals_path, headers: { 'api_access_token' => operator_token.token }
++
++      expect(response).to have_http_status(:forbidden)
++      expect(json_response['error']['code']).to eq('forbidden')
++    end
++  end
+ end

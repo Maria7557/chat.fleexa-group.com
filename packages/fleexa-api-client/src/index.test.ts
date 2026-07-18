@@ -326,12 +326,16 @@ describe('@fleexa/api-client', () => {
       amount: { amount: '14000', currency: 'AED' },
       currency: 'AED',
       stage: { id: 'stage_new', key: 'new', name: 'New' },
+      stageId: 'stage_new',
       stageKey: 'new',
+      stageLabel: 'New',
       qualificationStatus: 'qualified',
+      source: { key: 'meta_ads', label: 'Meta Ads' },
       trafficSource: { key: 'meta_ads', label: 'Meta Ads' },
       leadOrigin: { key: 'whatsapp', label: 'WhatsApp' },
       lostReason: null,
       assignedManager: { id: 'user_1', displayName: 'Manager', type: 'user' },
+      lastMessageAt: '2026-07-18T09:00:00Z',
       createdAt: '2026-07-18T09:00:00Z',
       updatedAt: '2026-07-18T09:00:00Z',
       permissions: ['deals:read', 'deals:update'],
@@ -418,6 +422,130 @@ describe('@fleexa/api-client', () => {
     expect(fetchImpl.mock.calls.map(call => String(call[0])).join('\n')).not.toContain('linked-deal');
     expect(linkedDeal.deal?.trafficSource).toEqual({ key: 'meta_ads', label: 'Meta Ads' });
     expect(updatedDeal.data.title).toBe('Updated rental');
+  });
+
+  it('uses Manager pipeline endpoints for stages, deal list, and stage movement', async () => {
+    const managerDeal = {
+      id: 'deal_9',
+      accountId: 'acc_1',
+      title: 'Range Rover rental',
+      clientName: 'Amina Noor',
+      amount: { amount: '14000', currency: 'AED' },
+      currency: 'AED',
+      stage: { id: 'stage_new', key: 'new', name: 'New' },
+      stageId: 'stage_new',
+      stageKey: 'new',
+      stageLabel: 'New',
+      qualificationStatus: 'pending',
+      source: { key: 'meta_ads', label: 'Meta Ads' },
+      trafficSource: { key: 'meta_ads', label: 'Meta Ads' },
+      leadOrigin: { key: 'whatsapp', label: 'WhatsApp' },
+      lostReason: null,
+      assignedManager: { id: 'user_1', displayName: 'Manager', type: 'user' },
+      lastMessageAt: '2026-07-18T09:00:00Z',
+      createdAt: '2026-07-18T09:00:00Z',
+      updatedAt: '2026-07-18T09:00:00Z',
+      permissions: ['deals:read', 'deals:update', 'deals:update_stage'],
+    };
+    const fetchImpl = vi.fn(async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.includes('/pipeline/stages')) {
+        return new Response(
+          JSON.stringify({
+            data: [
+              {
+                id: 'stage_new',
+                key: 'new',
+                name: 'New',
+                color: '#0EA5A0',
+                position: 1,
+                kind: 'intake',
+                isTerminal: false,
+                counters: { dealCount: 1, totalAmount: { amount: '14000.00', currency: 'AED' } },
+                requiredFields: [],
+              },
+            ],
+          })
+        );
+      }
+
+      if (url.includes('/pipeline/deals')) {
+        return new Response(
+          JSON.stringify({
+            data: [managerDeal],
+            page: { nextCursor: null, hasMore: false, limit: 12 },
+          })
+        );
+      }
+
+      return new Response(
+        JSON.stringify({
+          data: {
+            ...managerDeal,
+            stage: { id: 'stage_lost', key: 'lost', name: 'Lost' },
+            stageId: 'stage_lost',
+            stageKey: 'lost',
+            stageLabel: 'Lost',
+          },
+          transition: {
+            fromStage: { id: 'stage_new', key: 'new', name: 'New' },
+            toStage: { id: 'stage_lost', key: 'lost', name: 'Lost' },
+            changedAt: '2026-07-18T10:00:00Z',
+            changedBy: { id: 'user_1', displayName: 'Manager', type: 'user' },
+          },
+          emittedEventId: null,
+        })
+      );
+    });
+    const client = new ManagerApiClient({
+      baseUrl: 'https://api.example.com/api/fleexa-manager/v1',
+      tokenProvider: () => 'access-token',
+      fetchImpl,
+    });
+
+    const stages = await client.listPipelineStages('acc_1', true);
+    const deals = await client.listDeals({ accountId: 'acc_1', stageId: 'stage_new', limit: 12, sort: 'created_desc' });
+    const moved = await client.updateDealStage({
+      accountId: 'acc_1',
+      dealId: 'deal_9',
+      stageId: 'stage_lost',
+      clientMutationId: '4f236d7a-7054-4ad2-a592-2a9bd5ac3051',
+      lostReasonLabel: 'No reply',
+      idempotencyKey: 'stage-move-4f236d7a-7054-4ad2-a592-2a9bd5ac3051',
+    });
+
+    expect(fetchImpl).toHaveBeenNthCalledWith(
+      1,
+      'https://api.example.com/api/fleexa-manager/v1/accounts/acc_1/pipeline/stages?includeCounters=true',
+      expect.objectContaining({ method: 'GET' })
+    );
+    expect(fetchImpl).toHaveBeenNthCalledWith(
+      2,
+      'https://api.example.com/api/fleexa-manager/v1/accounts/acc_1/pipeline/deals?limit=12&stageId=stage_new&sort=created_desc',
+      expect.objectContaining({ method: 'GET' })
+    );
+    expect(fetchImpl).toHaveBeenNthCalledWith(
+      3,
+      'https://api.example.com/api/fleexa-manager/v1/accounts/acc_1/deals/deal_9/stage',
+      expect.objectContaining({
+        method: 'PATCH',
+        headers: expect.objectContaining({
+          Authorization: 'Bearer access-token',
+          'Idempotency-Key': 'stage-move-4f236d7a-7054-4ad2-a592-2a9bd5ac3051',
+        }),
+        body: JSON.stringify({
+          stageId: 'stage_lost',
+          clientMutationId: '4f236d7a-7054-4ad2-a592-2a9bd5ac3051',
+          expectedVersion: null,
+          note: null,
+          lostReason: null,
+          lostReasonLabel: 'No reply',
+        }),
+      })
+    );
+    expect(stages.data[0]).toMatchObject({ color: '#0EA5A0', position: 1 });
+    expect(deals.data[0]).toMatchObject({ stageId: 'stage_new', source: { key: 'meta_ads' } });
+    expect(moved.data).toMatchObject({ stageId: 'stage_lost', stageLabel: 'Lost' });
   });
 
   it('maps Chatwoot profile and conversations into Manager DTOs', async () => {

@@ -14,6 +14,7 @@ import type {
   ContactSummary,
   DeliveryStatus,
   CurrentSessionResponse,
+  DealsListResponse,
   DealMutationResponse,
   DealSummary,
   DealStageUpdateResponse,
@@ -77,6 +78,9 @@ export interface UpdateDealStageParams {
   clientMutationId: string;
   expectedVersion?: number | null;
   note?: string | null;
+  lostReason?: { key: string; label: string } | null;
+  lostReasonKey?: string;
+  lostReasonLabel?: string;
   idempotencyKey?: string;
 }
 
@@ -99,6 +103,16 @@ export interface ListDealsByStageParams {
   sort?: 'last_activity_desc' | 'created_desc' | 'amount_desc' | 'amount_asc';
 }
 
+export interface ListDealsParams {
+  accountId: string;
+  cursor?: string;
+  limit?: number;
+  stageId?: string;
+  stageKey?: string;
+  assignedTo?: string;
+  sort?: 'last_activity_desc' | 'created_desc' | 'amount_desc' | 'amount_asc';
+}
+
 export interface FleexaApiClient {
   login(params: LoginSessionRequest): Promise<LoginSessionResponse>;
   getCurrentSession(activeAccountId?: string): Promise<CurrentSessionResponse>;
@@ -111,6 +125,7 @@ export interface FleexaApiClient {
   updateDeal(params: UpdateDealParams): Promise<DealMutationResponse>;
   updateDealStage(params: UpdateDealStageParams): Promise<DealStageUpdateResponse>;
   listPipelineStages(accountId: string, includeCounters?: boolean): Promise<PipelineStagesResponse>;
+  listDeals(params: ListDealsParams): Promise<DealsListResponse>;
   listDealsByStage(params: ListDealsByStageParams): Promise<DealsByStageResponse>;
   getBookingByDeal(accountId: string, dealId: string): Promise<BookingByDealResponse>;
   getManagerCounters(accountId: string, options?: { date?: string; timeZone?: string }): Promise<ManagerCountersResponse>;
@@ -818,6 +833,17 @@ export class ChatwootFleexaApiClient implements FleexaApiClient {
     return { data: [] };
   }
 
+  async listDeals(params: ListDealsParams): Promise<DealsListResponse> {
+    return {
+      data: [],
+      page: {
+        nextCursor: null,
+        hasMore: false,
+        limit: params.limit ?? 30,
+      },
+    };
+  }
+
   async listDealsByStage(params: ListDealsByStageParams): Promise<DealsByStageResponse> {
     return {
       stage: {
@@ -1022,6 +1048,9 @@ export class ManagerApiClient implements FleexaApiClient {
         clientMutationId: params.clientMutationId,
         expectedVersion: params.expectedVersion ?? null,
         note: params.note ?? null,
+        lostReason: params.lostReason ?? null,
+        lostReasonKey: params.lostReasonKey,
+        lostReasonLabel: params.lostReasonLabel,
       },
     });
   }
@@ -1030,6 +1059,19 @@ export class ManagerApiClient implements FleexaApiClient {
     return this.request(
       pathWithQuery(`/accounts/${accountId}/pipeline/stages`, {
         includeCounters,
+      })
+    );
+  }
+
+  async listDeals(params: ListDealsParams): Promise<DealsListResponse> {
+    return this.request(
+      pathWithQuery(`/accounts/${params.accountId}/pipeline/deals`, {
+        cursor: params.cursor,
+        limit: params.limit,
+        stageId: params.stageId,
+        stageKey: params.stageKey,
+        assignedTo: params.assignedTo,
+        sort: params.sort,
       })
     );
   }
@@ -1169,6 +1211,7 @@ const mockStages: PipelineStagesResponse = {
       id: 'stage_new',
       key: 'new',
       name: 'New',
+      color: '#0EA5A0',
       position: 1,
       kind: 'intake',
       isTerminal: false,
@@ -1178,6 +1221,7 @@ const mockStages: PipelineStagesResponse = {
       id: 'stage_reserved',
       key: 'reserved',
       name: 'Reserved',
+      color: '#3B82F6',
       position: 2,
       kind: 'successful',
       isTerminal: false,
@@ -1187,6 +1231,7 @@ const mockStages: PipelineStagesResponse = {
       id: 'stage_lost',
       key: 'lost',
       name: 'Lost',
+      color: '#DC2626',
       position: 3,
       kind: 'lost',
       isTerminal: true,
@@ -1212,13 +1257,19 @@ const mockDeal: DealSummary = {
     key: 'reserved',
     name: 'Reserved',
   },
+  stageId: 'stage_reserved',
   stageKey: 'reserved',
+  stageLabel: 'Reserved',
   amount: {
     amount: '14000',
     currency: 'AED',
   },
   currency: 'AED',
   qualificationStatus: 'qualified',
+  source: {
+    key: 'meta_ads',
+    label: 'Meta Ads',
+  },
   trafficSource: {
     key: 'meta_ads',
     label: 'Meta Ads',
@@ -1237,6 +1288,7 @@ const mockDeal: DealSummary = {
   contact: mockContact,
   assignee: { id: 'user_mock_manager', displayName: 'Fleexa Manager', type: 'user' },
   lastActivityAt: now,
+  lastMessageAt: now,
   createdAt: now,
   updatedAt: now,
   permissions: ['deals:read', 'deals:update', 'deals:update_stage'],
@@ -1423,7 +1475,9 @@ export class MockFleexaApiClient implements FleexaApiClient {
         amount: params.deal.amount ?? mockDeal.amount,
         currency: params.deal.currency ?? mockDeal.currency,
         stage,
+        stageId: stage.id,
         stageKey: stage.key,
+        stageLabel: stage.name,
         qualificationStatus: params.deal.qualificationStatus ?? mockDeal.qualificationStatus,
       },
     };
@@ -1436,7 +1490,9 @@ export class MockFleexaApiClient implements FleexaApiClient {
       data: {
         ...mockDeal,
         stage,
+        stageId: stage.id,
         stageKey: stage.key,
+        stageLabel: stage.name,
       },
       transition: {
         fromStage: mockDeal.stage,
@@ -1450,6 +1506,17 @@ export class MockFleexaApiClient implements FleexaApiClient {
 
   async listPipelineStages(): Promise<PipelineStagesResponse> {
     return mockStages;
+  }
+
+  async listDeals(params: ListDealsParams): Promise<DealsListResponse> {
+    return {
+      data: [mockDeal],
+      page: {
+        nextCursor: null,
+        hasMore: false,
+        limit: params.limit ?? 30,
+      },
+    };
   }
 
   async listDealsByStage(params: ListDealsByStageParams): Promise<DealsByStageResponse> {

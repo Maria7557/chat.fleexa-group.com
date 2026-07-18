@@ -318,3 +318,67 @@ Closeout verification for the deal-panel change:
 | Desktop responsive smoke | Pass | `1280x720` showed a 320px side panel next to the message thread, no horizontal overflow, and persisted deal data. |
 | Mobile responsive smoke | Pass | `390x844` showed a bottom deal section, no desktop side panel, no horizontal overflow, and persisted deal data. |
 | Stage movement guard | Pass | Stage controls are hidden when backend pipeline stages are unavailable; the panel does not surface a stage-list backend error as an edit failure. |
+
+## Manager Pipeline API
+
+Added after the chat deal panel on branch
+`codex/fleexa-manager-core-stage-3`.
+
+### Implemented
+
+- Added the Stage 3 Manager API pipeline backend through
+  `chatwoot-patches/fleexa-manager-pipeline-api-backend.patch`.
+- Wired the new patch into `Dockerfile.chatwoot`, `make crm-patch-check`,
+  `make crm-patch`, and `make crm-assets-build-host`.
+- Added Manager API endpoints:
+  - `GET /api/fleexa-manager/v1/accounts/:account_id/pipeline/stages`
+  - `GET /api/fleexa-manager/v1/accounts/:account_id/pipeline/deals`
+  - `GET /api/fleexa-manager/v1/accounts/:account_id/pipeline/stages/:stage_id/deals`
+    as a compatibility alias
+  - `PATCH /api/fleexa-manager/v1/accounts/:account_id/deals/:deal_id/stage`
+- Kept stage order, colors, terminal/lost detection, counters, and required
+  fields backend-owned. Expo must consume stage metadata from the Manager API
+  and must not hardcode pipeline stages.
+- Added backend validation for stage moves. Stage ids/keys are resolved inside
+  the current account, invalid stages are denied, and wrong-account deal/stage
+  access is denied.
+- Added lost-reason enforcement when the account has active
+  `CrmLossReasonOption` records and the target stage looks lost or cancelled.
+- Extended deal DTOs with compact pipeline fields: `stageId`, `stageLabel`,
+  `source`, and `lastMessageAt`.
+- Updated `docs/fleexa-manager/openapi.yaml`, `@fleexa/domain`, and
+  `@fleexa/api-client` with typed list-deal contracts and the new pipeline
+  endpoint path.
+- Did not add pipeline UI screens in this step.
+
+### Test Coverage Added
+
+The backend patch adds request specs for:
+
+- stages returned in backend order with backend colors
+- deals filtered by account and stage
+- deal list response shape without raw Chatwoot or CRM model fields
+- moving a deal to another validated stage
+- lost reason required when current CRM loss-reason rules are configured
+- invalid stage denial
+- wrong-account stage move denial
+- permission denial for users without deal access
+
+### Verification Notes
+
+Closeout verification for the pipeline API change:
+
+| Check | Result | Notes |
+| --- | --- | --- |
+| Baseline `npm run lint` | Pass | Passed before edits. |
+| Baseline `npm run typecheck` | Pass | Passed before edits. |
+| Baseline `npm test` | Pass | Vitest: 3 files, 24 tests before edits. |
+| `npm run lint` | Pass | ESLint completed with `--max-warnings=0` after contract and client changes. |
+| `npm run typecheck` | Pass | Expo app and workspace packages typechecked after contract and client changes. |
+| `npm test` | Pass | Vitest: 3 files, 25 tests after adding Manager pipeline client coverage. |
+| OpenAPI YAML parse | Pass | `docs/fleexa-manager/openapi.yaml` parsed successfully. |
+| `make crm-assets-build-host` | Pass | Clean Chatwoot host build applied the full patch chain, including the pipeline API patch, and built Vite assets. |
+| Ruby syntax | Pass | Pipeline controllers, deal controller, DTO serializer, deal mutation service, and request spec syntax checked from `/tmp/fleexa-chatwoot-app-build` and the Rails container after applying the new patch. |
+| New patch apply check | Pass | `git apply --check /tmp/fleexa-manager-pipeline-api-backend.patch` passed against the already-patched local Rails container before applying it for validation. |
+| `make crm-patch-check` | Blocked by local container state | The running Rails container was already patched from prior stages and rejects reapplying existing CRM files such as `app/models/crm_pipeline_stage.rb`. Clean host build remains the authoritative full-chain validation. |
+| Backend request specs | Authored, runner blocked | Host Ruby lacks Bundler 2.5.16. The Rails production image can install the test bundle, but it does not include Chatwoot `spec_helper.rb` or `rails_helper.rb`, so RSpec exits before examples with `cannot load such file -- spec_helper`. |
