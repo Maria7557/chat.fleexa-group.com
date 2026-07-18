@@ -48,6 +48,7 @@ export interface ButtonProps {
   loading?: boolean;
   leftIcon?: ReactNode;
   style?: StyleProp<ViewStyle>;
+  testID?: string;
 }
 
 export const Button = ({
@@ -58,6 +59,7 @@ export const Button = ({
   loading = false,
   leftIcon,
   style,
+  testID,
 }: ButtonProps) => {
   const isDisabled = disabled || loading;
 
@@ -73,6 +75,7 @@ export const Button = ({
         pressed && !isDisabled && styles.buttonPressed,
         style,
       ]}
+      testID={testID}
     >
       {loading ? <ActivityIndicator color={variant === 'primary' ? '#FFFFFF' : colors.text} /> : leftIcon}
       <Text style={[styles.buttonText, styles[`buttonText_${variant}`], isDisabled && styles.buttonTextDisabled]}>

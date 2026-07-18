@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
-import { activeAccountIdForSession, type ConversationFilter } from '@fleexa/domain';
+import { activeAccountIdForSession, type ConversationFilter, type DealDraft } from '@fleexa/domain';
 
 import { useAuth } from '@/src/auth/AuthProvider';
 import { useFleexaApiClient } from './client';
@@ -21,6 +21,7 @@ export const queryKeys = {
   conversations: (accountId: string, filter?: ConversationFilter) => ['conversations', accountId, filter ?? 'all'] as const,
   conversation: (accountId: string, conversationId: string) => ['conversation', accountId, conversationId] as const,
   messages: (accountId: string, conversationId: string) => ['messages', accountId, conversationId] as const,
+  linkedDeal: (accountId: string, conversationId: string) => ['linked-deal', accountId, conversationId] as const,
   stages: (accountId: string) => ['pipeline-stages', accountId] as const,
 };
 
@@ -101,6 +102,61 @@ export const useMessages = (accountId: string | null, conversationId: string | n
     retry: false,
     refetchInterval: MESSAGE_THREAD_POLL_INTERVAL_MS,
     refetchIntervalInBackground: false,
+  });
+};
+
+export const useLinkedDeal = (accountId: string | null, conversationId: string | null) => {
+  const client = useFleexaApiClient();
+
+  return useQuery({
+    queryKey: accountId && conversationId ? queryKeys.linkedDeal(accountId, conversationId) : ['linked-deal', 'missing'],
+    queryFn: () => client.getLinkedDeal(accountId ?? '', conversationId ?? ''),
+    enabled: Boolean(accountId && conversationId),
+    retry: false,
+  });
+};
+
+export const useCreateLinkedDeal = (accountId: string | null, conversationId: string | null) => {
+  const client = useFleexaApiClient();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: () => {
+      return client.createDealFromConversation({
+        accountId: accountId ?? '',
+        conversationId: conversationId ?? '',
+        deal: {},
+      });
+    },
+    retry: false,
+    onSuccess: () => {
+      if (!accountId || !conversationId) return;
+      void queryClient.invalidateQueries({ queryKey: queryKeys.linkedDeal(accountId, conversationId) });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.conversation(accountId, conversationId) });
+      void queryClient.invalidateQueries({ queryKey: ['conversations', accountId] });
+    },
+  });
+};
+
+export const useUpdateDeal = (accountId: string | null, conversationId: string | null) => {
+  const client = useFleexaApiClient();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ dealId, deal }: { dealId: string; deal: DealDraft }) => {
+      return client.updateDeal({
+        accountId: accountId ?? '',
+        dealId,
+        deal,
+      });
+    },
+    retry: false,
+    onSuccess: () => {
+      if (!accountId || !conversationId) return;
+      void queryClient.invalidateQueries({ queryKey: queryKeys.linkedDeal(accountId, conversationId) });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.conversation(accountId, conversationId) });
+      void queryClient.invalidateQueries({ queryKey: ['conversations', accountId] });
+    },
   });
 };
 

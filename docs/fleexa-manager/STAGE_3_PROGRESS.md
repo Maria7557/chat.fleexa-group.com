@@ -239,6 +239,8 @@ The backend patch adds request specs for:
 - invalid stage rejection
 - invalid source rejection when Attribution Settings exist
 - DTO shape without raw CRM fields
+- lost reason updates through `lostReasonLabel`, matching the Expo edit
+  payload
 
 ### Verification Notes
 
@@ -258,3 +260,61 @@ Closeout verification for the linked-deal API change:
 | Backend request specs | Authored, runner blocked | Host run requires Bundler 2.5.16; the running Rails container reports `bundler: command not found: rspec`. |
 | Manager API smoke | Pass | `GET` missing/read `200`, create `201`, update `200`, invalid stage `422`, invalid source `422`, wrong account `403`, and raw-field leak check `no`. |
 | DTO smoke | Pass | Smoke response included all required Manager deal fields and resolved `trafficSource`/`leadOrigin` labels from Attribution Settings. |
+
+## Chat Deal Panel
+
+Added after the linked-deal API foundation on branch
+`codex/fleexa-manager-core-stage-3`.
+
+### Implemented
+
+- Added a compact deal/client panel inside the Expo conversation screen.
+- Desktop layout shows the panel as a fixed-width side surface next to the
+  message thread.
+- Mobile layout shows the panel as a compact bottom section above the composer.
+- The panel uses only `FleexaApiClient` Manager API methods:
+  - `getLinkedDeal`
+  - `createDealFromConversation`
+  - `updateDeal`
+- The raw Chatwoot compatibility adapter is not used by the production/live UI
+  path.
+- Missing linked deals show client context and a `Create deal` action.
+- Linked deals show:
+  - client name
+  - phone
+  - source
+  - lead origin
+  - qualification status
+  - deal stage
+  - amount
+  - assigned manager
+  - lost reason when the deal is unqualified or lost
+- Edit mode supports amount, qualification, lost reason, and stage movement
+  only when backend pipeline stages are available and the deal DTO includes
+  `deals:update`.
+- Booking is not rendered because booking integration is not implemented for
+  this panel.
+- Added stable non-visible test IDs for the panel controls used by local smoke.
+- Fixed the linked-deal backend patch so `lostReasonLabel` alone is treated as
+  a deal mutation payload and persists through the Manager API.
+
+### Verification Notes
+
+Closeout verification for the deal-panel change:
+
+| Check | Result | Notes |
+| --- | --- | --- |
+| Baseline `npm run lint` | Pass | Passed before edits. |
+| Baseline `npm run typecheck` | Pass | Passed before edits. |
+| Baseline `npm test` | Pass | Vitest: 3 files, 24 tests before edits. |
+| `npm run lint` | Pass | ESLint completed with `--max-warnings=0` after the deal panel changes. |
+| `npm run typecheck` | Pass | Expo app and workspace packages typechecked after the deal panel changes. |
+| `npm test` | Pass | Vitest: 3 files, 24 tests after the deal panel changes. |
+| `npm run smoke:web` | Pass | Expo web export produced `dist-web-smoke`; Expo force-exited after export as expected. |
+| `make crm-assets-build-host` | Pass | Clean Chatwoot host build applied the full patch chain and built Vite assets after the linked-deal patch correction. |
+| Ruby syntax | Pass | Generated Manager deal controllers, mutation service, and request spec syntax checked from `/tmp/fleexa-chatwoot-app-build`. |
+| `git diff --check` | Pass | No whitespace errors. |
+| Local web smoke | Pass | Login restored through live Manager API, opened `conv_99`, created a linked deal, edited amount, qualification, and lost reason, refreshed linked deal, and confirmed data persisted. |
+| Desktop responsive smoke | Pass | `1280x720` showed a 320px side panel next to the message thread, no horizontal overflow, and persisted deal data. |
+| Mobile responsive smoke | Pass | `390x844` showed a bottom deal section, no desktop side panel, no horizontal overflow, and persisted deal data. |
+| Stage movement guard | Pass | Stage controls are hidden when backend pipeline stages are unavailable; the panel does not surface a stage-list backend error as an edit failure. |

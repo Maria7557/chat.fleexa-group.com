@@ -167,7 +167,7 @@ new file mode 100644
 index 0000000..3d8e6bc
 --- /dev/null
 +++ b/app/services/fleexa_manager/v1/deal_mutation_service.rb
-@@ -0,0 +1,283 @@
+@@ -0,0 +1,285 @@
 +module FleexaManager
 +  module V1
 +    class DealMutationService
@@ -398,8 +398,10 @@ index 0000000..3d8e6bc
 +          'lead_origin_key',
 +          'lostReason',
 +          'lostReasonKey',
++          'lostReasonLabel',
 +          'lost_reason',
-+          'lost_reason_key'
++          'lost_reason_key',
++          'lost_reason_label'
 +        )
 +      end
 +
@@ -799,7 +801,7 @@ index 0752332..5171d5c 100644
 +                qualificationStatus: 'qualified',
 +                trafficSourceKey: 'meta_ads',
 +                leadOriginKey: 'whatsapp',
-+                lostReason: { key: 'no_reply', label: 'No reply' }
++                lostReasonLabel: 'No reply'
 +              }
 +            },
 +            headers: headers
