@@ -590,6 +590,306 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /accounts/{accountId}/bookings/resolve-deal:
+    post:
+      tags:
+        - Bookings
+      operationId: resolveBookingDealReference
+      summary: Resolve a manager-entered Pipeline deal reference for Booking sync.
+      description: |
+        Server-to-server Booking -> Chat endpoint in the Manager namespace.
+        Chat stores only a digest of the inbound service token, scoped to this
+        `accountId` and `fleexa_company_id`. The raw token is never stored in
+        Chat and must never be sent to frontend clients.
+
+        `pipeline_deal_ref_input` is raw manager input only. Values such as
+        `#344`, `344`, `D-344`, deal URLs, conversation URLs, and conversation
+        ids must be resolved to a real `crm_deals.id` before any link is
+        persisted. A conversation id must resolve through its linked deal; it is
+        not a deal id. If deal and conversation references are both exact and
+        disagree, return `AMBIGUOUS_REFERENCE`.
+      security:
+        - bookingServiceToken: []
+      x-account-isolation: required
+      x-service-scope: booking:sync
+      parameters:
+        - $ref: "#/components/parameters/AccountId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BookingResolveDealRequest"
+            examples:
+              rawNumber:
+                value:
+                  pipeline_deal_ref_input: "#83839"
+              dealUrl:
+                value:
+                  pipeline_deal_ref_input: "https://chat.example.com/app/accounts/1/pipeline/deals/deal_83839"
+              conversationUrl:
+                value:
+                  pipeline_deal_ref_input: "https://chat.example.com/app/accounts/1/conversations/344"
+      responses:
+        "200":
+          description: Reference resolved, ambiguous, not found, or disabled as a successful business response.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/BookingResolveDealResponse"
+                  - $ref: "#/components/schemas/BookingSyncDisabledResponse"
+              examples:
+                resolved:
+                  value:
+                    status: RESOLVED
+                    retryable: false
+                    accountId: acc_1
+                    fleexaCompanyId: fleexa_company_42
+                    pipeline_deal_id: "83839"
+                    deal_display_number: "D-83839"
+                    conversation_id: "344"
+                    company_id: fleexa_company_42
+                    client_preview:
+                      id: "91"
+                      displayName: Sara Khan
+                      phone: "+971501112233"
+                      phoneNumber: "+971501112233"
+                      email: null
+                    preview:
+                      pipeline_deal_id: "83839"
+                      deal_display_number: "D-83839"
+                      title: Existing active deal
+                      stage:
+                        id: "1"
+                        key: reserved
+                        name: Booking
+                        fleet_status_trigger: reserved
+                      client_preview:
+                        id: "91"
+                        displayName: Sara Khan
+                        phone: "+971501112233"
+                        phoneNumber: "+971501112233"
+                        email: null
+                      conversation_id: "344"
+                      existing_booking_id: null
+                    candidates: []
+                ambiguous:
+                  value:
+                    status: AMBIGUOUS_REFERENCE
+                    retryable: false
+                    accountId: acc_1
+                    fleexaCompanyId: fleexa_company_42
+                    pipeline_deal_id: null
+                    candidates:
+                      - pipeline_deal_id: "11"
+                        deal_display_number: "D-11"
+                        title: Existing active deal
+                        conversation_id: "344"
+                        reason: deal_ref_and_conversation_ref_disagree
+                        active: true
+                disabled:
+                  value:
+                    status: SYNC_DISABLED
+                    code: SYNC_DISABLED
+                    retryable: false
+                    accountId: acc_1
+                    fleexaCompanyId: fleexa_company_42
+                    message: Booking sync receiver is disabled for this account.
+        "401":
+          $ref: "#/components/responses/ServiceUnauthorized"
+        "403":
+          $ref: "#/components/responses/ServiceForbidden"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+
+  /accounts/{accountId}/bookings/sync:
+    post:
+      tags:
+        - Bookings
+      operationId: syncBookingToPipeline
+      summary: Sync a Booking event into real Chat Pipeline deals.
+      description: |
+        Server-to-server Booking -> Chat endpoint. It writes into real
+        `crm_deals` only; it does not define a queue, Integration Hub, or a
+        parallel CRM.
+
+        Freshness is decided by monotonic `booking_version`, not by
+        `source_updated_at`. `source_updated_at` is informational and must not
+        be used as the ordering source. `PENDING_USER_ACTION`,
+        `STALE_BOOKING_EVENT`, and `SYNC_DISABLED` are successful non-retryable
+        business responses. Temporary 5xx responses are retryable. Auth/account
+        mismatch returns non-retryable 401/403, and validation errors return
+        non-retryable 422.
+
+        Phone is a candidate signal only. The receiver must never auto-merge
+        clients by phone. Existing deal `contact_id` and `client_phone` must not
+        be overwritten without explicit manager confirmation. The MVP does not
+        return phone-only candidates from sync; phone is used only as a safety
+        hint when deciding whether a newly created contact/deal can store the
+        renter phone.
+      security:
+        - bookingServiceToken: []
+      x-account-isolation: required
+      x-service-scope: booking:sync
+      parameters:
+        - $ref: "#/components/parameters/AccountId"
+        - $ref: "#/components/parameters/OptionalIdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BookingSyncRequest"
+            examples:
+              reservation:
+                value:
+                  booking_id: order_1001
+                  booking_number: BK-1001
+                  booking_client_id: booking_contact_501
+                  booking_client_name: Mina Patel
+                  booking_client_phone: null
+                  booking_version: 7
+                  source_updated_at: "2026-07-18T10:00:00Z"
+                  event_id: "evt_booking_1001_v7"
+                  pipeline_deal_id: null
+                  vehicle:
+                    vehicle_id: vehicle_77
+                    vehicle_name: Range Rover Sport
+                    vehicle_plate: D 83839
+                    brand_model: Range Rover Sport
+                    fleet_number: FLEET-77
+                    photo_url: "https://booking.example.com/vehicles/77/photo.jpg"
+                    group: SUV
+                  rental_start: "2026-07-20T10:00:00Z"
+                  rental_end: "2026-07-22T10:00:00Z"
+                  rental_days: 2
+                  amount: "1800.00"
+                  currency: AED
+                  booking_status: reserved
+                  source:
+                    type: Booking
+                  referral:
+                    communication_phone: "+971501112233"
+                    referred_by_contact_id: null
+      responses:
+        "200":
+          description: Sync accepted, completed, pending user action, stale no-op, or disabled no-op.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/BookingSyncResponse"
+                  - $ref: "#/components/schemas/BookingStaleEventResponse"
+                  - $ref: "#/components/schemas/BookingSyncDisabledResponse"
+              examples:
+                synced:
+                  value:
+                    status: SYNCED
+                    retryable: false
+                    accountId: acc_1
+                    fleexaCompanyId: fleexa_company_42
+                    bookingId: order_1001
+                    bookingVersion: 7
+                    freshnessBasis: booking_version
+                    pipelineDealId: "83839"
+                    mutated: true
+                pendingUserAction:
+                  value:
+                    status: PENDING_USER_ACTION
+                    retryable: false
+                    accountId: acc_1
+                    fleexaCompanyId: fleexa_company_42
+                    bookingId: order_1001
+                    candidates:
+                      - pipeline_deal_id: "83839"
+                        deal_display_number: "D-83839"
+                        title: Active deal for same booking client candidate
+                        conversation_id: "344"
+                        reason: multiple_active_deals
+                        active: true
+                staleNoop:
+                  value:
+                    status: STALE_BOOKING_EVENT
+                    retryable: false
+                    accountId: acc_1
+                    fleexaCompanyId: fleexa_company_42
+                    bookingId: order_1001
+                    acceptedBookingVersion: 8
+                    receivedBookingVersion: 7
+                    freshnessBasis: booking_version
+                disabled:
+                  value:
+                    status: SYNC_DISABLED
+                    code: SYNC_DISABLED
+                    retryable: false
+                    accountId: acc_1
+                    fleexaCompanyId: fleexa_company_42
+                    message: Booking sync receiver is disabled for this account.
+        "401":
+          $ref: "#/components/responses/ServiceUnauthorized"
+        "403":
+          $ref: "#/components/responses/ServiceForbidden"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "500":
+          description: Temporary server failure. Booking worker may retry.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /accounts/{accountId}/bookings/{bookingId}/relink-deal:
+    post:
+      tags:
+        - Bookings
+      operationId: relinkBookingPipelineDeal
+      summary: Change the deal linked to a Booking order.
+      description: |
+        Server-to-server relink endpoint. It is transaction-safe, clears the old
+        deal's `booking_id`, links the new deal, and stores structured durable
+        audit in existing deal activity/custom attributes. The target deal must
+        belong to the same `accountId`; a deal from another account is a
+        non-retryable 403.
+      security:
+        - bookingServiceToken: []
+      x-account-isolation: required
+      x-service-scope: booking:relink
+      parameters:
+        - $ref: "#/components/parameters/AccountId"
+        - name: bookingId
+          in: path
+          required: true
+          description: Fleexa Booking Order.id, not display booking number.
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BookingRelinkRequest"
+            examples:
+              managerFix:
+                value:
+                  new_pipeline_deal_id: "83840"
+                  reason: Wrong deal was selected by manager.
+      responses:
+        "200":
+          description: Relink accepted, applied, or disabled as a successful business response.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/BookingRelinkResponse"
+                  - $ref: "#/components/schemas/BookingSyncDisabledResponse"
+        "401":
+          $ref: "#/components/responses/ServiceUnauthorized"
+        "403":
+          $ref: "#/components/responses/ServiceForbidden"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+
   /accounts/{accountId}/manager/counters:
     get:
       tags:
@@ -683,6 +983,15 @@ components:
       in: cookie
       name: _chatwoot_session
       description: Temporary same-origin web auth using the existing Chatwoot Rails session cookie.
+    bookingServiceToken:
+      type: apiKey
+      in: header
+      name: X-Fleexa-Booking-Token
+      description: |
+        Server-to-server Booking inbound token. Chat stores only a SHA-256
+        digest in an account-scoped service credential row. The raw token is
+        provisioned through backend secret handling and must never be stored in
+        Chat or exposed to frontend clients.
 
   parameters:
     AccountId:
@@ -827,6 +1136,48 @@ components:
         application/json:
           schema:
             $ref: "#/components/schemas/ErrorResponse"
+    ServiceUnauthorized:
+      description: Missing or invalid Booking service token. Non-retryable.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ServiceAuthErrorResponse"
+          examples:
+            missing:
+              value:
+                error:
+                  code: service_auth_missing
+                  message: Booking service token is required.
+                  details:
+                    retryable: false
+            invalid:
+              value:
+                error:
+                  code: service_auth_invalid
+                  message: Booking service token is invalid.
+                  details:
+                    retryable: false
+    ServiceForbidden:
+      description: Booking service token is valid but scoped to another account or missing scope. Non-retryable.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ServiceAuthErrorResponse"
+          examples:
+            accountMismatch:
+              value:
+                error:
+                  code: service_auth_account_mismatch
+                  message: Booking service token is not scoped to this account.
+                  details:
+                    retryable: false
+            missingScope:
+              value:
+                error:
+                  code: service_auth_scope_missing
+                  message: Booking service token is missing booking:sync.
+                  details:
+                    retryable: false
 
   schemas:
     LoginSessionRequest:
@@ -1828,6 +2179,554 @@ components:
         page:
           $ref: "#/components/schemas/CursorPage"
 
+    BookingResolveDealRequest:
+      type: object
+      required:
+        - pipeline_deal_ref_input
+      additionalProperties: false
+      properties:
+        pipeline_deal_ref_input:
+          type: string
+          minLength: 1
+          description: Raw manager input such as `#83839`, `83839`, `D-83839`, a deal URL, a conversation URL, or a conversation id. This is never the primary link.
+
+    BookingResolveDealResponse:
+      type: object
+      required:
+        - status
+        - code
+        - retryable
+        - input
+        - accountId
+        - fleexaCompanyId
+        - candidates
+      properties:
+        status:
+          type: string
+          enum:
+            - RESOLVED
+            - NOT_FOUND
+            - AMBIGUOUS_REFERENCE
+        code:
+          type: string
+          enum:
+            - RESOLVED
+            - NOT_FOUND
+            - AMBIGUOUS_REFERENCE
+        retryable:
+          type: boolean
+          default: false
+        input:
+          type: string
+        accountId:
+          type: string
+        fleexaCompanyId:
+          type:
+            - string
+            - "null"
+        pipeline_deal_id:
+          type:
+            - string
+            - "null"
+          description: Real internal `crm_deals.id` as a string. Never the raw manager input.
+        deal_display_number:
+          type:
+            - string
+            - "null"
+        conversation_id:
+          type:
+            - string
+            - "null"
+          description: Chatwoot conversation display id as a string.
+        company_id:
+          type:
+            - string
+            - "null"
+          description: Fleexa company id mapped from the Chat account service credential.
+        client_preview:
+          oneOf:
+            - $ref: "#/components/schemas/BookingContactPreview"
+            - type: "null"
+        preview:
+          oneOf:
+            - $ref: "#/components/schemas/BookingDealPreview"
+            - type: "null"
+        candidates:
+          type: array
+          items:
+            $ref: "#/components/schemas/PendingUserActionCandidate"
+
+    BookingDealPreview:
+      type: object
+      required:
+        - pipeline_deal_id
+        - deal_display_number
+        - title
+        - stage
+        - client_preview
+        - conversation_id
+        - existing_booking_id
+      additionalProperties: false
+      properties:
+        pipeline_deal_id:
+          type: string
+        deal_display_number:
+          type: string
+        title:
+          type: string
+        stage:
+          oneOf:
+            - $ref: "#/components/schemas/BookingStagePreview"
+            - type: "null"
+        client_preview:
+          oneOf:
+            - $ref: "#/components/schemas/BookingContactPreview"
+            - type: "null"
+        conversation_id:
+          type:
+            - string
+            - "null"
+        existing_booking_id:
+          type:
+            - string
+            - "null"
+
+    BookingStagePreview:
+      type: object
+      required:
+        - id
+        - key
+        - name
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+        key:
+          type: string
+        name:
+          type: string
+        fleet_status_trigger:
+          type:
+            - string
+            - "null"
+
+    BookingContactPreview:
+      type: object
+      required:
+        - id
+        - displayName
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+        displayName:
+          type: string
+        phone:
+          type:
+            - string
+            - "null"
+        phoneNumber:
+          type:
+            - string
+            - "null"
+        email:
+          type:
+            - string
+            - "null"
+          format: email
+
+    BookingSyncRequest:
+      allOf:
+        - type: object
+          required:
+            - booking_id
+            - booking_number
+            - booking_client_id
+            - booking_client_name
+            - booking_client_phone
+            - booking_version
+            - source_updated_at
+            - vehicle
+            - rental_start
+            - rental_end
+            - rental_days
+            - amount
+            - currency
+            - booking_status
+            - source
+          additionalProperties: false
+          properties:
+            booking_id:
+              type: string
+              minLength: 1
+              description: Stable Fleexa Booking Order.id. This cannot be a display booking number.
+            booking_number:
+              type: string
+              minLength: 1
+              description: Display-only booking number.
+            booking_client_id:
+              type: string
+              minLength: 1
+              description: Stable Fleexa Booking Contact.id. Store on Chat contacts custom_attributes.
+            booking_client_name:
+              type: string
+              minLength: 1
+            booking_client_phone:
+              type:
+                - string
+                - "null"
+              description: Renter phone if known. Phone is a candidate only and must not merge clients automatically.
+            booking_version:
+              type: integer
+              minimum: 1
+              description: Monotonic Booking version. This decides freshness, not `source_updated_at`.
+            source_updated_at:
+              type: string
+              format: date-time
+              description: Informational timestamp only; never use as event ordering source.
+            idempotency_key:
+              type: string
+              minLength: 16
+              maxLength: 120
+            event_id:
+              type: string
+              minLength: 1
+            pipeline_deal_id:
+              type:
+                - string
+                - "null"
+              description: Real Chat `crm_deals.id` when Booking already has a confirmed link. If present, sync must update exactly this deal and never create another one.
+            pipeline_deal_ref_input:
+              type:
+                - string
+                - "null"
+              description: Raw manager input retained for audit/debug only. It is not the link key.
+            confirmed_contact_override:
+              type: boolean
+              default: false
+              description: Explicit manager confirmation that allows changing an existing deal contact. Without this flag, sync must not overwrite existing `contact_id` or `client_phone`.
+            vehicle:
+              $ref: "#/components/schemas/BookingVehicleSnapshot"
+            rental_start:
+              type: string
+              format: date-time
+            rental_end:
+              type: string
+              format: date-time
+            rental_days:
+              type: integer
+              minimum: 0
+            amount:
+              type: string
+              pattern: "^-?[0-9]+(\\.[0-9]{1,2})?$"
+            currency:
+              type: string
+              minLength: 3
+              maxLength: 3
+              examples:
+                - AED
+            booking_status:
+              type: string
+              enum:
+                - booking
+                - reserved
+                - rental
+                - done
+                - cancel
+            source:
+              $ref: "#/components/schemas/BookingSyncSource"
+            referral:
+              $ref: "#/components/schemas/BookingReferralInfo"
+        - anyOf:
+            - required:
+                - idempotency_key
+            - required:
+                - event_id
+
+    BookingVehicleSnapshot:
+      type: object
+      required:
+        - vehicle_id
+        - vehicle_name
+        - vehicle_plate
+      additionalProperties: false
+      properties:
+        vehicle_id:
+          type: string
+          minLength: 1
+        vehicle_name:
+          type: string
+          minLength: 1
+        vehicle_plate:
+          type:
+            - string
+            - "null"
+        brand_model:
+          type:
+            - string
+            - "null"
+        fleet_number:
+          type:
+            - string
+            - "null"
+        photo_url:
+          type:
+            - string
+            - "null"
+          format: uri
+        group:
+          type:
+            - string
+            - "null"
+
+    BookingSyncSource:
+      type: object
+      required:
+        - type
+      additionalProperties: false
+      properties:
+        type:
+          type: string
+          enum:
+            - Booking
+            - Referral
+        communication_phone:
+          type:
+            - string
+            - "null"
+          description: Phone used for communication, including referral source phone. This must not become the renter's personal phone.
+
+    BookingReferralInfo:
+      type: object
+      additionalProperties: false
+      properties:
+        communication_phone:
+          type:
+            - string
+            - "null"
+        referred_by_contact_id:
+          type:
+            - string
+            - "null"
+          description: Existing Chat contact id for the referral source when found.
+        note:
+          type:
+            - string
+            - "null"
+
+    BookingSyncResponse:
+      type: object
+      required:
+        - status
+        - retryable
+        - accountId
+        - bookingId
+      properties:
+        status:
+          type: string
+          enum:
+            - SYNCED
+            - PENDING_USER_ACTION
+            - FAILED
+        retryable:
+          type: boolean
+          default: false
+        accountId:
+          type: string
+        fleexaCompanyId:
+          type:
+            - string
+            - "null"
+        bookingId:
+          type: string
+        bookingVersion:
+          type: integer
+          minimum: 1
+        pipelineDealId:
+          type:
+            - string
+            - "null"
+        freshnessBasis:
+          type: string
+          enum:
+            - booking_version
+        mutated:
+          type: boolean
+        candidates:
+          type: array
+          items:
+            $ref: "#/components/schemas/PendingUserActionCandidate"
+          description: Required when status is `PENDING_USER_ACTION`.
+
+    BookingStaleEventResponse:
+      type: object
+      required:
+        - status
+        - retryable
+        - accountId
+        - bookingId
+        - freshnessBasis
+      properties:
+        status:
+          type: string
+          enum:
+            - STALE_BOOKING_EVENT
+        retryable:
+          type: boolean
+          default: false
+        accountId:
+          type: string
+        fleexaCompanyId:
+          type:
+            - string
+            - "null"
+        bookingId:
+          type: string
+        acceptedBookingVersion:
+          type: integer
+          minimum: 1
+        receivedBookingVersion:
+          type: integer
+          minimum: 1
+        freshnessBasis:
+          type: string
+          enum:
+            - booking_version
+
+    BookingSyncDisabledResponse:
+      type: object
+      required:
+        - status
+        - code
+        - retryable
+        - accountId
+        - message
+      properties:
+        status:
+          type: string
+          enum:
+            - SYNC_DISABLED
+        code:
+          type: string
+          enum:
+            - SYNC_DISABLED
+        retryable:
+          type: boolean
+          default: false
+        accountId:
+          type: string
+        fleexaCompanyId:
+          type:
+            - string
+            - "null"
+        message:
+          type: string
+
+    BookingRelinkRequest:
+      type: object
+      required:
+        - new_pipeline_deal_id
+        - reason
+      additionalProperties: false
+      properties:
+        new_pipeline_deal_id:
+          type: string
+          minLength: 1
+          description: Real Chat `crm_deals.id` for the new link. The deal must belong to this account.
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 500
+
+    BookingRelinkResponse:
+      type: object
+      required:
+        - status
+        - retryable
+        - accountId
+        - bookingId
+        - newPipelineDealId
+        - auditRequired
+      properties:
+        status:
+          type: string
+          enum:
+            - RELINKED
+        retryable:
+          type: boolean
+          default: false
+        accountId:
+          type: string
+        fleexaCompanyId:
+          type:
+            - string
+            - "null"
+        bookingId:
+          type: string
+        oldPipelineDealId:
+          type:
+            - string
+            - "null"
+        newPipelineDealId:
+          type: string
+        auditRequired:
+          type: boolean
+          description: Structured audit is persisted before returning `RELINKED`.
+        audit:
+          type: object
+          additionalProperties: true
+        mutated:
+          type: boolean
+
+    PendingUserActionCandidate:
+      type: object
+      required:
+        - pipeline_deal_id
+        - title
+        - reason
+        - active
+      properties:
+        pipeline_deal_id:
+          type: string
+        deal_display_number:
+          type:
+            - string
+            - "null"
+        title:
+          type: string
+        stage:
+          oneOf:
+            - $ref: "#/components/schemas/BookingStagePreview"
+            - type: "null"
+        conversation_id:
+          type:
+            - string
+            - "null"
+        existing_booking_id:
+          type:
+            - string
+            - "null"
+        client_preview:
+          oneOf:
+            - $ref: "#/components/schemas/BookingContactPreview"
+            - type: "null"
+        reason:
+          type: string
+          enum:
+            - multiple_active_deals
+            - deal_ref_and_conversation_ref_disagree
+            - explicit_manager_choice_required
+        active:
+          type: boolean
+
+    ServiceAuthErrorResponse:
+      allOf:
+        - $ref: "#/components/schemas/ErrorResponse"
+      description: |
+        Booking service auth errors are non-retryable. Supported scopes are
+        only `booking:sync` and `booking:relink`; `booking:catalog:read` is not
+        valid for this inbound receiver.
+
     BookingByDealResponse:
       type: object
       required:
@@ -2193,6 +3092,10 @@ components:
                 - bad_request
                 - unauthenticated
                 - invalid_credentials
+                - service_auth_missing
+                - service_auth_invalid
+                - service_auth_account_mismatch
+                - service_auth_scope_missing
                 - forbidden
                 - not_found
                 - conflict

@@ -1,0 +1,579 @@
+diff --git a/app/controllers/api/fleexa_manager/v1/accounts/bookings_controller.rb b/app/controllers/api/fleexa_manager/v1/accounts/bookings_controller.rb
+new file mode 100644
+index 0000000..db472f2
+--- /dev/null
++++ b/app/controllers/api/fleexa_manager/v1/accounts/bookings_controller.rb
+@@ -0,0 +1,151 @@
++class Api::FleexaManager::V1::Accounts::BookingsController < Api::FleexaManager::V1::ServiceController
++  NON_BLANK_SYNC_FIELDS = [
++    %w[booking_id bookingId],
++    %w[booking_number bookingNumber],
++    %w[booking_client_id bookingClientId],
++    %w[booking_client_name bookingClientName],
++    %w[booking_version bookingVersion],
++    %w[rental_start rentalStart],
++    %w[rental_end rentalEnd],
++    %w[currency],
++    %w[booking_status bookingStatus]
++  ].freeze
++  PRESENCE_ONLY_SYNC_FIELDS = [
++    %w[booking_client_phone bookingClientPhone],
++    %w[amount]
++  ].freeze
++
++  def resolve_deal
++    ref = payload_value('ref', 'dealRef', 'pipeline_deal_ref_input', 'pipelineDealRefInput')
++    return payload_error('ref is required.', missing_fields: ['ref']) if ref.blank?
++
++    render json: service_status_payload(
++      status: 'ACCEPTED',
++      message: 'Deal reference resolver endpoint is available; resolution logic is implemented in Prompt 4.',
++      extra: {
++        resolution: {
++          status: 'FOUNDATION_ONLY',
++          input: ref.to_s,
++          pipelineDealId: nil,
++          conversationId: nil,
++          ambiguous: false
++        },
++        deal: nil,
++        candidates: []
++      }
++    )
++  end
++
++  def sync
++    missing_fields = missing_sync_fields
++    return payload_error('Required booking sync fields are missing.', missing_fields: missing_fields) if missing_fields.any?
++    return payload_error('booking_version must be a monotonic integer.', missing_fields: ['booking_version']) unless booking_version_valid?
++    return payload_error('idempotency_key or event_id is required.', missing_fields: ['idempotency_key']) if idempotency_key.blank?
++
++    render json: service_status_payload(
++      status: 'ACCEPTED',
++      message: 'Booking sync receiver accepted the contract; deal mutation is implemented in Prompt 4.',
++      extra: {
++        bookingId: payload_value('booking_id', 'bookingId').to_s,
++        bookingVersion: booking_version,
++        idempotencyKey: idempotency_key,
++        freshnessBasis: 'booking_version',
++        mutated: false
++      }
++    )
++  end
++
++  def relink_deal
++    missing_fields = []
++    missing_fields << 'booking_id' if params[:booking_id].blank?
++    missing_fields << 'pipeline_deal_id' if payload_value('new_pipeline_deal_id', 'newPipelineDealId', 'pipeline_deal_id', 'pipelineDealId').blank?
++    missing_fields << 'reason' if payload_value('reason').blank?
++
++    return payload_error('Required relink fields are missing.', missing_fields: missing_fields) if missing_fields.any?
++
++    render json: service_status_payload(
++      status: 'ACCEPTED',
++      message: 'Booking relink endpoint accepted the contract; durable audit and deal mutation are implemented in Prompt 4.',
++      extra: {
++        bookingId: params[:booking_id].to_s,
++        newPipelineDealId: payload_value('new_pipeline_deal_id', 'newPipelineDealId', 'pipeline_deal_id', 'pipelineDealId').to_s,
++        auditRequired: true,
++        mutated: false
++      }
++    )
++  end
++
++  private
++
++  def required_booking_scope
++    action_name == 'relink_deal' ? 'booking:relink' : 'booking:sync'
++  end
++
++  def missing_sync_fields
++    missing = NON_BLANK_SYNC_FIELDS.filter_map do |keys|
++      keys.first unless payload_value(*keys).present?
++    end
++
++    PRESENCE_ONLY_SYNC_FIELDS.each do |keys|
++      missing << keys.first unless payload_key_present?(*keys)
++    end
++
++    missing << 'vehicle.vehicle_id' if vehicle_id.blank?
++    missing
++  end
++
++  def booking_version_valid?
++    booking_version.present?
++  end
++
++  def booking_version
++    raw = payload_value('booking_version', 'bookingVersion')
++    return if raw.blank?
++
++    Integer(raw)
++  rescue ArgumentError, TypeError
++    nil
++  end
++
++  def idempotency_key
++    payload_value('idempotency_key', 'idempotencyKey', 'event_id', 'eventId').presence ||
++      request.headers['Idempotency-Key'].presence
++  end
++
++  def vehicle_id
++    payload_value('vehicle_id', 'vehicleId').presence ||
++      vehicle_payload['vehicle_id'].presence ||
++      vehicle_payload['vehicleId'].presence
++  end
++
++  def vehicle_payload
++    payload_value('vehicle') || {}
++  end
++
++  def payload_value(*keys)
++    keys.each do |key|
++      return raw_payload[key] if raw_payload.key?(key)
++    end
++    nil
++  end
++
++  def payload_key_present?(*keys)
++    keys.any? { |key| raw_payload.key?(key) }
++  end
++
++  def raw_payload
++    @raw_payload ||= params.to_unsafe_h
++  end
++
++  def payload_error(message, missing_fields: [])
++    render_manager_error(
++      'validation_failed',
++      message,
++      status: :unprocessable_entity,
++      details: {
++        missingFields: missing_fields,
++        retryable: false
++      }
++    )
++  end
++end
+diff --git a/app/controllers/api/fleexa_manager/v1/service_controller.rb b/app/controllers/api/fleexa_manager/v1/service_controller.rb
+new file mode 100644
+index 0000000..dc3f480
+--- /dev/null
++++ b/app/controllers/api/fleexa_manager/v1/service_controller.rb
+@@ -0,0 +1,94 @@
++class Api::FleexaManager::V1::ServiceController < Api::FleexaManager::V1::BaseController
++  skip_before_action :normalize_fleexa_bearer_token, raise: false
++  skip_before_action :authenticate_access_token!, raise: false
++  skip_before_action :validate_bot_access_token!, raise: false
++  skip_before_action :authenticate_user!, raise: false
++  skip_before_action :ensure_fleexa_manager_user!, raise: false
++
++  before_action :set_service_account_from_params
++  before_action :authenticate_booking_service!
++  before_action :ensure_booking_receiver_enabled!
++
++  private
++
++  def set_service_account_from_params
++    account_id = account_id_from_param(params[:account_id])
++    return render_manager_error('bad_request', 'Invalid accountId.', status: :bad_request) if account_id.blank?
++
++    account = Account.find_by(id: account_id)
++    return render_manager_error('not_found', 'Account was not found.', status: :not_found) if account.blank?
++    return render_manager_error('forbidden', 'Account is suspended.', status: :forbidden) unless account.active?
++
++    @service_account = account
++    Current.account = account
++  end
++
++  def authenticate_booking_service!
++    provided_token = booking_service_token
++    return render_service_auth_error('service_auth_missing', 'Booking service token is required.', :unauthorized) if provided_token.blank?
++
++    digest = FleexaManagerBookingCredential.digest_token(provided_token)
++    credential = FleexaManagerBookingCredential.active.find_by(token_digest: digest)
++    return render_service_auth_error('service_auth_invalid', 'Booking service token is invalid.', :unauthorized) if credential.blank?
++
++    unless credential.account_id == @service_account.id
++      return render_service_auth_error('service_auth_account_mismatch', 'Booking service token is not scoped to this account.', :forbidden)
++    end
++
++    unless credential.allows_scope?(required_booking_scope)
++      return render_service_auth_error('service_auth_scope_missing', "Booking service token is missing #{required_booking_scope}.", :forbidden)
++    end
++
++    @booking_service_credential = credential
++  end
++
++  def ensure_booking_receiver_enabled!
++    return if booking_receiver_enabled?
++
++    render json: service_status_payload(
++      status: 'SYNC_DISABLED',
++      message: 'Booking sync receiver is disabled for this account.'
++    )
++  end
++
++  def booking_receiver_enabled?
++    settings = @service_account.settings || {}
++    config = settings['fleexa_booking_pipeline_sync'] || settings[:fleexa_booking_pipeline_sync] || {}
++    ActiveModel::Type::Boolean.new.cast(config['receiver_enabled'] || config[:receiver_enabled])
++  end
++
++  def booking_service_token
++    header_token = request.headers['X-Fleexa-Booking-Token'].presence ||
++                   request.headers['X-Booking-Service-Token'].presence
++    bearer_token = request.headers['Authorization'].to_s.match(/\ABearer\s+(.+)\z/i)&.[](1)&.strip
++
++    header_token || bearer_token
++  end
++
++  def required_booking_scope
++    raise NotImplementedError, 'Service controller must define required_booking_scope.'
++  end
++
++  def account_id_from_param(value)
++    stable = stable_id_value(value, 'acc')
++    return stable if stable.present?
++
++    raw = value.to_s
++    return raw.to_i if raw.match?(/\A\d+\z/)
++  end
++
++  def render_service_auth_error(code, message, status)
++    render_manager_error(code, message, status: status, details: { retryable: false })
++  end
++
++  def service_status_payload(status:, message:, extra: {})
++    {
++      status: status,
++      code: status,
++      retryable: false,
++      accountId: "acc_#{@service_account.id}",
++      fleexaCompanyId: @booking_service_credential&.fleexa_company_id,
++      message: message
++    }.merge(extra)
++  end
++end
+diff --git a/app/models/fleexa_manager_booking_credential.rb b/app/models/fleexa_manager_booking_credential.rb
+new file mode 100644
+index 0000000..ccfe269
+--- /dev/null
++++ b/app/models/fleexa_manager_booking_credential.rb
+@@ -0,0 +1,45 @@
++require 'digest'
++
++class FleexaManagerBookingCredential < ApplicationRecord
++  ALLOWED_SCOPES = %w[booking:sync booking:relink].freeze
++  TOKEN_DIGEST_PATTERN = /\A[0-9a-f]{64}\z/.freeze
++
++  belongs_to :account
++  belongs_to :created_by, class_name: 'User', optional: true
++
++  scope :active, -> { where(active: true) }
++
++  before_validation :normalize_scopes
++  before_validation :normalize_metadata
++
++  validates :account_id, presence: true
++  validates :fleexa_company_id, presence: true
++  validates :token_digest, presence: true, format: { with: TOKEN_DIGEST_PATTERN }
++  validates :token_digest, uniqueness: { conditions: -> { where(active: true) } }, if: :active?
++  validate :allowed_scope_values
++
++  def self.digest_token(raw_token)
++    Digest::SHA256.hexdigest(raw_token.to_s)
++  end
++
++  def allows_scope?(scope)
++    scopes.include?(scope.to_s)
++  end
++
++  private
++
++  def normalize_scopes
++    self.scopes = Array(scopes).map(&:to_s).uniq
++  end
++
++  def normalize_metadata
++    self.metadata = {} unless metadata.is_a?(Hash)
++  end
++
++  def allowed_scope_values
++    invalid_scopes = scopes - ALLOWED_SCOPES
++    return if invalid_scopes.blank?
++
++    errors.add(:scopes, "include unsupported values: #{invalid_scopes.join(', ')}")
++  end
++end
+diff --git a/config/routes.rb b/config/routes.rb
+index c2152f1..d9760ac 100644
+--- a/config/routes.rb
++++ b/config/routes.rb
+@@ -59,6 +59,9 @@ Rails.application.routes.draw do
+           get 'pipeline/stages', to: 'pipeline/stages#index'
+           get 'pipeline/deals', to: 'pipeline/deals#index'
+           get 'pipeline/stages/:stage_id/deals', to: 'pipeline/deals#index'
++          post 'bookings/resolve-deal', to: 'bookings#resolve_deal'
++          post 'bookings/sync', to: 'bookings#sync'
++          post 'bookings/:booking_id/relink-deal', to: 'bookings#relink_deal'
+           get 'manager/counters', to: 'manager/counters#show'
+         end
+       end
+diff --git a/spec/requests/api/fleexa_manager/v1/booking_sync_foundation_spec.rb b/spec/requests/api/fleexa_manager/v1/booking_sync_foundation_spec.rb
+new file mode 100644
+index 0000000..97adf13
+--- /dev/null
++++ b/spec/requests/api/fleexa_manager/v1/booking_sync_foundation_spec.rb
+@@ -0,0 +1,251 @@
++require 'rails_helper'
++
++RSpec.describe 'Fleexa Manager Booking sync foundation API', type: :request do
++  let(:account) { create(:account) }
++  let(:other_account) { create(:account) }
++  let(:service_token) { 'booking-service-token-3b' }
++  let(:other_service_token) { 'other-booking-service-token-3b' }
++
++  def booking_headers(token)
++    { 'X-Fleexa-Booking-Token' => token }
++  end
++
++  def json_response
++    JSON.parse(response.body)
++  end
++
++  def create_booking_credential(account:, token:, scopes:)
++    FleexaManagerBookingCredential.create!(
++      account: account,
++      fleexa_company_id: "fleexa_company_#{account.id}",
++      token_digest: FleexaManagerBookingCredential.digest_token(token),
++      scopes: scopes,
++      active: true
++    )
++  end
++
++  def enable_booking_receiver!(account)
++    account.update!(
++      settings: (account.settings || {}).merge(
++        'fleexa_booking_pipeline_sync' => {
++          'receiver_enabled' => true
++        }
++      )
++    )
++  end
++
++  def sync_path(target_account = account)
++    "/api/fleexa-manager/v1/accounts/acc_#{target_account.id}/bookings/sync"
++  end
++
++  def resolve_deal_path(target_account = account)
++    "/api/fleexa-manager/v1/accounts/acc_#{target_account.id}/bookings/resolve-deal"
++  end
++
++  def relink_path(booking_id = 'order_1001', target_account = account)
++    "/api/fleexa-manager/v1/accounts/acc_#{target_account.id}/bookings/#{booking_id}/relink-deal"
++  end
++
++  def sync_payload(overrides = {})
++    {
++      booking_id: 'order_1001',
++      booking_number: 'BK-1001',
++      booking_client_id: 'booking_contact_501',
++      booking_client_name: 'Mina Patel',
++      booking_client_phone: nil,
++      booking_version: 7,
++      source_updated_at: '2026-07-18T10:00:00Z',
++      event_id: SecureRandom.uuid,
++      vehicle: {
++        vehicle_id: 'vehicle_77',
++        vehicle_name: 'Range Rover Sport',
++        vehicle_plate: 'D 83839'
++      },
++      rental_start: '2026-07-20T10:00:00Z',
++      rental_end: '2026-07-22T10:00:00Z',
++      amount: '1800.00',
++      currency: 'AED',
++      booking_status: 'reserved',
++      source: {
++        type: 'Booking'
++      },
++      referral: {
++        communication_phone: '+971501112233',
++        referred_by_contact_id: nil
++      }
++    }.merge(overrides)
++  end
++
++  describe 'service authentication' do
++    it 'rejects missing tokens' do
++      post sync_path, params: sync_payload, as: :json
++
++      expect(response).to have_http_status(:unauthorized)
++      expect(json_response['error']['code']).to eq('service_auth_missing')
++      expect(json_response['error']['details']).to include('retryable' => false)
++    end
++
++    it 'rejects invalid tokens' do
++      create_booking_credential(account: account, token: service_token, scopes: ['booking:sync'])
++
++      post sync_path, params: sync_payload, headers: booking_headers('wrong-token'), as: :json
++
++      expect(response).to have_http_status(:unauthorized)
++      expect(json_response['error']['code']).to eq('service_auth_invalid')
++    end
++
++    it 'rejects a valid token scoped to another account' do
++      create_booking_credential(account: other_account, token: other_service_token, scopes: ['booking:sync'])
++
++      post sync_path, params: sync_payload, headers: booking_headers(other_service_token), as: :json
++
++      expect(response).to have_http_status(:forbidden)
++      expect(json_response['error']['code']).to eq('service_auth_account_mismatch')
++    end
++
++    it 'rejects a token without the required scope' do
++      create_booking_credential(account: account, token: service_token, scopes: ['booking:relink'])
++
++      post sync_path, params: sync_payload, headers: booking_headers(service_token), as: :json
++
++      expect(response).to have_http_status(:forbidden)
++      expect(json_response['error']['code']).to eq('service_auth_scope_missing')
++    end
++  end
++
++  describe 'feature flags' do
++    it 'defaults the Chat receiver to SYNC_DISABLED without writing deals' do
++      credential = create_booking_credential(account: account, token: service_token, scopes: ['booking:sync'])
++
++      expect do
++        post sync_path, params: sync_payload, headers: booking_headers(service_token), as: :json
++      end.not_to change { [CrmDeal.count, credential.reload.updated_at] }
++
++      expect(response).to have_http_status(:ok)
++      expect(json_response).to include(
++        'status' => 'SYNC_DISABLED',
++        'code' => 'SYNC_DISABLED',
++        'retryable' => false,
++        'accountId' => "acc_#{account.id}",
++        'fleexaCompanyId' => "fleexa_company_#{account.id}"
++      )
++    end
++  end
++
++  describe 'contract skeleton' do
++    before do
++      enable_booking_receiver!(account)
++    end
++
++    it 'accepts the sync request contract without mutating crm_deals in Prompt 3B' do
++      create_booking_credential(account: account, token: service_token, scopes: ['booking:sync'])
++
++      expect do
++        post sync_path, params: sync_payload, headers: booking_headers(service_token), as: :json
++      end.not_to change { CrmDeal.count }
++
++      expect(response).to have_http_status(:ok)
++      expect(json_response).to include(
++        'status' => 'ACCEPTED',
++        'bookingId' => 'order_1001',
++        'bookingVersion' => 7,
++        'freshnessBasis' => 'booking_version',
++        'mutated' => false
++      )
++    end
++
++    it 'rejects sync payloads missing required identity fields' do
++      create_booking_credential(account: account, token: service_token, scopes: ['booking:sync'])
++
++      post sync_path,
++           params: sync_payload(booking_id: nil, booking_version: nil),
++           headers: booking_headers(service_token),
++           as: :json
++
++      expect(response).to have_http_status(:unprocessable_entity)
++      expect(json_response['error']['code']).to eq('validation_failed')
++      expect(json_response['error']['details']['missingFields']).to include('booking_id', 'booking_version')
++      expect(json_response['error']['details']).to include('retryable' => false)
++    end
++
++    it 'exposes the resolve-deal endpoint without treating #344 as an automatic deal id' do
++      create_booking_credential(account: account, token: service_token, scopes: ['booking:sync'])
++
++      post resolve_deal_path,
++           params: { pipeline_deal_ref_input: '#344' },
++           headers: booking_headers(service_token),
++           as: :json
++
++      expect(response).to have_http_status(:ok)
++      expect(json_response['status']).to eq('ACCEPTED')
++      expect(json_response['resolution']).to include(
++        'status' => 'FOUNDATION_ONLY',
++        'input' => '#344',
++        'pipelineDealId' => nil,
++        'conversationId' => nil,
++        'ambiguous' => false
++      )
++    end
++
++    it 'requires relink scope for relink-deal' do
++      create_booking_credential(account: account, token: service_token, scopes: ['booking:sync'])
++
++      post relink_path,
++           params: { new_pipeline_deal_id: 'deal_77', reason: 'Wrong link fixed by manager' },
++           headers: booking_headers(service_token),
++           as: :json
++
++      expect(response).to have_http_status(:forbidden)
++      expect(json_response['error']['code']).to eq('service_auth_scope_missing')
++    end
++
++    it 'accepts relink contract with relink scope without mutating deals in Prompt 3B' do
++      create_booking_credential(account: account, token: service_token, scopes: ['booking:relink'])
++
++      expect do
++        post relink_path,
++             params: { new_pipeline_deal_id: 'deal_77', reason: 'Wrong link fixed by manager' },
++             headers: booking_headers(service_token),
++             as: :json
++      end.not_to change { CrmDeal.count }
++
++      expect(response).to have_http_status(:ok)
++      expect(json_response).to include(
++        'status' => 'ACCEPTED',
++        'bookingId' => 'order_1001',
++        'newPipelineDealId' => 'deal_77',
++        'auditRequired' => true,
++        'mutated' => false
++      )
++    end
++  end
++
++  describe 'database protections' do
++    it 'does not expose raw booking service tokens as credential columns' do
++      expect(FleexaManagerBookingCredential.column_names).not_to include('token', 'raw_token', 'plain_token')
++      expect(FleexaManagerBookingCredential.column_names).to include('token_digest', 'scopes', 'account_id')
++    end
++
++    it 'has unique non-empty booking_id protection for account-scoped crm_deals' do
++      index = ActiveRecord::Base.connection.indexes(:crm_deals).find do |candidate|
++        candidate.name == 'uq_crm_deals_account_booking_id_nonempty'
++      end
++
++      expect(index).to be_present
++      expect(index.unique).to be(true)
++      expect(index.columns).to eq(%w[account_id booking_id])
++      expect(index.where).to include("booking_id IS NOT NULL")
++      expect(index.where).to include("booking_id")
++    end
++
++    it 'indexes contacts.custom_attributes booking_client_id for lookup without phone merges' do
++      index = ActiveRecord::Base.connection.indexes(:contacts).find do |candidate|
++        candidate.name == 'idx_contacts_booking_client_id_custom_attributes'
++      end
++
++      expect(index).to be_present
++      expect(index.columns).to include('account_id')
++      expect(index.where).to include("booking_client_id")
++    end
++  end
++end
