@@ -20,10 +20,12 @@ export const ApiClientProvider = ({ children, config, tokenProvider }: ApiClient
     () =>
       createFleexaApiClient({
         baseUrl: config.apiBaseUrl,
+        driver: config.apiDriver,
         mode: config.apiMode,
+        chatwootAccountId: config.chatwootAccountId,
         tokenProvider,
       }),
-    [config.apiBaseUrl, config.apiMode, tokenProvider]
+    [config.apiBaseUrl, config.apiDriver, config.apiMode, config.chatwootAccountId, tokenProvider]
   );
 
   return <ApiClientContext.Provider value={{ client }}>{children}</ApiClientContext.Provider>;

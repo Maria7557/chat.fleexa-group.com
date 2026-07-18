@@ -7,6 +7,7 @@ describe('@fleexa/config', () => {
     const config = createRuntimeConfig({ NODE_ENV: 'development' });
 
     expect(config.apiMode).toBe('live');
+    expect(config.apiDriver).toBe('manager');
     expect(config.apiBaseUrl).toBe('http://localhost:3000/api/fleexa-manager/v1');
     expect(config.sentry.enabled).toBe(false);
   });
@@ -29,6 +30,28 @@ describe('@fleexa/config', () => {
         EXPO_PUBLIC_FLEEXA_API_BASE_URL: 'https://api.fleexa.example.com/api/fleexa-manager/v1',
       })
     ).toThrow(EnvironmentConfigError);
+  });
+
+  it('allows explicit local Chatwoot driver with an account id', () => {
+    const config = createRuntimeConfig({
+      EXPO_PUBLIC_FLEEXA_APP_ENV: 'development',
+      EXPO_PUBLIC_FLEEXA_API_DRIVER: 'chatwoot',
+      EXPO_PUBLIC_FLEEXA_API_BASE_URL: 'http://localhost:3000',
+      EXPO_PUBLIC_FLEEXA_CHATWOOT_ACCOUNT_ID: '1',
+    });
+
+    expect(config.apiDriver).toBe('chatwoot');
+    expect(config.chatwootAccountId).toBe('1');
+  });
+
+  it('requires a Chatwoot account id for the Chatwoot driver', () => {
+    expect(() =>
+      createRuntimeConfig({
+        EXPO_PUBLIC_FLEEXA_APP_ENV: 'development',
+        EXPO_PUBLIC_FLEEXA_API_DRIVER: 'chatwoot',
+        EXPO_PUBLIC_FLEEXA_API_BASE_URL: 'http://localhost:3000',
+      })
+    ).toThrow(/EXPO_PUBLIC_FLEEXA_CHATWOOT_ACCOUNT_ID/);
   });
 
   it('requires HTTPS API URLs in production', () => {

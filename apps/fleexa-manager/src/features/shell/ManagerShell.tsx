@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
-import { GitBranch, MessageSquareText, PanelLeftClose, PanelLeftOpen, RefreshCw, Settings, UserRound } from 'lucide-react-native';
+import { router, type Href } from 'expo-router';
+import { ChevronRight, GitBranch, MessageSquareText, PanelLeftClose, PanelLeftOpen, RefreshCw, Settings, UserRound } from 'lucide-react-native';
 
 import { Button, Screen, StatusPill, colors, spacing } from '@fleexa/ui';
 import { activeAccountIdForSession } from '@fleexa/domain';
@@ -37,6 +38,8 @@ export const ManagerShell = ({ config }: { config: FleexaRuntimeConfig }) => {
   const isWide = width >= 900;
 
   const displayName = session.data?.user.name ?? 'Manager';
+  const apiStatusLabel =
+    config.apiMode === 'mock' ? 'Mock mode' : config.apiDriver === 'chatwoot' ? 'Chatwoot local' : 'Live API';
   const accountName = useMemo(() => {
     if (!session.data || !accountId) return 'No account';
     return session.data.memberships.find(membership => membership.accountId === accountId)?.accountName ?? accountId;
@@ -106,7 +109,7 @@ export const ManagerShell = ({ config }: { config: FleexaRuntimeConfig }) => {
               <Text style={styles.heading}>Manager workspace</Text>
             </View>
             <View style={styles.headerActions}>
-              <StatusPill label={config.apiMode === 'mock' ? 'Mock mode' : 'Live API'} tone={config.apiMode === 'mock' ? 'warning' : 'success'} />
+              <StatusPill label={apiStatusLabel} tone={config.apiMode === 'mock' ? 'warning' : 'success'} />
               <Button label="Sign out" variant="secondary" onPress={signOut} />
             </View>
           </View>
@@ -131,16 +134,29 @@ export const ManagerShell = ({ config }: { config: FleexaRuntimeConfig }) => {
                 <MessageSquareText size={20} color={colors.teal} />
                 <Text style={styles.sectionTitle}>Conversation queue</Text>
               </View>
+              {conversations.error ? <EmptyState label={conversations.error.message} tone="danger" /> : null}
               {conversations.data?.data.map(item => (
-                <View key={item.id} style={styles.queueRow}>
+                <Pressable
+                  accessibilityRole="button"
+                  key={item.id}
+                  onPress={() =>
+                    router.push(`/conversation/${encodeURIComponent(item.id)}` as Href)
+                  }
+                  style={({ pressed }) => [styles.queueRow, pressed && styles.queueRowPressed]}
+                >
                   <View style={styles.queueText}>
                     <Text style={styles.rowTitle}>{item.contact.displayName}</Text>
-                    <Text style={styles.rowMeta}>{item.lastMessage?.text ?? item.title}</Text>
+                    <Text numberOfLines={2} style={styles.rowMeta}>
+                      {item.lastMessage?.text || item.title || 'No messages yet'}
+                    </Text>
                   </View>
                   <StatusPill label={`${item.unreadCount} unread`} tone={item.unreadCount ? 'warning' : 'neutral'} />
-                </View>
+                  <ChevronRight size={18} color={colors.textMuted} />
+                </Pressable>
               ))}
-              {!conversations.data?.data.length ? <EmptyState label="No conversations returned by the Manager API." /> : null}
+              {!conversations.error && !conversations.data?.data.length ? (
+                <EmptyState label="No conversations returned by the chat API." />
+              ) : null}
             </View>
 
             <View style={styles.surface}>
@@ -185,7 +201,9 @@ const Metric = ({ label, value, tone = 'info' }: { label: string; value: number;
   </View>
 );
 
-const EmptyState = ({ label }: { label: string }) => <Text style={styles.emptyText}>{label}</Text>;
+const EmptyState = ({ label, tone = 'neutral' }: { label: string; tone?: 'neutral' | 'danger' }) => (
+  <Text style={[styles.emptyText, tone === 'danger' && styles.errorText]}>{label}</Text>
+);
 
 const styles = StyleSheet.create({
   loading: {
@@ -375,6 +393,9 @@ const styles = StyleSheet.create({
     borderTopColor: colors.border,
     paddingTop: spacing.md,
   },
+  queueRowPressed: {
+    opacity: 0.76,
+  },
   queueText: {
     flex: 1,
     minWidth: 0,
@@ -406,6 +427,9 @@ const styles = StyleSheet.create({
   emptyText: {
     color: colors.textMuted,
     fontSize: 14,
+  },
+  errorText: {
+    color: colors.red,
   },
   footerStrip: {
     flexDirection: 'row',

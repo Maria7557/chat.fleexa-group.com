@@ -18,6 +18,9 @@ export const LoginScreen = ({ config }: { config: FleexaRuntimeConfig }) => {
     return <Redirect href="/home" />;
   }
 
+  const tokenLabel = config.apiDriver === 'chatwoot' ? 'Chatwoot api_access_token' : 'Access token';
+  const tokenPlaceholder = config.apiDriver === 'chatwoot' ? 'Paste Chatwoot API access token' : 'Paste bearer token';
+
   const handleSubmit = async () => {
     setIsSubmitting(true);
     setError(null);
@@ -42,20 +45,25 @@ export const LoginScreen = ({ config }: { config: FleexaRuntimeConfig }) => {
             </View>
             <View>
               <Text style={styles.brandName}>Fleexa Manager</Text>
-              <Text style={styles.brandSubline}>Manager API workspace</Text>
+              <Text style={styles.brandSubline}>
+                {config.apiDriver === 'chatwoot' ? 'Local Chatwoot workspace' : 'Manager API workspace'}
+              </Text>
             </View>
           </View>
 
           <View style={styles.copy}>
             <Text style={styles.title}>Sign in</Text>
             <Text style={styles.subtitle}>
-              Use a Manager bearer token from the Fleexa API layer. Mock mode is for UI development only.
+              {config.apiDriver === 'chatwoot'
+                ? 'Use a Chatwoot API access token from the local backend. Mock mode is for UI development only.'
+                : 'Use a Manager bearer token from the Fleexa API layer. Mock mode is for UI development only.'}
             </Text>
           </View>
 
           <View style={styles.metaRow}>
             <StatusPill label={config.appEnv} tone={config.isProduction ? 'danger' : 'info'} />
             <StatusPill label={config.apiMode === 'mock' ? 'mock API' : 'live API'} tone={config.apiMode === 'mock' ? 'warning' : 'success'} />
+            <StatusPill label={config.apiDriver} tone={config.apiDriver === 'chatwoot' ? 'info' : 'success'} />
             <StatusPill label={config.sentry.enabled ? 'Sentry on' : 'Sentry off'} tone={config.sentry.enabled ? 'success' : 'neutral'} />
           </View>
 
@@ -71,9 +79,9 @@ export const LoginScreen = ({ config }: { config: FleexaRuntimeConfig }) => {
             <TextField
               autoCapitalize="none"
               autoCorrect={false}
-              label="Access token"
+              label={tokenLabel}
               onChangeText={setToken}
-              placeholder="Paste bearer token"
+              placeholder={tokenPlaceholder}
               secureTextEntry
               value={token}
               error={error}

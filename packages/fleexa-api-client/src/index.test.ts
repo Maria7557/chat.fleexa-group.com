@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { HttpFleexaApiClient, MockFleexaApiClient } from './index';
+import { ChatwootFleexaApiClient, HttpFleexaApiClient, MockFleexaApiClient } from './index';
 import type { FleexaApiError } from './index';
 
 describe('@fleexa/api-client', () => {
@@ -74,5 +74,138 @@ describe('@fleexa/api-client', () => {
     expect(session.apiVersion).toContain('mock');
     expect(conversations.data[0]?.linkedDeal?.id).toMatch(/^deal_/);
     expect(conversations.data[0]).not.toHaveProperty('custom_attributes');
+  });
+
+  it('maps Chatwoot profile and conversations into Manager DTOs', async () => {
+    const fetchImpl = vi.fn(async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.endsWith('/profile')) {
+        return new Response(
+          JSON.stringify({
+            id: 1,
+            name: 'Admin',
+            email: 'admin@fleexa.com',
+            account_id: 1,
+            pubsub_token: 'pubsub-token',
+            accounts: [{ id: 1, name: 'Fleexa', role: 'administrator' }],
+          })
+        );
+      }
+
+      return new Response(
+        JSON.stringify({
+          data: {
+            meta: { mine_count: 1, assigned_count: 1, unassigned_count: 0, all_count: 1 },
+            payload: [
+              {
+                id: 81,
+                account_id: 1,
+                status: 'open',
+                priority: null,
+                can_reply: true,
+                unread_count: 2,
+                last_activity_at: 1784369978,
+                labels: ['vip'],
+                meta: {
+                  channel: 'Channel::Api',
+                  sender: { id: 44, name: 'Mikhail Orlov', email: 'mikhail@example.com' },
+                  assignee: { id: 1, name: 'Admin', type: 'user' },
+                },
+                messages: [
+                  {
+                    id: 180,
+                    content: 'Meta WhatsApp click',
+                    conversation_id: 81,
+                    message_type: 0,
+                    status: 'sent',
+                    created_at: 1784369978,
+                  },
+                ],
+              },
+            ],
+          },
+        })
+      );
+    });
+    const client = new ChatwootFleexaApiClient({
+      baseUrl: 'http://localhost:3000',
+      chatwootAccountId: '1',
+      tokenProvider: () => 'chatwoot-token',
+      fetchImpl,
+    });
+
+    const session = await client.getCurrentSession();
+    const conversations = await client.listConversations({ accountId: session.activeAccountId ?? '', assignment: 'mine' });
+
+    expect(fetchImpl).toHaveBeenCalledWith(
+      'http://localhost:3000/api/v1/profile',
+      expect.objectContaining({
+        headers: expect.objectContaining({ api_access_token: 'chatwoot-token' }),
+      })
+    );
+    expect(session.activeAccountId).toBe('acc_1');
+    expect(session.memberships[0]?.role).toBe('owner');
+    expect(conversations.data[0]).toMatchObject({
+      id: 'conv_81',
+      accountId: 'acc_1',
+      channel: { type: 'other', displayName: 'Api' },
+      contact: { id: 'contact_44', displayName: 'Mikhail Orlov' },
+      lastMessage: { id: 'msg_180', text: 'Meta WhatsApp click', direction: 'incoming' },
+    });
+    expect(conversations.data[0]).not.toHaveProperty('custom_attributes');
+  });
+
+  it('sends Chatwoot text messages with api_access_token and client ids', async () => {
+    const fetchImpl = vi.fn(async () =>
+      new Response(
+        JSON.stringify({
+          id: 223,
+          content: 'hello',
+          conversation_id: 81,
+          message_type: 1,
+          status: 'sent',
+          private: false,
+          content_attributes: { clientMessageId: 'client_1' },
+          created_at: 1784369978,
+        })
+      )
+    );
+    const client = new ChatwootFleexaApiClient({
+      baseUrl: 'http://localhost:3000/api/fleexa-manager/v1',
+      tokenProvider: () => 'chatwoot-token',
+      fetchImpl,
+    });
+
+    const result = await client.sendTextMessage({
+      accountId: 'acc_1',
+      conversationId: 'conv_81',
+      idempotencyKey: 'idem_1',
+      clientMessageId: 'client_1',
+      text: 'hello',
+    });
+
+    expect(fetchImpl).toHaveBeenCalledWith(
+      'http://localhost:3000/api/v1/accounts/1/conversations/81/messages',
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({
+          api_access_token: 'chatwoot-token',
+          'Idempotency-Key': 'idem_1',
+          'Content-Type': 'application/json',
+        }),
+        body: JSON.stringify({
+          content: 'hello',
+          private: false,
+          content_attributes: { clientMessageId: 'client_1', idempotencyKey: 'idem_1' },
+        }),
+      })
+    );
+    expect(result.data).toMatchObject({
+      id: 'msg_223',
+      conversationId: 'conv_81',
+      text: 'hello',
+      direction: 'outgoing',
+      clientMessageId: 'client_1',
+    });
   });
 });

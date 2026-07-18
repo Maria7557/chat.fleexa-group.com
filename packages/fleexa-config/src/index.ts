@@ -1,11 +1,14 @@
 export type AppEnvironment = 'development' | 'preview' | 'production';
 export type ApiMode = 'live' | 'mock';
+export type ApiDriver = 'manager' | 'chatwoot';
 
 export interface RawRuntimeEnv {
   NODE_ENV?: string | undefined;
   EXPO_PUBLIC_FLEEXA_APP_ENV?: string | undefined;
   EXPO_PUBLIC_FLEEXA_API_MODE?: string | undefined;
+  EXPO_PUBLIC_FLEEXA_API_DRIVER?: string | undefined;
   EXPO_PUBLIC_FLEEXA_API_BASE_URL?: string | undefined;
+  EXPO_PUBLIC_FLEEXA_CHATWOOT_ACCOUNT_ID?: string | undefined;
   EXPO_PUBLIC_SENTRY_DSN?: string | undefined;
   SENTRY_DSN?: string | undefined;
   EXPO_PUBLIC_SENTRY_TRACES_SAMPLE_RATE?: string | undefined;
@@ -15,7 +18,9 @@ export interface RawRuntimeEnv {
 export interface FleexaRuntimeConfig {
   appEnv: AppEnvironment;
   apiMode: ApiMode;
+  apiDriver: ApiDriver;
   apiBaseUrl: string;
+  chatwootAccountId?: string | undefined;
   isProduction: boolean;
   mockModeAllowed: boolean;
   sentry: {
@@ -38,6 +43,7 @@ export class EnvironmentConfigError extends Error {
 const DEFAULT_LOCAL_API_BASE_URL = 'http://localhost:3000/api/fleexa-manager/v1';
 const APP_ENVS = new Set<AppEnvironment>(['development', 'preview', 'production']);
 const API_MODES = new Set<ApiMode>(['live', 'mock']);
+const API_DRIVERS = new Set<ApiDriver>(['manager', 'chatwoot']);
 
 const optionalTrim = (value: string | undefined): string | undefined => {
   const normalized = value?.trim();
@@ -70,6 +76,13 @@ const parseApiMode = (raw: RawRuntimeEnv, issues: string[]): ApiMode => {
   return 'live';
 };
 
+const parseApiDriver = (raw: RawRuntimeEnv, issues: string[]): ApiDriver => {
+  const value = optionalTrim(raw.EXPO_PUBLIC_FLEEXA_API_DRIVER) ?? 'manager';
+  if (API_DRIVERS.has(value as ApiDriver)) return value as ApiDriver;
+  issues.push('EXPO_PUBLIC_FLEEXA_API_DRIVER must be manager or chatwoot');
+  return 'manager';
+};
+
 const parseSampleRate = (raw: RawRuntimeEnv, appEnv: AppEnvironment, issues: string[]): number => {
   const value = optionalTrim(raw.EXPO_PUBLIC_SENTRY_TRACES_SAMPLE_RATE ?? raw.SENTRY_TRACES_SAMPLE_RATE);
   if (!value) return appEnv === 'production' ? 0.1 : 0;
@@ -85,9 +98,11 @@ export const createRuntimeConfig = (raw: RawRuntimeEnv = {}): FleexaRuntimeConfi
   const issues: string[] = [];
   const appEnv = parseAppEnv(raw, issues);
   const apiMode = parseApiMode(raw, issues);
+  const apiDriver = parseApiDriver(raw, issues);
   const apiBaseUrl = normalizeUrl(
     optionalTrim(raw.EXPO_PUBLIC_FLEEXA_API_BASE_URL) ?? DEFAULT_LOCAL_API_BASE_URL
   );
+  const chatwootAccountId = optionalTrim(raw.EXPO_PUBLIC_FLEEXA_CHATWOOT_ACCOUNT_ID);
   const sentryDsn = optionalTrim(raw.EXPO_PUBLIC_SENTRY_DSN ?? raw.SENTRY_DSN) ?? null;
   const tracesSampleRate = parseSampleRate(raw, appEnv, issues);
   const isProduction = appEnv === 'production';
@@ -98,6 +113,14 @@ export const createRuntimeConfig = (raw: RawRuntimeEnv = {}): FleexaRuntimeConfi
 
   if (isProduction && apiMode === 'mock') {
     issues.push('mock API mode cannot be used for production acceptance');
+  }
+
+  if (isProduction && apiDriver !== 'manager') {
+    issues.push('production API driver must be manager');
+  }
+
+  if (apiDriver === 'chatwoot' && !chatwootAccountId) {
+    issues.push('EXPO_PUBLIC_FLEEXA_CHATWOOT_ACCOUNT_ID is required when API driver is chatwoot');
   }
 
   if (isProduction && !apiBaseUrl.startsWith('https://')) {
@@ -115,7 +138,9 @@ export const createRuntimeConfig = (raw: RawRuntimeEnv = {}): FleexaRuntimeConfi
   return {
     appEnv,
     apiMode,
+    apiDriver,
     apiBaseUrl,
+    chatwootAccountId,
     isProduction,
     mockModeAllowed: !isProduction,
     sentry: {
