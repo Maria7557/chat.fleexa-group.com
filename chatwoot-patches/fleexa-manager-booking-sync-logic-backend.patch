@@ -97,7 +97,7 @@ new file mode 100644
 index 0000000..4b2aac7
 --- /dev/null
 +++ b/app/services/fleexa_manager/v1/booking_deal_reference_resolver.rb
-@@ -0,0 +1,187 @@
+@@ -0,0 +1,189 @@
 +require 'uri'
 +
 +module FleexaManager
@@ -162,7 +162,9 @@ index 0000000..4b2aac7
 +
 +        direct_deals = CrmDeal.where(id: parsed[:deal_ids])
 +        account_deals = direct_deals.for_account(account.id).includes(:stage, :contact, :conversation).to_a
-+        raise WrongAccountError, 'Deal belongs to another account.' if account_deals.blank? && direct_deals.exists?
++        if parsed[:explicit_deal_ids].present? && account_deals.blank? && direct_deals.exists?
++          raise WrongAccountError, 'Deal belongs to another account.'
++        end
 +
 +        account_deals
 +      end
@@ -996,7 +998,7 @@ new file mode 100644
 index 0000000..46e8741
 --- /dev/null
 +++ b/spec/requests/api/fleexa_manager/v1/booking_sync_logic_spec.rb
-@@ -0,0 +1,389 @@
+@@ -0,0 +1,486 @@
 +require 'rails_helper'
 +
 +RSpec.describe 'Fleexa Manager Booking sync logic API', type: :request do
@@ -1103,10 +1105,107 @@ index 0000000..46e8741
 +    )
 +  end
 +
++  def conversation_with_display_id(display_id, contact:)
++    inbox = create(:inbox, account: account)
++    contact_inbox = create(:contact_inbox, contact: contact, inbox: inbox)
++    conversation = create(:conversation, account: account, inbox: inbox, contact: contact, contact_inbox: contact_inbox)
++    conversation.update_column(:display_id, display_id)
++    conversation
++  end
++
 +  before do
 +    enable_booking_receiver!
 +    create_booking_credential(account: account)
 +    build_pipeline!
++  end
++
++  it 'resolves numeric input to a current-account crm_deal id' do
++    contact = create(:contact, account: account, name: 'Direct Numeric Client')
++    deal = CrmDeal.create!(account: account, stage: @reserved_stage, contact: contact, title: 'Numeric deal')
++
++    post resolve_deal_path,
++         params: { pipeline_deal_ref_input: deal.id.to_s },
++         headers: booking_headers,
++         as: :json
++
++    expect(response).to have_http_status(:ok)
++    expect(json_response['status']).to eq('RESOLVED')
++    expect(json_response['pipeline_deal_id']).to eq(deal.id.to_s)
++    expect(json_response['preview']).to include(
++      'pipeline_deal_id' => deal.id.to_s,
++      'title' => 'Numeric deal'
++    )
++  end
++
++  it 'resolves numeric input to a current-account conversation display id linked to a deal' do
++    contact = create(:contact, account: account, name: 'Conversation Numeric Client')
++    conversation = conversation_with_display_id(93_001, contact: contact)
++    deal = CrmDeal.create!(account: account, stage: @reserved_stage, contact: contact, conversation: conversation, title: 'Conversation numeric deal')
++
++    post resolve_deal_path,
++         params: { pipeline_deal_ref_input: '93001' },
++         headers: booking_headers,
++         as: :json
++
++    expect(response).to have_http_status(:ok)
++    expect(json_response['status']).to eq('RESOLVED')
++    expect(json_response['pipeline_deal_id']).to eq(deal.id.to_s)
++    expect(json_response['conversation_id']).to eq('93001')
++  end
++
++  it 'prefers a current-account conversation match over another-account deal id for numeric input' do
++    other_stage = stage(slug: 'reserved', name: 'Other booking', position: 1, trigger: 'reserved', target_account: other_account)
++    CrmDeal.create!(id: 93_002, account: other_account, stage: other_stage, title: 'Other account numeric collision')
++    contact = create(:contact, account: account, name: 'Current Account Conversation Client')
++    conversation = conversation_with_display_id(93_002, contact: contact)
++    deal = CrmDeal.create!(account: account, stage: @reserved_stage, contact: contact, conversation: conversation, title: 'Current account conversation deal')
++
++    post resolve_deal_path,
++         params: { pipeline_deal_ref_input: '93002' },
++         headers: booking_headers,
++         as: :json
++
++    expect(response).to have_http_status(:ok)
++    expect(json_response['status']).to eq('RESOLVED')
++    expect(json_response['pipeline_deal_id']).to eq(deal.id.to_s)
++    expect(json_response['preview']['title']).to eq('Current account conversation deal')
++  end
++
++  it 'returns AMBIGUOUS_REFERENCE when numeric input matches current-account deal and conversation deals' do
++    direct_contact = create(:contact, account: account, name: 'Direct Numeric Collision Client')
++    conversation_contact = create(:contact, account: account, name: 'Conversation Numeric Collision Client')
++    conversation = conversation_with_display_id(93_003, contact: conversation_contact)
++    direct_deal = CrmDeal.create!(id: 93_003, account: account, stage: @reserved_stage, contact: direct_contact, title: 'Direct numeric collision deal')
++    conversation_deal = CrmDeal.create!(account: account, stage: @reserved_stage, contact: conversation_contact, conversation: conversation, title: 'Conversation numeric collision deal')
++
++    post resolve_deal_path,
++         params: { pipeline_deal_ref_input: '93003' },
++         headers: booking_headers,
++         as: :json
++
++    expect(response).to have_http_status(:ok)
++    expect(json_response['status']).to eq('AMBIGUOUS_REFERENCE')
++    expect(json_response['candidates'].map { |candidate| candidate['pipeline_deal_id'] }).to match_array(
++      [direct_deal.id.to_s, conversation_deal.id.to_s]
++    )
++  end
++
++  it 'does not leak another-account deal details for numeric input with no current-account match' do
++    other_stage = stage(slug: 'reserved', name: 'Other booking', position: 1, trigger: 'reserved', target_account: other_account)
++    other_deal = CrmDeal.create!(id: 93_004, account: other_account, stage: other_stage, title: 'Other account only deal')
++
++    post resolve_deal_path,
++         params: { pipeline_deal_ref_input: '93004' },
++         headers: booking_headers,
++         as: :json
++
++    expect(response).to have_http_status(:ok)
++    expect(json_response['status']).to eq('NOT_FOUND')
++    expect(json_response['pipeline_deal_id']).to be_nil
++    expect(json_response['preview']).to be_nil
++    expect(json_response['candidates']).to eq([])
++    expect(json_response['accountId']).to eq("acc_#{account.id}")
++    expect(response.body).not_to include(other_deal.title)
 +  end
 +
 +  it 'returns AMBIGUOUS_REFERENCE when #344 matches a deal and a different conversation-linked deal' do

@@ -653,7 +653,26 @@ paths:
                     client_preview:
                       id: "91"
                       displayName: Sara Khan
+                      phone: "+971501112233"
                       phoneNumber: "+971501112233"
+                      email: null
+                    preview:
+                      pipeline_deal_id: "83839"
+                      deal_display_number: "D-83839"
+                      title: Existing active deal
+                      stage:
+                        id: "1"
+                        key: reserved
+                        name: Booking
+                        fleet_status_trigger: reserved
+                      client_preview:
+                        id: "91"
+                        displayName: Sara Khan
+                        phone: "+971501112233"
+                        phoneNumber: "+971501112233"
+                        email: null
+                      conversation_id: "344"
+                      existing_booking_id: null
                     candidates: []
                 ambiguous:
                   value:
@@ -705,7 +724,10 @@ paths:
 
         Phone is a candidate signal only. The receiver must never auto-merge
         clients by phone. Existing deal `contact_id` and `client_phone` must not
-        be overwritten without explicit manager confirmation.
+        be overwritten without explicit manager confirmation. The MVP does not
+        return phone-only candidates from sync; phone is used only as a safety
+        hint when deciding whether a newly created contact/deal can store the
+        renter phone.
       security:
         - bookingServiceToken: []
       x-account-isolation: required
@@ -2172,7 +2194,9 @@ components:
       type: object
       required:
         - status
+        - code
         - retryable
+        - input
         - accountId
         - fleexaCompanyId
         - candidates
@@ -2183,10 +2207,17 @@ components:
             - RESOLVED
             - NOT_FOUND
             - AMBIGUOUS_REFERENCE
-            - PENDING_USER_ACTION
+        code:
+          type: string
+          enum:
+            - RESOLVED
+            - NOT_FOUND
+            - AMBIGUOUS_REFERENCE
         retryable:
           type: boolean
           default: false
+        input:
+          type: string
         accountId:
           type: string
         fleexaCompanyId:
@@ -2214,16 +2245,95 @@ components:
           description: Fleexa company id mapped from the Chat account service credential.
         client_preview:
           oneOf:
-            - $ref: "#/components/schemas/ContactSummary"
+            - $ref: "#/components/schemas/BookingContactPreview"
             - type: "null"
         preview:
           oneOf:
-            - $ref: "#/components/schemas/DealSummary"
+            - $ref: "#/components/schemas/BookingDealPreview"
             - type: "null"
         candidates:
           type: array
           items:
             $ref: "#/components/schemas/PendingUserActionCandidate"
+
+    BookingDealPreview:
+      type: object
+      required:
+        - pipeline_deal_id
+        - deal_display_number
+        - title
+        - stage
+        - client_preview
+        - conversation_id
+        - existing_booking_id
+      additionalProperties: false
+      properties:
+        pipeline_deal_id:
+          type: string
+        deal_display_number:
+          type: string
+        title:
+          type: string
+        stage:
+          oneOf:
+            - $ref: "#/components/schemas/BookingStagePreview"
+            - type: "null"
+        client_preview:
+          oneOf:
+            - $ref: "#/components/schemas/BookingContactPreview"
+            - type: "null"
+        conversation_id:
+          type:
+            - string
+            - "null"
+        existing_booking_id:
+          type:
+            - string
+            - "null"
+
+    BookingStagePreview:
+      type: object
+      required:
+        - id
+        - key
+        - name
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+        key:
+          type: string
+        name:
+          type: string
+        fleet_status_trigger:
+          type:
+            - string
+            - "null"
+
+    BookingContactPreview:
+      type: object
+      required:
+        - id
+        - displayName
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+        displayName:
+          type: string
+        phone:
+          type:
+            - string
+            - "null"
+        phoneNumber:
+          type:
+            - string
+            - "null"
+        email:
+          type:
+            - string
+            - "null"
+          format: email
 
     BookingSyncRequest:
       allOf:
@@ -2586,19 +2696,7 @@ components:
           type: string
         stage:
           oneOf:
-            - type: object
-              additionalProperties: false
-              properties:
-                id:
-                  type: string
-                key:
-                  type: string
-                name:
-                  type: string
-                fleet_status_trigger:
-                  type:
-                    - string
-                    - "null"
+            - $ref: "#/components/schemas/BookingStagePreview"
             - type: "null"
         conversation_id:
           type:
@@ -2610,13 +2708,12 @@ components:
             - "null"
         client_preview:
           oneOf:
-            - $ref: "#/components/schemas/ContactSummary"
+            - $ref: "#/components/schemas/BookingContactPreview"
             - type: "null"
         reason:
           type: string
           enum:
             - multiple_active_deals
-            - phone_candidate_only
             - deal_ref_and_conversation_ref_disagree
             - explicit_manager_choice_required
         active:
