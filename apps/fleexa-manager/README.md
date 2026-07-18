@@ -22,11 +22,18 @@ Mock mode is only for UI development. It is rejected when
 `EXPO_PUBLIC_FLEEXA_APP_ENV=production` and cannot satisfy production acceptance
 criteria.
 
-For Stage 2 Manager API live mode, use `EXPO_PUBLIC_FLEEXA_API_DRIVER=manager`
+For Stage 3 Manager API live mode, use `EXPO_PUBLIC_FLEEXA_API_DRIVER=manager`
 and point `EXPO_PUBLIC_FLEEXA_API_BASE_URL` at `/api/fleexa-manager/v1`. This is
 the default live path and the only route that can satisfy production acceptance.
-Until Manager-owned session endpoints exist, the token field accepts an existing
-Chatwoot user access token and sends it as `Authorization: Bearer ...`.
+The login screen accepts manager email/password credentials and calls
+`POST /session`; the returned temporary Chatwoot user access token is stored
+internally and is never shown in the UI. Native builds use Expo SecureStore.
+Web uses session-scoped browser storage through the same abstraction with a
+memory fallback for non-browser render contexts.
+
+The Stage 3 login endpoint is still a temporary adapter over existing Chatwoot
+authentication. Refresh, revoke, device/session inventory, and production-beta
+MFA support remain backend work.
 
 The legacy `EXPO_PUBLIC_FLEEXA_API_DRIVER=chatwoot` adapter still exists for
 local development against raw Chatwoot `/api/v1` routes:

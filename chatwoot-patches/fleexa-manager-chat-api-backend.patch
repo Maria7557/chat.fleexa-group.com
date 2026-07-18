@@ -632,18 +632,64 @@ index 0000000..5c10e61
 +Rails.application.config.middleware.insert_before Rack::Cors, FleexaManager::V1::CorsMiddleware
 diff --git a/app/controllers/api/fleexa_manager/v1/session_controller.rb b/app/controllers/api/fleexa_manager/v1/session_controller.rb
 new file mode 100644
-index 0000000..213d10e
+index 0000000..e8797c6
 --- /dev/null
 +++ b/app/controllers/api/fleexa_manager/v1/session_controller.rb
-@@ -0,0 +1,31 @@
+@@ -0,0 +1,116 @@
 +class Api::FleexaManager::V1::SessionController < Api::FleexaManager::V1::BaseController
++  skip_before_action :authenticate_user!, only: [:create], raise: false
++  skip_before_action :ensure_fleexa_manager_user!, only: [:create], raise: false
++
++  def create
++    email = login_email
++    password = params[:password].to_s
++    if email.blank? || password.blank?
++      return render_manager_error('validation_failed', 'Email and password are required.', status: :unprocessable_entity)
++    end
++
++    user = User.from_email(email)
++    return render_invalid_credentials unless user&.valid_password?(password)
++    return render_invalid_credentials unless user.active_for_authentication?
++    if manager_mfa_required?(user)
++      return render_manager_error(
++        'forbidden',
++        'Multi-factor authentication is required before Manager access.',
++        status: :forbidden,
++        details: { reason: 'mfa_required' }
++      )
++    end
++
++    memberships = active_memberships_for(user)
++    active_membership = login_membership_for(memberships)
++    return if performed?
++    return render_manager_error('forbidden', 'No Manager account access.', status: :forbidden) if active_membership.blank?
++
++    Current.user = user
++    Current.account = active_membership.account
++    Current.account_user = active_membership
++
++    access_token = user.access_token || AccessToken.create!(owner: user)
++
++    render json: {
++      accessToken: access_token.token,
++      tokenType: 'Bearer',
++      session: session_dto(user: user, memberships: memberships, active_membership: active_membership)
++    }, status: :created
++  end
++
 +  def current
-+    memberships = current_manager_user.account_users.includes(:account).select { |membership| membership.account&.active? }
++    memberships = active_memberships_for(current_manager_user)
 +    active_membership = active_membership_for(memberships)
 +    return if performed?
 +
-+    render json: FleexaManager::V1::DtoSerializer.current_session(
-+      user: current_manager_user,
++    render json: session_dto(user: current_manager_user, memberships: memberships, active_membership: active_membership)
++  end
++
++  private
++
++  def session_dto(user:, memberships:, active_membership:)
++    FleexaManager::V1::DtoSerializer.current_session(
++      user: user,
 +      memberships: memberships,
 +      active_membership: active_membership,
 +      permissions_for: method(:manager_permissions),
@@ -652,7 +698,46 @@ index 0000000..213d10e
 +    )
 +  end
 +
-+  private
++  def active_memberships_for(user)
++    user.account_users.includes(:account).select { |membership| membership.account&.active? }
++  end
++
++  def login_email
++    params[:email].to_s.strip.downcase
++  end
++
++  def manager_mfa_required?(user)
++    return false unless user.respond_to?(:mfa_enabled?)
++    return false unless user.mfa_enabled?
++    return true unless user.respond_to?(:mfa_feature_available?)
++
++    user.mfa_feature_available?
++  end
++
++  def render_invalid_credentials
++    render_manager_error('invalid_credentials', 'Email or password is incorrect.', status: :unauthorized)
++  end
++
++  def login_membership_for(memberships)
++    return memberships.first if params[:accountHint].blank?
++
++    hint = params[:accountHint].to_s.strip
++    by_id = membership_from_account_id(memberships, hint)
++    return by_id if by_id.present?
++
++    by_name = memberships.find { |membership| membership.account.name.to_s.casecmp?(hint) }
++    return by_name if by_name.present?
++
++    render_manager_error('forbidden', 'Workspace is not accessible.', status: :forbidden)
++    nil
++  end
++
++  def membership_from_account_id(memberships, value)
++    account_id = stable_id_value(value, 'acc')
++    return if account_id.blank?
++
++    memberships.find { |candidate| candidate.account_id == account_id }
++  end
 +
 +  def active_membership_for(memberships)
 +    return memberships.first if params[:activeAccountId].blank?
@@ -1218,7 +1303,7 @@ diff --git a/config/routes.rb b/config/routes.rb
 index 22341dc..ac0712b 100644
 --- a/config/routes.rb
 +++ b/config/routes.rb
-@@ -40,6 +40,23 @@ Rails.application.routes.draw do
+@@ -40,6 +40,24 @@ Rails.application.routes.draw do
  
    get '/health', to: 'health#show'
    get '/api', to: 'api#index'
@@ -1226,6 +1311,7 @@ index 22341dc..ac0712b 100644
 +    namespace :fleexa_manager, path: 'fleexa-manager' do
 +      namespace :v1 do
 +        match '*path', to: 'base#preflight', via: :options
++        post 'session', to: 'session#create'
 +        get 'session/current', to: 'session#current'
 +
 +        scope 'accounts/:account_id', module: :accounts do
@@ -1244,10 +1330,10 @@ index 22341dc..ac0712b 100644
        # ----------------------------------
 diff --git a/spec/requests/api/fleexa_manager/v1/chat_api_spec.rb b/spec/requests/api/fleexa_manager/v1/chat_api_spec.rb
 new file mode 100644
-index 0000000..a013597
+index 0000000..b6179af
 --- /dev/null
 +++ b/spec/requests/api/fleexa_manager/v1/chat_api_spec.rb
-@@ -0,0 +1,239 @@
+@@ -0,0 +1,306 @@
 +require 'rails_helper'
 +
 +RSpec.describe 'Fleexa Manager chat API', type: :request do
@@ -1282,6 +1368,73 @@ index 0000000..a013597
 +        'http://127.0.0.1:8082'
 +      )
 +      expect(response.headers['Access-Control-Allow-Methods']).to include('OPTIONS')
++    end
++  end
++
++  describe 'POST /api/fleexa-manager/v1/session' do
++    let(:password) { 'FleexaStage3Login!2026' }
++
++    before do
++      user.update!(password: password, password_confirmation: password)
++    end
++
++    it 'exchanges valid Chatwoot credentials for a Manager session DTO' do
++      post '/api/fleexa-manager/v1/session',
++           params: { email: user.email.upcase, password: password, accountHint: "acc_#{account.id}" }
++
++      expect(response).to have_http_status(:created)
++      expect(json_response['accessToken']).to eq(user.reload.access_token.token)
++      expect(json_response['tokenType']).to eq('Bearer')
++      expect(json_response['session']['user']['id']).to eq("user_#{user.id}")
++      expect(json_response['session']['activeAccountId']).to eq("acc_#{account.id}")
++      expect(json_response['session']['memberships'].first['accountId']).to eq("acc_#{account.id}")
++      expect(json_response).not_to include('password')
++    end
++
++    it 'allows the returned token to read the current session' do
++      post '/api/fleexa-manager/v1/session',
++           params: { email: user.email, password: password, accountHint: account.name }
++      token = json_response['accessToken']
++
++      get '/api/fleexa-manager/v1/session/current', headers: { 'Authorization' => "Bearer #{token}" }
++
++      expect(response).to have_http_status(:ok)
++      expect(json_response['activeAccountId']).to eq("acc_#{account.id}")
++    end
++
++    it 'denies wrong credentials without returning a token' do
++      post '/api/fleexa-manager/v1/session',
++           params: { email: user.email, password: 'wrong-password' }
++
++      expect(response).to have_http_status(:unauthorized)
++      expect(json_response['error']['code']).to eq('invalid_credentials')
++      expect(json_response).not_to include('accessToken')
++    end
++
++    it 'denies users without active account access' do
++      outsider = create(:user, password: password, password_confirmation: password)
++
++      post '/api/fleexa-manager/v1/session',
++           params: { email: outsider.email, password: password }
++
++      expect(response).to have_http_status(:forbidden)
++      expect(json_response['error']['code']).to eq('forbidden')
++      expect(json_response).not_to include('accessToken')
++    end
++
++    it 'denies an inaccessible workspace hint' do
++      post '/api/fleexa-manager/v1/session',
++           params: { email: user.email, password: password, accountHint: "acc_#{other_account.id}" }
++
++      expect(response).to have_http_status(:forbidden)
++      expect(json_response['error']['code']).to eq('forbidden')
++    end
++
++    it 'denies invalid login payloads' do
++      post '/api/fleexa-manager/v1/session', params: { email: user.email, password: '' }
++
++      expect(response).to have_http_status(:unprocessable_entity)
++      expect(json_response['error']['code']).to eq('validation_failed')
 +    end
 +  end
 +

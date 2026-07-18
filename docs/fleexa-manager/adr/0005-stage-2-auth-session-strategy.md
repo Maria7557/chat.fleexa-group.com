@@ -3,6 +3,12 @@
 Date: 2026-07-18
 Status: Accepted for Stage 2
 
+Stage 3 note: the decision remains accepted as a temporary strategy, but the
+manager-facing UX now uses a narrow `POST /api/fleexa-manager/v1/session`
+email/password adapter over existing Chatwoot credentials. This removes token
+paste from the UI without introducing Manager-owned refresh, revoke, or
+device/session inventory yet.
+
 ## Context
 
 Fleexa Manager needs authenticated mobile-ready APIs before the backend adapter
@@ -29,7 +35,8 @@ Accepted inputs:
   from the authenticated Chatwoot origin
 
 `GET /api/fleexa-manager/v1/session/current` remains the only Stage 2 Manager
-session endpoint. Do not implement `POST /session`, `POST /session/refresh`, or
+session endpoint. Stage 3 adds `POST /session` only as a temporary credential
+exchange over Chatwoot auth. Do not implement `POST /session/refresh` or
 `DELETE /session` until the Manager-owned auth boundary is designed for beta.
 
 ## Why Not Option A Now
@@ -47,8 +54,10 @@ DTOs are proven against local Chatwoot data.
   `/api/fleexa-manager/v1`.
 - The temporary `apiDriver=chatwoot` bridge remains development-only.
 - iPhone/native stores the temporary Chatwoot access token through SecureStore.
-- Expo web keeps manually entered tokens in memory; same-origin deployments may
-  rely on the existing Chatwoot Rails session cookie.
+- Expo web stores the returned token through the same storage abstraction using
+  session-scoped browser storage with a memory fallback for non-browser render
+  contexts.
+- Managers must not see or paste Chatwoot tokens.
 - Sign out clears Expo-held credentials but does not revoke the upstream
   Chatwoot token.
 - Permission changes are reflected by `GET /session/current`; no Manager
@@ -56,7 +65,8 @@ DTOs are proven against local Chatwoot data.
 
 ## Replacement Required Before Production Beta
 
-Before production beta, replace this with Manager-owned session lifecycle:
+Before production beta, replace the temporary Chatwoot credential exchange with
+Manager-owned session lifecycle:
 
 1. `POST /api/fleexa-manager/v1/session`
 2. `POST /api/fleexa-manager/v1/session/refresh`

@@ -16,6 +16,8 @@ import type {
   DealStageUpdateResponse,
   DealsByStageResponse,
   ErrorResponse,
+  LoginSessionRequest,
+  LoginSessionResponse,
   LinkedDealResponse,
   ManagerMessage,
   ManagerCountersResponse,
@@ -83,6 +85,7 @@ export interface ListDealsByStageParams {
 }
 
 export interface FleexaApiClient {
+  login(params: LoginSessionRequest): Promise<LoginSessionResponse>;
   getCurrentSession(activeAccountId?: string): Promise<CurrentSessionResponse>;
   listConversations(params: ListConversationsParams): Promise<ConversationListResponse>;
   getConversationDetail(accountId: string, conversationId: string): Promise<ConversationDetailResponse>;
@@ -115,6 +118,7 @@ export class FleexaApiError extends Error {
 const API_ERROR_CODES = new Set<ApiErrorCode>([
   'bad_request',
   'unauthenticated',
+  'invalid_credentials',
   'forbidden',
   'not_found',
   'conflict',
@@ -128,6 +132,7 @@ const API_ERROR_CODES = new Set<ApiErrorCode>([
 const USER_FACING_API_ERROR_MESSAGES: Record<ApiErrorCode, string> = {
   bad_request: 'The request could not be sent. Please try again.',
   unauthenticated: 'Sign in again to continue.',
+  invalid_credentials: 'Email or password is incorrect.',
   forbidden: 'You do not have access to this workspace.',
   not_found: 'The requested item is no longer available.',
   conflict: 'This action has already been handled. Refresh and try again.',
@@ -576,6 +581,15 @@ export class ChatwootFleexaApiClient implements FleexaApiClient {
     this.fetchImpl = options.fetchImpl ?? fetch;
   }
 
+  async login(_params: LoginSessionRequest): Promise<LoginSessionResponse> {
+    throw new FleexaApiError(422, {
+      error: {
+        code: 'validation_failed',
+        message: 'Email/password login requires the Fleexa Manager API driver.',
+      },
+    });
+  }
+
   async getCurrentSession(activeAccountId?: string): Promise<CurrentSessionResponse> {
     const profile = recordFrom(await this.request('/profile'));
     const rawAccounts = arrayFrom(profile.accounts);
@@ -843,7 +857,19 @@ export class ManagerApiClient implements FleexaApiClient {
         ? globalThis.fetch.bind(globalThis)
         : async () => {
             throw new TypeError('fetch is not available');
-          }) as typeof fetch);
+      }) as typeof fetch);
+  }
+
+  async login(params: LoginSessionRequest): Promise<LoginSessionResponse> {
+    return this.request('/session', {
+      method: 'POST',
+      auth: false,
+      body: {
+        email: params.email,
+        password: params.password,
+        accountHint: params.accountHint ?? null,
+      },
+    });
   }
 
   async getCurrentSession(activeAccountId?: string): Promise<CurrentSessionResponse> {
@@ -950,9 +976,10 @@ export class ManagerApiClient implements FleexaApiClient {
       query?: Record<string, string | number | boolean | undefined>;
       headers?: Record<string, string> | undefined;
       body?: unknown;
+      auth?: boolean;
     } = {}
   ): Promise<T> {
-    const token = await this.tokenProvider?.();
+    const token = options.auth === false ? null : await this.tokenProvider?.();
     const url = `${this.baseUrl}${options.query ? pathWithQuery(path, options.query) : path}`;
     const headers: Record<string, string> = {
       Accept: 'application/json',
@@ -1117,6 +1144,14 @@ const mockStageRefFor = (stageId: string): PipelineStageRef => {
 };
 
 export class MockFleexaApiClient implements FleexaApiClient {
+  async login(_params: LoginSessionRequest): Promise<LoginSessionResponse> {
+    return {
+      accessToken: 'mock-development-token',
+      tokenType: 'Bearer',
+      session: mockSession,
+    };
+  }
+
   async getCurrentSession(): Promise<CurrentSessionResponse> {
     return mockSession;
   }

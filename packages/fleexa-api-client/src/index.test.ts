@@ -67,6 +67,58 @@ describe('@fleexa/api-client', () => {
     );
   });
 
+  it('exchanges email and password with the Manager API without leaking stale bearer auth', async () => {
+    const fetchImpl = vi.fn(async () =>
+      new Response(
+        JSON.stringify({
+          accessToken: 'manager-session-token',
+          tokenType: 'Bearer',
+          session: {
+            user: { id: 'user_1', name: 'Manager', email: 'manager@example.com' },
+            activeAccountId: 'acc_1',
+            memberships: [],
+            permissions: [],
+            realtime: {
+              url: 'wss://example.com/realtime',
+              token: 'rt',
+              tokenExpiresAt: '2026-07-18T10:00:00Z',
+            },
+            serverTime: '2026-07-18T09:00:00Z',
+            apiVersion: '0.1.0',
+          },
+        })
+      )
+    );
+    const client = new ManagerApiClient({
+      baseUrl: 'https://api.example.com/api/fleexa-manager/v1/',
+      tokenProvider: () => 'stale-token',
+      fetchImpl,
+    });
+
+    const result = await client.login({
+      email: 'manager@example.com',
+      password: 'password',
+      accountHint: 'acc_1',
+    });
+
+    expect(fetchImpl).toHaveBeenCalledWith(
+      'https://api.example.com/api/fleexa-manager/v1/session',
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.not.objectContaining({
+          Authorization: expect.any(String),
+        }),
+        body: JSON.stringify({
+          email: 'manager@example.com',
+          password: 'password',
+          accountHint: 'acc_1',
+        }),
+      })
+    );
+    expect(result.accessToken).toBe('manager-session-token');
+    expect(result.session.activeAccountId).toBe('acc_1');
+  });
+
   it('maps API error envelopes into typed client errors', async () => {
     const fetchImpl = vi.fn(async () =>
       new Response(
@@ -144,10 +196,12 @@ describe('@fleexa/api-client', () => {
 
   it('keeps mock mode explicit and Manager-shaped', async () => {
     const client = new MockFleexaApiClient();
+    const login = await client.login({ email: 'manager@example.com', password: 'password' });
     const session = await client.getCurrentSession();
     const conversations = await client.listConversations({ accountId: 'acc_mock_fleexa' });
     const counters = await client.getManagerCounters('acc_mock_fleexa');
 
+    expect(login.accessToken).toContain('mock');
     expect(session.apiVersion).toContain('mock');
     expect(conversations.data[0]?.linkedDeal?.id).toMatch(/^deal_/);
     expect(conversations.data[0]).not.toHaveProperty('custom_attributes');

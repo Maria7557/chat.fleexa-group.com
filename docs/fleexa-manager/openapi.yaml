@@ -13,11 +13,12 @@ info:
     must have an active membership in the requested account and the endpoint
     permission listed by `x-permission`.
 
-    Stage 2 uses temporary Chatwoot authentication through the Manager namespace:
-    existing Chatwoot user access tokens and same-origin Rails sessions are
-    accepted, but raw Chatwoot API payloads and routes are not the Manager
-    contract. Dedicated Manager session, refresh, and revoke endpoints must
-    replace this before production beta.
+    Stage 3 keeps temporary Chatwoot authentication through the Manager
+    namespace while replacing token-paste UX with `POST /session` email/password
+    exchange. Existing Chatwoot user access tokens and same-origin Rails sessions
+    are still accepted for compatibility, but raw Chatwoot API payloads and
+    routes are not the Manager contract. Dedicated Manager refresh and revoke
+    endpoints must replace this before production beta.
 servers:
   - url: https://api.fleexa.example.com/api/fleexa-manager/v1
     description: Production API base path placeholder.
@@ -37,6 +38,45 @@ tags:
   - name: Counters
 
 paths:
+  /session:
+    post:
+      tags:
+        - Session
+      operationId: createSession
+      summary: Exchange manager email/password credentials for a temporary Manager session.
+      description: |
+        Stage 3 uses this endpoint as a narrow adapter over the existing
+        Chatwoot user authentication model. The manager submits email and
+        password, the backend verifies active Chatwoot credentials and account
+        membership, and the response returns a Manager session DTO plus a
+        temporary bearer token for the Expo client to store internally.
+
+        This endpoint is not the final production-beta auth system: it does not
+        implement refresh-token rotation, server-side session inventory, or
+        token revoke. Expo UI must never display the returned token.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginSessionRequest"
+      responses:
+        "201":
+          description: Session created from valid Chatwoot credentials.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginSessionResponse"
+        "401":
+          $ref: "#/components/responses/InvalidCredentials"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
   /session/current:
     get:
       tags:
@@ -473,13 +513,13 @@ components:
       scheme: bearer
       bearerFormat: Chatwoot user access token
       description: |
-        Temporary Stage 2 auth; use
-        `Authorization: Bearer <Chatwoot user access token>`.
+        Temporary Stage 3 compatibility auth. Expo obtains this internally from
+        `POST /session` and sends `Authorization: Bearer <Chatwoot user access token>`.
     chatwootApiAccessToken:
       type: apiKey
       in: header
       name: api_access_token
-      description: Temporary Stage 2 compatibility header for Chatwoot user access tokens.
+      description: Temporary compatibility header for Chatwoot user access tokens.
     chatwootSessionCookie:
       type: apiKey
       in: cookie
@@ -583,6 +623,12 @@ components:
         application/json:
           schema:
             $ref: "#/components/schemas/ErrorResponse"
+    InvalidCredentials:
+      description: Email/password credentials were rejected by the temporary Chatwoot auth adapter.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
     Forbidden:
       description: Authenticated user lacks the required account permission.
       content:
@@ -625,6 +671,44 @@ components:
             $ref: "#/components/schemas/ErrorResponse"
 
   schemas:
+    LoginSessionRequest:
+      type: object
+      required:
+        - email
+        - password
+      additionalProperties: false
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 1
+          writeOnly: true
+        accountHint:
+          type:
+            - string
+            - "null"
+          description: Optional account id such as `acc_1` or exact workspace name when the user belongs to multiple accounts.
+
+    LoginSessionResponse:
+      type: object
+      required:
+        - accessToken
+        - tokenType
+        - session
+      properties:
+        accessToken:
+          type: string
+          readOnly: true
+          description: Temporary Chatwoot user access token. Expo stores this internally and never displays it.
+        tokenType:
+          type: string
+          enum:
+            - Bearer
+        session:
+          $ref: "#/components/schemas/CurrentSessionResponse"
+
     CurrentSessionResponse:
       type: object
       required:
@@ -1730,6 +1814,7 @@ components:
               enum:
                 - bad_request
                 - unauthenticated
+                - invalid_credentials
                 - forbidden
                 - not_found
                 - conflict

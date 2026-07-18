@@ -1,9 +1,9 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { router, type Href } from 'expo-router';
 import { ChevronRight, GitBranch, MessageSquareText, PanelLeftClose, PanelLeftOpen, RefreshCw, Settings, UserRound } from 'lucide-react-native';
 
-import { safeFleexaApiErrorMessage } from '@fleexa/api-client';
+import { FleexaApiError, safeFleexaApiErrorMessage } from '@fleexa/api-client';
 import { Button, Screen, StatusPill, colors, spacing } from '@fleexa/ui';
 import { activeAccountIdForSession } from '@fleexa/domain';
 import type { FleexaRuntimeConfig } from '@fleexa/config';
@@ -37,6 +37,9 @@ export const ManagerShell = ({ config }: { config: FleexaRuntimeConfig }) => {
   const conversations = useConversations(accountId);
   const stages = usePipelineStages(accountId);
   const isWide = width >= 900;
+  const sessionExpired =
+    session.error instanceof FleexaApiError &&
+    (session.error.code === 'unauthenticated' || session.error.code === 'invalid_credentials');
 
   const displayName = session.data?.user.name ?? 'Manager';
   const apiStatusLabel =
@@ -45,6 +48,19 @@ export const ManagerShell = ({ config }: { config: FleexaRuntimeConfig }) => {
     if (!session.data || !accountId) return 'No account';
     return session.data.memberships.find(membership => membership.accountId === accountId)?.accountName ?? accountId;
   }, [accountId, session.data]);
+
+  useEffect(() => {
+    if (sessionExpired) void signOut();
+  }, [sessionExpired, signOut]);
+
+  if (sessionExpired) {
+    return (
+      <Screen style={styles.loading}>
+        <ActivityIndicator color={colors.teal} />
+        <Text style={styles.loadingText}>Returning to sign in</Text>
+      </Screen>
+    );
+  }
 
   if (session.error) {
     return (

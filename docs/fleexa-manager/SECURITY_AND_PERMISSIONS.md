@@ -15,11 +15,25 @@ explicit API permission model that works for Expo web and iPhone clients.
 
 ## Authentication
 
-Stage 2 uses Option B: temporary existing Chatwoot authentication through the
-Fleexa Manager namespace.
+Stage 3 keeps the accepted Stage 2 Option B strategy: temporary existing
+Chatwoot authentication through the Fleexa Manager namespace. The manager-facing
+UX no longer asks users to paste tokens. Instead, Expo calls
+`POST /api/fleexa-manager/v1/session` with email, password, and an optional
+workspace hint.
+
+The login endpoint is a narrow adapter over Chatwoot credentials:
+
+- It verifies the Chatwoot user email/password with Devise.
+- It denies inactive, unconfirmed, or otherwise non-authenticatable users.
+- It denies users without an active account membership.
+- It returns a normalized Manager session DTO and a temporary Chatwoot user
+  access token for internal client storage.
+- It does not log passwords or tokens.
+- It does not expose raw Chatwoot auth responses to Expo.
 
 Accepted authentication inputs:
 
+- `POST /session` with `email`, `password`, and optional `accountHint`
 - `Authorization: Bearer <chatwoot_user_access_token>`
 - `api_access_token: <chatwoot_user_access_token>`
 - existing same-origin Chatwoot Rails session cookie for Expo web when the app
@@ -28,39 +42,46 @@ Accepted authentication inputs:
 The Manager API must still return Manager DTOs from `/api/fleexa-manager/v1`.
 Production live mode must not call raw Chatwoot `/api/v1` routes directly.
 
-Expo credential storage for Stage 2:
+Expo credential storage for Stage 3:
 
-- iPhone/native stores the Chatwoot user access token through the SecureStore
-  abstraction.
-- Expo web keeps the token in memory only; same-origin browser sessions may
-  rely on the existing Chatwoot Rails session cookie.
+- iPhone/native stores the returned Chatwoot user access token through the
+  SecureStore abstraction.
+- Expo web stores the returned token through the same storage abstraction using
+  session-scoped browser storage with a memory fallback for non-browser render
+  contexts.
+- The token must never be rendered in the UI, copied by the manager, logged, or
+  committed.
 - Mock mode can store mock credentials only for UI development and cannot
   satisfy production acceptance.
 
 Refresh and revoke limitations:
 
-- No dedicated Manager `POST /session`, `POST /session/refresh`, or
-  `DELETE /session` endpoints exist in Stage 2.
+- Stage 3 has `POST /session` only.
+- No dedicated Manager `POST /session/refresh` or `DELETE /session` endpoints
+  exist yet.
 - Token refresh depends on Chatwoot's existing token/session lifecycle.
 - Sign out clears local Expo storage but cannot revoke the upstream Chatwoot
   user access token by itself.
 - Permission changes are detected by `GET /session/current` and future realtime
   session events, not by Manager refresh-token rotation.
 
-Stage 2 expired or invalid session behavior:
+Stage 3 expired or invalid session behavior:
 
-- Missing, invalid, revoked, or inactive Chatwoot credentials return
-  `401 unauthenticated` with the standard Manager error envelope.
+- Wrong email/password returns `401 invalid_credentials`.
+- Missing, invalid, revoked, expired, or inactive Chatwoot credentials on
+  authenticated routes return `401 unauthenticated` with the standard Manager
+  error envelope.
 - Account membership failures return `403 forbidden`.
 - Resource/account mismatches return `404 not_found` when confirming existence
   would leak cross-account data.
 - Auth tokens must never be logged, embedded in docs, or committed in local env
   files. Local development must use untracked `.env` files only.
 
-This is temporary because Chatwoot tokens are not the final Manager auth
-boundary. Before production beta, replace this with Manager-owned session
-endpoints, short-lived access tokens, refresh-token rotation, server-side revoke,
-device/session inventory, and audit coverage for login, refresh, and logout.
+This remains temporary because Chatwoot tokens are not the final Manager auth
+boundary. Before production beta, replace this with Manager-owned credentials,
+short-lived access tokens, refresh-token rotation, server-side revoke,
+device/session inventory, MFA support, and audit coverage for login, refresh,
+and logout.
 
 Future Manager auth requirements:
 
@@ -120,6 +141,7 @@ Endpoint mapping:
 
 | Endpoint | Permission |
 | --- | --- |
+| `POST /session` | Public credential exchange, then account membership required |
 | `GET /session/current` | `session:read` |
 | `GET /accounts/{accountId}/conversations` | `conversations:read` |
 | `GET /accounts/{accountId}/conversations/{conversationId}` | `conversations:read` |
@@ -149,6 +171,7 @@ All errors use:
 
 Rules:
 
+- `401 invalid_credentials`: email/password login failed.
 - `401 unauthenticated`: token missing, expired, or invalid.
 - `403 forbidden`: user is authenticated but lacks permission.
 - `404 not_found`: resource missing or hidden by account isolation.

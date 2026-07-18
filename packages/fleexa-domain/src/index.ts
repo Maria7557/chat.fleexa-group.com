@@ -50,6 +50,18 @@ export interface CurrentSessionResponse {
   apiVersion: string;
 }
 
+export interface LoginSessionRequest {
+  email: string;
+  password: string;
+  accountHint?: string | null;
+}
+
+export interface LoginSessionResponse {
+  accessToken: string;
+  tokenType: 'Bearer';
+  session: CurrentSessionResponse;
+}
+
 export type ConversationStatus = 'open' | 'pending' | 'resolved' | 'snoozed';
 export type ChannelType =
   | 'whatsapp'
@@ -328,6 +340,7 @@ export interface ManagerCountersResponse {
 export type ServerApiErrorCode =
   | 'bad_request'
   | 'unauthenticated'
+  | 'invalid_credentials'
   | 'forbidden'
   | 'not_found'
   | 'conflict'
