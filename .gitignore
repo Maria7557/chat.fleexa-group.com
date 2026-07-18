@@ -1,13 +1,22 @@
 .DS_Store
 *.log
 
+# Node/Expo workspaces.
+node_modules/
+apps/*/.expo/
+apps/*/.expo-shared/
+apps/*/dist/
+apps/*/dist-*/
+coverage/
+
 # Local secrets and runtime state.
 .env
 .env.local
+apps/*/.env
+apps/*/.env.local
 waha-poc/.env
 waha-poc/sessions/
 waha-poc/media/
 
 # QR codes are short-lived auth artifacts and should never be committed.
 waha-poc/*qr*.png
-
