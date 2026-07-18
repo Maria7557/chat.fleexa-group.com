@@ -1,241 +1,230 @@
 # Fleexa Manager Next 30 Days Plan
 
 Date: 2026-07-18
-Branch: `codex/fleexa-manager-foundation`
+Branch: `codex/fleexa-manager-core-stage-3`
+Starting point: Stage 3 local product review is demonstrable, but not
+production beta-ready.
 
 ## Goal
 
-Turn the Week 1 foundation into a real Manager API-backed workspace for chat,
-deal context, booking visibility, pipeline reads, source display, and manager
-counters.
+Turn the current local-review foundation into a paid-client-ready beta path
+without drifting back into Chatwoot/Vue as the manager frontend.
 
-The next 30 days should reduce reliance on Chatwoot/Vue as the manager surface.
-Chatwoot remains the data source and backoffice shell, while Expo Manager
-consumes `/api/fleexa-manager/v1` mobile-ready DTOs.
+Expo Manager remains the primary manager surface. Chatwoot remains the
+backoffice/admin/legacy shell and patched data source. New product behavior must
+continue through `/api/fleexa-manager/v1`, typed domain contracts, and
+backend-owned business rules.
 
-## Guiding Rules
+## Non-Negotiables
 
-- Real backend acceptance is required.
-- Mock mode can support UI development only.
-- Business logic belongs backend-side.
-- Chatwoot changes must be patch-only through `chatwoot-patches/`.
-- Prefer additive Manager API namespace work over editing existing Chatwoot
-  controllers.
-- Do not implement analytics or exports in this 30-day scope.
+- Do not use mock mode for production acceptance.
+- Do not call raw Chatwoot APIs from Expo live mode.
+- Do not expose raw Chatwoot or CRM model objects to the UI.
+- Do not put business logic into Expo screens.
+- Keep Chatwoot/Rails changes patch-only through `chatwoot-patches/`.
+- Do not add booking, pipeline, source, or reply-state UI unless the backend is
+  the source of truth.
+- Do not onboard a paid client until backend specs, auth, realtime, and iOS
+  gates are addressed.
 
-## Phase 1: Contract Reconciliation And Manager API Slice
+## Days 1-5: Test And Contract Gate
 
-Target: Days 1-6
+Priority: make the current foundation provable.
 
 Deliverables:
 
-- Reconcile OpenAPI and `@fleexa/domain` for counters, source attribution,
-  lead qualification, client message ids, and error codes.
-- Add `/api/fleexa-manager/v1/session/current`.
-- Add conversation list/detail, message list, and send text under the Manager
-  namespace.
-- Add Manager serializers and error envelope helpers.
-- Add permission mapping for the first route set.
-- Add backend idempotency behavior for text send.
-- Switch Expo live acceptance from `apiDriver=chatwoot` to
-  `apiDriver=manager`.
+- Make backend request specs executable in a local or CI Chatwoot test image.
+- Run Stage 2 and Stage 3 request specs for:
+  - auth/session
+  - tenant isolation
+  - conversation filters
+  - reply state
+  - message send idempotency
+  - linked deal access and mutations
+  - pipeline stages/deals/stage moves
+- Reconcile response envelope drift:
+  - either wrap `session/current` and linked-deal responses consistently
+  - or document top-level DTOs explicitly in OpenAPI and client tests
+- Add contract smoke tests that compare OpenAPI examples to TypeScript domain
+  DTOs where practical.
 
-Acceptance:
+Exit criteria:
 
-- API smoke passes against real local backend.
-- Expo chat vertical slice works against `/api/fleexa-manager/v1`.
-- Chatwoot adapter remains available only as a local fallback.
-- Contract tests or serializer snapshots cover the first DTOs.
+- Backend specs run and pass.
+- OpenAPI, `@fleexa/domain`, `@fleexa/api-client`, and Manager API responses
+  agree.
+- No new feature work starts until this gate is green.
 
-## Phase 2: Deal Card
+## Days 4-10: Production Auth And Session Safety
 
-Target: Days 5-11
+Priority: stop treating local Chatwoot token auth as beta-ready.
 
-Backend:
+Deliverables:
 
-- Implement linked deal read:
-  `GET /accounts/{accountId}/conversations/{conversationId}/linked-deal`.
-- Return `linked`, `missing`, or `inaccessible` without leaking raw CRM rows.
-- Include compact `DealSummary`: title, stage, amount, contact, assignee,
-  source summary, qualification, last activity, and permissions.
-- Keep deal creation/update out of this first deal-card pass unless needed for
-  a backend-tested transition.
+- Decide the minimum beta auth plan:
+  - Manager-owned session endpoints with refresh/revoke
+  - or a strictly time-boxed hardened Chatwoot-token bridge
+- Add server-side logout/revoke behavior.
+- Add session expiry behavior that is consistent in API and Expo.
+- Add login/send throttles.
+- Add audit events for login, logout, revoke, send, deal update, and stage move.
+- Ensure no bearer tokens, passwords, or raw backend errors appear in logs.
 
-Expo:
+Exit criteria:
 
-- Render a deal card in the conversation screen.
-- Show missing/inaccessible states without blocking chat.
-- Disable actions not present in DTO permissions.
+- Expired/invalid session paths are tested.
+- Logout clears local state and invalidates server-side state when available.
+- Production abuse guard is implemented, not only documented.
 
-Acceptance:
+## Days 7-14: Realtime Chat Foundation
 
-- Real linked and missing states are proven against local CRM data.
-- No raw `custom_attributes` dependency in the screen.
+Priority: replace polling before beta.
 
-## Phase 3: Linked Booking Display
+Deliverables:
 
-Target: Days 8-15
+- Add account-scoped realtime event stream for:
+  - `conversation.updated`
+  - `message.created`
+  - `message.updated`
+  - `deal.updated`
+  - `pipeline.stage_changed`
+- Use ActionCable if it can be safely scoped to Manager auth; otherwise add a
+  small Manager-owned SSE/WebSocket adapter.
+- Include reconnect cursor semantics and event ordering notes.
+- Keep polling as fallback only.
 
-Backend:
+Exit criteria:
 
-- Implement `GET /accounts/{accountId}/deals/{dealId}/booking`.
-- Return booking link states: `linked`, `missing`, `inaccessible`, `conflict`.
-- If no booking read model exists yet, create the smallest safe read path or
-  document the exact blocker before adding UI that pretends booking is ready.
-- Do not implement booking writes from Expo.
+- New customer message changes `replyState` without waiting for the next poll.
+- Sent manager message appears once and remains idempotent on retry.
+- Cross-account events are not delivered.
 
-Expo:
+## Days 10-17: Deal And Pipeline Hardening
 
-- Display booking status, external booking id, vehicle, period, and total when
-  linked.
-- Show `missing` as normal empty state.
-- Show `conflict` as a manager attention state.
+Priority: turn demo-ready deal/pipeline into manager-ready workflow.
 
-Acceptance:
+Deliverables:
 
-- Booking display works with real backend data or the feature is explicitly
-  blocked with the missing source named.
-- Provider payloads do not reach Expo directly.
+- Add backend query params for pipeline source filtering and, if needed,
+  qualification/stage filtering.
+- Add backend-owned validation for qualification transitions and lost reasons.
+- Add stronger deal mutation audit records.
+- Keep stage colors/order/terminal semantics backend-owned.
+- Add UI empty/error/loading states for large account data and pagination.
+- Add deep link from pipeline deal back to the linked conversation.
 
-## Phase 4: Pipeline Read Surface
+Exit criteria:
 
-Target: Days 12-19
+- Source filtering is account-wide, not only a client filter over the loaded
+  page.
+- Moving a deal to lost/cancelled enforces lost reason with tests.
+- Deal detail and chat deal panel stay consistent after mutation/realtime
+  refresh.
 
-Backend:
+## Days 14-22: Booking Read Integration
 
-- Implement `GET /accounts/{accountId}/pipeline/stages`.
-- Implement `GET /accounts/{accountId}/pipeline/stages/{stageId}/deals`.
-- Return stage counters and compact deal cards from backend queries.
-- Include required field metadata only as read-only transition hints.
-- Keep stage configuration and export in Chatwoot backoffice.
+Priority: show booking only from a real source.
 
-Expo:
+Deliverables:
 
-- Add a compact pipeline view with stage tabs or columns suitable for web and
-  iPhone.
-- Load paginated deals by stage.
-- Reuse the deal card DTO rather than creating a second UI-specific shape.
+- Identify the booking source of truth.
+- Add `GET /api/fleexa-manager/v1/accounts/:account_id/deals/:deal_id/booking`
+  only after the source is confirmed.
+- Return booking link states:
+  - `linked`
+  - `missing`
+  - `inaccessible`
+  - `conflict`
+- Display booking read-only in chat/deal context when linked.
+- Do not add booking writes from Expo in this window.
 
-Acceptance:
+Exit criteria:
 
-- Pipeline reads pass against real CRM data.
-- Stage totals come from backend, not client aggregation.
+- Booking display is real or explicitly blocked with the missing source named.
+- No fake booking placeholders ship to beta.
 
-## Phase 5: Answered/Unanswered And Manager Counters
+## Days 18-24: iOS And Native Readiness
 
-Target: Days 16-23
+Priority: prove the Expo codebase is actually portable.
 
-Backend:
+Deliverables:
 
-- Define answered/unanswered based on message direction, assignment, read
-  state, and reply window rules.
-- Add response-state fields to conversation DTOs.
-- Implement `GET /accounts/{accountId}/manager/counters`.
-- Include conversation counters first: open, mine, unassigned, unread,
-  unanswered, overdue first response.
-- Add deal and booking counter shells only when their source queries are real.
+- Restore `simctl`/Xcode command line tooling or run on an available iOS
+  simulator host.
+- Smoke:
+  - login
+  - session restore
+  - logout
+  - conversation filters
+  - open chat
+  - send and retry
+  - linked deal panel
+  - pipeline open and stage move
+- Validate SecureStore on native.
+- Check safe-area, keyboard, tap targets, and mobile navigation.
+- Define push/deep-link routes even if production push is not enabled yet.
 
-Expo:
+Exit criteria:
 
-- Add queue filters for unanswered and mine.
-- Display manager counters in the shell without client-side business formulas.
+- iOS smoke is not blocked.
+- Native auth storage and logout are proven.
+- No layout overlap on iPhone-sized screens.
 
-Acceptance:
+## Days 22-30: Beta Release Gate
 
-- Counter numbers are backend-owned and stable across refreshes.
-- UI does not infer answered/unanswered from local message arrays.
+Priority: prepare a small paid-client-ready release instead of adding breadth.
 
-## Phase 6: Source Display
+Deliverables:
 
-Target: Days 20-26
+- Staging deployment with production-shaped env validation.
+- Sentry enabled through env vars, no committed secrets.
+- Operational runbook:
+  - deploy
+  - rollback
+  - patch-chain verification
+  - seed/demo reset for non-production only
+  - backup/restore notes
+- Data access checklist for first account.
+- Security review of Manager API auth, account scoping, DTO shape, logging, and
+  idempotency.
+- Product review checklist for manager workflows:
+  - conversation queue
+  - waiting-for-reply handling
+  - linked deal context
+  - pipeline movement
+  - lost reason handling
+  - source visibility
 
-Backend:
+Exit criteria:
 
-- Resolve source attribution in a backend service.
-- Return source fields in deal card DTOs:
-  traffic source, lead origin, detection method, confidence, and clarification
-  flag.
-- Preserve manual attribution semantics.
-- Keep raw first-message text and provider payloads out of the DTO unless the
-  user has message permission.
+- Green backend specs.
+- Green Expo lint/typecheck/tests.
+- Green web and iOS smoke.
+- Staging smoke passes against real data.
+- Product owner signs off on the reduced beta scope.
 
-Expo:
+## Explicitly Not In The Next 30 Days
 
-- Show source labels on deal cards and pipeline rows.
-- Show a clear clarification state when the backend says source is unknown or
-  uncertain.
-- Do not implement source settings in Expo yet.
+- Broad analytics rebuild.
+- CSV/export expansion.
+- Chatwoot/Vue manager feature expansion.
+- Booking writes from Expo.
+- Production push notification rollout before auth/device/permission review.
+- Offline-first behavior.
+- Multi-account switching beyond the current session membership model unless it
+  is needed for the first beta account.
 
-Acceptance:
+## First Paid Client Gate
 
-- Source display works from real deal/conversation data.
-- Contract naming matches OpenAPI and `@fleexa/domain`.
+Do not onboard the first paid client until all of these are true:
 
-## Phase 7: Push, Deep Links, And Files Foundation
-
-Target: Days 24-30
-
-Push:
-
-- Define notification payloads for conversation and deal targets.
-- Add device registration contract if push is in the next production scope.
-- Do not send production push until auth, account isolation, and opt-out rules
-  are complete.
-
-Deep links:
-
-- Define stable routes for conversation and deal detail.
-- Support opening a conversation from a URL with account validation.
-- Add fallback behavior when the resource is hidden or missing.
-
-Files:
-
-- Define attachment read DTOs and safe URL rules.
-- Decide whether first file scope is read-only or includes send attachment.
-- Keep upload/signing logic backend-side.
-
-Acceptance:
-
-- Deep link smoke works on web.
-- Push and file behavior have contracts and blockers documented.
-- No secrets or provider credentials enter Expo config.
-
-## Cross-Cutting Verification
-
-Run on every implementation slice:
-
-- `git status --short --branch`
-- `git diff --check`
-- YAML validation when `openapi.yaml` changes
-- Ruby syntax for patched Rails files
-- targeted Rails/controller/service specs
-- `make crm-patch-check` against a clean Chatwoot source when patch-chain
-  behavior is touched
-- `npm run lint`
-- `npm run typecheck`
-- `npm test`
-- Expo web smoke
-- iOS simulator smoke when `simctl` is available, otherwise document blocker
-- one real local API smoke for each endpoint added
-
-## 30 Day Exit Criteria
-
-By the end of this plan:
-
-- Expo Manager uses real Manager API routes for chat.
-- Conversation screen includes a real deal card.
-- Linked booking display has real backend data or a named blocker.
-- Pipeline read surface works with real CRM data.
-- Answered/unanswered and counters are backend-owned.
-- Source display is backend-resolved.
-- Push/deep link/file contracts are ready for implementation.
-- Chatwoot/Vue usage is reduced to backoffice/legacy and data-source roles.
-
-## Explicit Non-Goals
-
-- No broad analytics rebuild.
-- No CSV/export work.
-- No Chatwoot/Vue manager feature expansion.
-- No production push notification rollout without security review.
-- No booking writes from Expo.
-- No moving business rules into Expo screens to save time.
+- Backend request specs are executable and passing.
+- Auth/session lifecycle has a production-safe revoke/expiry path.
+- Message send idempotency is covered by backend tests and live smoke.
+- Tenant isolation is covered by backend tests and live smoke.
+- Expo live mode uses only the Manager API.
+- iOS simulator/device smoke passes.
+- Realtime or an explicitly accepted temporary polling SLA is signed off.
+- Sentry and operational runbooks are in place.
+- Booking UI is either real or absent.
+- Demo data scripts are clearly local-only and never run against production.
