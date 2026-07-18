@@ -646,13 +646,13 @@ paths:
                     retryable: false
                     accountId: acc_1
                     fleexaCompanyId: fleexa_company_42
-                    pipeline_deal_id: deal_83839
+                    pipeline_deal_id: "83839"
                     deal_display_number: "D-83839"
-                    conversation_id: conv_344
+                    conversation_id: "344"
                     company_id: fleexa_company_42
                     client_preview:
-                      id: contact_91
-                      name: Sara Khan
+                      id: "91"
+                      displayName: Sara Khan
                       phoneNumber: "+971501112233"
                     candidates: []
                 ambiguous:
@@ -663,10 +663,10 @@ paths:
                     fleexaCompanyId: fleexa_company_42
                     pipeline_deal_id: null
                     candidates:
-                      - pipeline_deal_id: deal_11
+                      - pipeline_deal_id: "11"
                         deal_display_number: "D-11"
                         title: Existing active deal
-                        conversation_id: conv_344
+                        conversation_id: "344"
                         reason: deal_ref_and_conversation_ref_disagree
                         active: true
                 disabled:
@@ -689,12 +689,11 @@ paths:
       tags:
         - Bookings
       operationId: syncBookingToPipeline
-      summary: Accept a Booking event for future sync into real Chat Pipeline deals.
+      summary: Sync a Booking event into real Chat Pipeline deals.
       description: |
-        Server-to-server Booking -> Chat endpoint. This foundation contract does
-        not define a queue or Integration Hub. Full contact matching, stage
-        mapping, transaction-safe `crm_deals` create/update, and stale-event
-        comparison are implemented in Prompt 4.
+        Server-to-server Booking -> Chat endpoint. It writes into real
+        `crm_deals` only; it does not define a queue, Integration Hub, or a
+        parallel CRM.
 
         Freshness is decided by monotonic `booking_version`, not by
         `source_updated_at`. `source_updated_at` is informational and must not
@@ -762,16 +761,17 @@ paths:
                   - $ref: "#/components/schemas/BookingStaleEventResponse"
                   - $ref: "#/components/schemas/BookingSyncDisabledResponse"
               examples:
-                accepted:
+                synced:
                   value:
-                    status: ACCEPTED
+                    status: SYNCED
                     retryable: false
                     accountId: acc_1
                     fleexaCompanyId: fleexa_company_42
                     bookingId: order_1001
                     bookingVersion: 7
                     freshnessBasis: booking_version
-                    mutated: false
+                    pipelineDealId: "83839"
+                    mutated: true
                 pendingUserAction:
                   value:
                     status: PENDING_USER_ACTION
@@ -780,10 +780,10 @@ paths:
                     fleexaCompanyId: fleexa_company_42
                     bookingId: order_1001
                     candidates:
-                      - pipeline_deal_id: deal_83839
+                      - pipeline_deal_id: "83839"
                         deal_display_number: "D-83839"
                         title: Active deal for same booking client candidate
-                        conversation_id: conv_344
+                        conversation_id: "344"
                         reason: multiple_active_deals
                         active: true
                 staleNoop:
@@ -822,11 +822,13 @@ paths:
       tags:
         - Bookings
       operationId: relinkBookingPipelineDeal
-      summary: Accept a request to change the deal linked to a Booking order.
+      summary: Change the deal linked to a Booking order.
       description: |
-        Server-to-server relink endpoint skeleton. Prompt 4 implements durable
-        audit and transaction-safe mutation. The target deal must belong to the
-        same `accountId`; a deal from another account is a non-retryable 403.
+        Server-to-server relink endpoint. It is transaction-safe, clears the old
+        deal's `booking_id`, links the new deal, and stores structured durable
+        audit in existing deal activity/custom attributes. The target deal must
+        belong to the same `accountId`; a deal from another account is a
+        non-retryable 403.
       security:
         - bookingServiceToken: []
       x-account-isolation: required
@@ -848,7 +850,7 @@ paths:
             examples:
               managerFix:
                 value:
-                  new_pipeline_deal_id: deal_83840
+                  new_pipeline_deal_id: "83840"
                   reason: Wrong deal was selected by manager.
       responses:
         "200":
@@ -2178,7 +2180,6 @@ components:
         status:
           type: string
           enum:
-            - ACCEPTED
             - RESOLVED
             - NOT_FOUND
             - AMBIGUOUS_REFERENCE
@@ -2196,7 +2197,7 @@ components:
           type:
             - string
             - "null"
-          description: Real internal `crm_deals.id` rendered as a Manager deal id. Never the raw input.
+          description: Real internal `crm_deals.id` as a string. Never the raw manager input.
         deal_display_number:
           type:
             - string
@@ -2205,7 +2206,7 @@ components:
           type:
             - string
             - "null"
-          description: Chatwoot conversation display id rendered as a Manager conversation id.
+          description: Chatwoot conversation display id as a string.
         company_id:
           type:
             - string
@@ -2290,6 +2291,10 @@ components:
                 - string
                 - "null"
               description: Raw manager input retained for audit/debug only. It is not the link key.
+            confirmed_contact_override:
+              type: boolean
+              default: false
+              description: Explicit manager confirmation that allows changing an existing deal contact. Without this flag, sync must not overwrite existing `contact_id` or `client_phone`.
             vehicle:
               $ref: "#/components/schemas/BookingVehicleSnapshot"
             rental_start:
@@ -2410,7 +2415,6 @@ components:
         status:
           type: string
           enum:
-            - ACCEPTED
             - SYNCED
             - PENDING_USER_ACTION
             - FAILED
@@ -2537,7 +2541,6 @@ components:
         status:
           type: string
           enum:
-            - ACCEPTED
             - RELINKED
         retryable:
           type: boolean
@@ -2558,7 +2561,10 @@ components:
           type: string
         auditRequired:
           type: boolean
-          description: Prompt 4 must persist old_deal_id, new_deal_id, booking_id, actor, changed_at, and reason before returning RELINKED.
+          description: Structured audit is persisted before returning `RELINKED`.
+        audit:
+          type: object
+          additionalProperties: true
         mutated:
           type: boolean
 
@@ -2578,7 +2584,27 @@ components:
             - "null"
         title:
           type: string
+        stage:
+          oneOf:
+            - type: object
+              additionalProperties: false
+              properties:
+                id:
+                  type: string
+                key:
+                  type: string
+                name:
+                  type: string
+                fleet_status_trigger:
+                  type:
+                    - string
+                    - "null"
+            - type: "null"
         conversation_id:
+          type:
+            - string
+            - "null"
+        existing_booking_id:
           type:
             - string
             - "null"

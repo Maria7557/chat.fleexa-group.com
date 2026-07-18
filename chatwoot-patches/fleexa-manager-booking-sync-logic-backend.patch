@@ -1,0 +1,1364 @@
+diff --git a/app/controllers/api/fleexa_manager/v1/accounts/bookings_controller.rb b/app/controllers/api/fleexa_manager/v1/accounts/bookings_controller.rb
+index db472f2..cab2599 100644
+--- a/app/controllers/api/fleexa_manager/v1/accounts/bookings_controller.rb
++++ b/app/controllers/api/fleexa_manager/v1/accounts/bookings_controller.rb
+@@ -19,21 +19,14 @@ class Api::FleexaManager::V1::Accounts::BookingsController < Api::FleexaManager:
+     ref = payload_value('ref', 'dealRef', 'pipeline_deal_ref_input', 'pipelineDealRefInput')
+     return payload_error('ref is required.', missing_fields: ['ref']) if ref.blank?
+ 
+-    render json: service_status_payload(
+-      status: 'ACCEPTED',
+-      message: 'Deal reference resolver endpoint is available; resolution logic is implemented in Prompt 4.',
+-      extra: {
+-        resolution: {
+-          status: 'FOUNDATION_ONLY',
+-          input: ref.to_s,
+-          pipelineDealId: nil,
+-          conversationId: nil,
+-          ambiguous: false
+-        },
+-        deal: nil,
+-        candidates: []
+-      }
+-    )
++    result = ::FleexaManager::V1::BookingDealReferenceResolver.new(
++      account: @service_account,
++      credential: @booking_service_credential
++    ).call(ref)
++
++    render json: result
++  rescue ::FleexaManager::V1::BookingDealReferenceResolver::WrongAccountError => e
++    render_manager_error('forbidden', e.message, status: :forbidden, details: { retryable: false })
+   end
+ 
+   def sync
+@@ -42,17 +35,18 @@ class Api::FleexaManager::V1::Accounts::BookingsController < Api::FleexaManager:
+     return payload_error('booking_version must be a monotonic integer.', missing_fields: ['booking_version']) unless booking_version_valid?
+     return payload_error('idempotency_key or event_id is required.', missing_fields: ['idempotency_key']) if idempotency_key.blank?
+ 
+-    render json: service_status_payload(
+-      status: 'ACCEPTED',
+-      message: 'Booking sync receiver accepted the contract; deal mutation is implemented in Prompt 4.',
+-      extra: {
+-        bookingId: payload_value('booking_id', 'bookingId').to_s,
+-        bookingVersion: booking_version,
+-        idempotencyKey: idempotency_key,
+-        freshnessBasis: 'booking_version',
+-        mutated: false
+-      }
+-    )
++    result = ::FleexaManager::V1::BookingPipelineSyncService.new(
++      account: @service_account,
++      credential: @booking_service_credential,
++      payload: raw_payload,
++      idempotency_key: idempotency_key
++    ).call
++
++    render json: result
++  rescue ::FleexaManager::V1::BookingPipelineSyncService::WrongAccountError => e
++    render_manager_error('forbidden', e.message, status: :forbidden, details: { retryable: false })
++  rescue ::FleexaManager::V1::BookingPipelineSyncService::InvalidRequestError => e
++    render_manager_error('validation_failed', e.message, status: :unprocessable_entity, details: { retryable: false })
+   end
+ 
+   def relink_deal
+@@ -63,16 +57,19 @@ class Api::FleexaManager::V1::Accounts::BookingsController < Api::FleexaManager:
+ 
+     return payload_error('Required relink fields are missing.', missing_fields: missing_fields) if missing_fields.any?
+ 
+-    render json: service_status_payload(
+-      status: 'ACCEPTED',
+-      message: 'Booking relink endpoint accepted the contract; durable audit and deal mutation are implemented in Prompt 4.',
+-      extra: {
+-        bookingId: params[:booking_id].to_s,
+-        newPipelineDealId: payload_value('new_pipeline_deal_id', 'newPipelineDealId', 'pipeline_deal_id', 'pipelineDealId').to_s,
+-        auditRequired: true,
+-        mutated: false
+-      }
+-    )
++    result = ::FleexaManager::V1::BookingPipelineRelinkService.new(
++      account: @service_account,
++      credential: @booking_service_credential,
++      booking_id: params[:booking_id],
++      new_pipeline_deal_id: payload_value('new_pipeline_deal_id', 'newPipelineDealId', 'pipeline_deal_id', 'pipelineDealId'),
++      reason: payload_value('reason')
++    ).call
++
++    render json: result
++  rescue ::FleexaManager::V1::BookingPipelineRelinkService::WrongAccountError => e
++    render_manager_error('forbidden', e.message, status: :forbidden, details: { retryable: false })
++  rescue ::FleexaManager::V1::BookingPipelineRelinkService::InvalidRequestError => e
++    render_manager_error('validation_failed', e.message, status: :unprocessable_entity, details: { retryable: false })
+   end
+ 
+   private
+diff --git a/app/services/fleexa_manager/v1/booking_deal_reference_resolver.rb b/app/services/fleexa_manager/v1/booking_deal_reference_resolver.rb
+new file mode 100644
+index 0000000..4b2aac7
+--- /dev/null
++++ b/app/services/fleexa_manager/v1/booking_deal_reference_resolver.rb
+@@ -0,0 +1,187 @@
++require 'uri'
++
++module FleexaManager
++  module V1
++    class BookingDealReferenceResolver
++      class WrongAccountError < StandardError; end
++
++      def initialize(account:, credential:)
++        @account = account
++        @credential = credential
++      end
++
++      def call(ref)
++        @input = ref.to_s.strip
++        parsed = parsed_reference(@input)
++        raise WrongAccountError, 'Reference points to another account.' if parsed[:account_id].present? && parsed[:account_id] != account.id
++
++        deal_candidates = resolve_deal_candidates(parsed)
++        conversation_candidates = resolve_conversation_deal_candidates(parsed)
++        candidates = (deal_candidates + conversation_candidates).uniq(&:id)
++
++        return not_found_response if candidates.blank?
++        return resolved_response(candidates.first) if candidates.one?
++
++        ambiguous_response(candidates)
++      end
++
++      private
++
++      attr_reader :account, :credential, :input
++
++      def parsed_reference(value)
++        explicit_deal_ids = value.scan(%r{(?:\bdeal[_/-]?|/deals/)(\d+)\b}i).flatten.map(&:to_i)
++        explicit_conversation_ids = value.scan(%r{(?:\bconv[_/-]?|/conversations/)(\d+)\b}i).flatten.map(&:to_i)
++        explicit_conversation_ids += query_values(value, %w[conversation_id conversationId]).map(&:to_i)
++        explicit_deal_ids += query_values(value, %w[deal_id dealId pipeline_deal_id pipelineDealId]).map(&:to_i)
++
++        numeric_id = value.match(/\A#?(\d+)\z/)&.[](1)&.to_i
++        deal_display_id = value.match(/\AD-(\d+)\z/i)&.[](1)&.to_i
++        account_id = value.match(%r{/accounts/(?:acc_)?(\d+)}i)&.[](1)&.to_i
++
++        {
++          account_id: account_id,
++          deal_ids: (explicit_deal_ids + [deal_display_id].compact + [numeric_id].compact).uniq,
++          conversation_ids: (explicit_conversation_ids + [numeric_id].compact).uniq,
++          explicit_deal_ids: (explicit_deal_ids + [deal_display_id].compact).uniq,
++          explicit_conversation_ids: explicit_conversation_ids.uniq
++        }
++      end
++
++      def query_values(value, keys)
++        uri = URI.parse(value)
++        return [] if uri.query.blank?
++
++        Rack::Utils.parse_nested_query(uri.query).values_at(*keys).compact
++      rescue URI::InvalidURIError
++        []
++      end
++
++      def resolve_deal_candidates(parsed)
++        return [] if parsed[:deal_ids].blank?
++
++        direct_deals = CrmDeal.where(id: parsed[:deal_ids])
++        account_deals = direct_deals.for_account(account.id).includes(:stage, :contact, :conversation).to_a
++        raise WrongAccountError, 'Deal belongs to another account.' if account_deals.blank? && direct_deals.exists?
++
++        account_deals
++      end
++
++      def resolve_conversation_deal_candidates(parsed)
++        return [] if parsed[:conversation_ids].blank?
++
++        conversation_ids = parsed[:conversation_ids]
++        conversations = Conversation.where(account_id: account.id, display_id: conversation_ids).to_a
++        conversation_record_ids = conversations.map(&:id) + conversation_ids
++
++        CrmDeal
++          .for_account(account.id)
++          .where(conversation_id: conversation_record_ids.uniq)
++          .includes(:stage, :contact, :conversation)
++          .to_a
++      end
++
++      def resolved_response(deal)
++        base_response('RESOLVED').merge(
++          pipeline_deal_id: deal.id.to_s,
++          deal_display_number: deal_display_number(deal),
++          conversation_id: conversation_display_id(deal),
++          company_id: credential&.fleexa_company_id,
++          client_preview: contact_preview(deal.contact),
++          preview: deal_preview(deal),
++          candidates: []
++        )
++      end
++
++      def not_found_response
++        base_response('NOT_FOUND').merge(
++          pipeline_deal_id: nil,
++          deal_display_number: nil,
++          conversation_id: nil,
++          company_id: credential&.fleexa_company_id,
++          client_preview: nil,
++          preview: nil,
++          candidates: []
++        )
++      end
++
++      def ambiguous_response(deals)
++        base_response('AMBIGUOUS_REFERENCE').merge(
++          pipeline_deal_id: nil,
++          deal_display_number: nil,
++          conversation_id: nil,
++          company_id: credential&.fleexa_company_id,
++          client_preview: nil,
++          preview: nil,
++          candidates: deals.map { |deal| deal_candidate(deal, 'deal_ref_and_conversation_ref_disagree') }
++        )
++      end
++
++      def base_response(status)
++        {
++          status: status,
++          code: status,
++          retryable: false,
++          accountId: "acc_#{account.id}",
++          fleexaCompanyId: credential&.fleexa_company_id,
++          input: input
++        }
++      end
++
++      def deal_candidate(deal, reason)
++        deal_preview(deal).merge(reason: reason, active: active_deal?(deal))
++      end
++
++      def deal_preview(deal)
++        {
++          pipeline_deal_id: deal.id.to_s,
++          deal_display_number: deal_display_number(deal),
++          title: deal.title.to_s,
++          stage: stage_preview(deal.stage),
++          client_preview: contact_preview(deal.contact),
++          conversation_id: conversation_display_id(deal),
++          existing_booking_id: deal.booking_id.presence
++        }
++      end
++
++      def stage_preview(stage)
++        return if stage.blank?
++
++        {
++          id: stage.id.to_s,
++          key: stage.slug.to_s,
++          name: stage.name.to_s,
++          fleet_status_trigger: stage.fleet_status_trigger.presence
++        }
++      end
++
++      def contact_preview(contact)
++        return if contact.blank?
++
++        {
++          id: contact.id.to_s,
++          displayName: contact.name.presence || contact.phone_number.presence || contact.email.presence || "Contact ##{contact.id}",
++          phone: contact.phone_number.presence,
++          phoneNumber: contact.phone_number.presence,
++          email: contact.email.presence
++        }
++      end
++
++      def deal_display_number(deal)
++        "D-#{deal.id}"
++      end
++
++      def conversation_display_id(deal)
++        deal.conversation&.display_id&.to_s
++      end
++
++      def active_deal?(deal)
++        trigger = deal.stage&.fleet_status_trigger.to_s
++        return false if %w[done cancel].include?(trigger)
++
++        label = [deal.stage&.slug, deal.stage&.name].compact.join(' ').downcase
++        !label.match?(/\b(done|complete|completed|won|cancel|cancelled|canceled|lost)\b/)
++      end
++    end
++  end
++end
+diff --git a/app/services/fleexa_manager/v1/booking_pipeline_relink_service.rb b/app/services/fleexa_manager/v1/booking_pipeline_relink_service.rb
+new file mode 100644
+index 0000000..647cd77
+--- /dev/null
++++ b/app/services/fleexa_manager/v1/booking_pipeline_relink_service.rb
+@@ -0,0 +1,121 @@
++require 'json'
++require 'zlib'
++
++module FleexaManager
++  module V1
++    class BookingPipelineRelinkService
++      class WrongAccountError < StandardError; end
++      class InvalidRequestError < StandardError; end
++
++      def initialize(account:, credential:, booking_id:, new_pipeline_deal_id:, reason:)
++        @account = account
++        @credential = credential
++        @booking_id = booking_id.to_s
++        @new_pipeline_deal_id = new_pipeline_deal_id.to_s
++        @reason = reason.to_s
++      end
++
++      def call
++        ActiveRecord::Base.transaction do
++          advisory_lock!
++
++          new_deal = target_deal
++          old_deal = CrmDeal.for_account(account.id).lock.where(booking_id: booking_id).where.not(id: new_deal.id).first
++          raise InvalidRequestError, 'Target deal is already linked to another booking.' if new_deal.booking_id.present? && new_deal.booking_id != booking_id
++
++          audit = audit_payload(old_deal, new_deal)
++          clear_old_deal!(old_deal, audit) if old_deal.present?
++          link_new_deal!(new_deal, audit)
++
++          relink_response(old_deal, new_deal, audit)
++        end
++      end
++
++      private
++
++      attr_reader :account, :credential, :booking_id, :new_pipeline_deal_id, :reason
++
++      def target_deal
++        id = stable_numeric_id(new_pipeline_deal_id, 'deal')
++        raise InvalidRequestError, 'new_pipeline_deal_id must be a real crm_deals.id.' if id.blank?
++
++        deal = CrmDeal.where(id: id).lock.first
++        raise InvalidRequestError, 'new_pipeline_deal_id was not found.' if deal.blank?
++        raise WrongAccountError, 'Deal belongs to another account.' if deal.account_id != account.id
++
++        deal
++      end
++
++      def clear_old_deal!(deal, audit)
++        attrs = custom_attributes(deal)
++        attrs['booking_relink_audit'] = relink_audit_entries(attrs).push(audit)
++        attrs['booking_relinked_to_deal_id'] = audit['new_deal_id']
++        deal.update!(booking_id: nil, custom_attributes: attrs)
++        create_activity!(deal, audit, "Booking #{booking_id} relinked to deal #{audit['new_deal_id']}.")
++      end
++
++      def link_new_deal!(deal, audit)
++        attrs = custom_attributes(deal)
++        attrs['booking_relink_audit'] = relink_audit_entries(attrs).push(audit)
++        attrs.delete('booking_relinked_to_deal_id')
++        deal.update!(booking_id: booking_id, custom_attributes: attrs)
++        create_activity!(deal, audit, "Booking #{booking_id} linked from deal #{audit['old_deal_id'] || 'none'}.")
++      end
++
++      def create_activity!(deal, audit, message)
++        CrmDealActivity.create!(
++          account: account,
++          crm_deal: deal,
++          activity_type: 'booking_relinked',
++          note: "#{message}\n#{JSON.generate(audit)}"
++        )
++      end
++
++      def audit_payload(old_deal, new_deal)
++        {
++          'old_deal_id' => old_deal&.id&.to_s,
++          'new_deal_id' => new_deal.id.to_s,
++          'booking_id' => booking_id,
++          'user_id' => nil,
++          'service_actor' => 'fleexa_booking_service',
++          'changed_at' => Time.current.utc.iso8601,
++          'reason' => reason
++        }
++      end
++
++      def custom_attributes(deal)
++        deal.custom_attributes.is_a?(Hash) ? deal.custom_attributes.deep_dup : {}
++      end
++
++      def relink_audit_entries(attrs)
++        Array(attrs['booking_relink_audit']).select { |entry| entry.is_a?(Hash) }
++      end
++
++      def relink_response(old_deal, new_deal, audit)
++        {
++          status: 'RELINKED',
++          code: 'RELINKED',
++          retryable: false,
++          accountId: "acc_#{account.id}",
++          fleexaCompanyId: credential&.fleexa_company_id,
++          bookingId: booking_id,
++          oldPipelineDealId: old_deal&.id&.to_s,
++          newPipelineDealId: new_deal.id.to_s,
++          auditRequired: true,
++          audit: audit,
++          mutated: true
++        }
++      end
++
++      def stable_numeric_id(value, prefix)
++        raw = value.to_s.strip
++        raw.match(/\A#{Regexp.escape(prefix)}_(\d+)\z/)&.[](1)&.to_i || raw.match(/\A\d+\z/)&.[](0)&.to_i
++      end
++
++      def advisory_lock!
++        lock_key = Zlib.crc32("fleexa-booking-relink:#{account.id}:#{booking_id}")
++        ActiveRecord::Base.connection.execute("SELECT pg_advisory_xact_lock(#{lock_key}::bigint)")
++      end
++    end
++  end
++end
+diff --git a/app/services/fleexa_manager/v1/booking_pipeline_sync_service.rb b/app/services/fleexa_manager/v1/booking_pipeline_sync_service.rb
+new file mode 100644
+index 0000000..79f779b
+--- /dev/null
++++ b/app/services/fleexa_manager/v1/booking_pipeline_sync_service.rb
+@@ -0,0 +1,471 @@
++require 'bigdecimal'
++require 'zlib'
++
++module FleexaManager
++  module V1
++    class BookingPipelineSyncService
++      class WrongAccountError < StandardError; end
++      class InvalidRequestError < StandardError; end
++
++      STATUS_TO_STAGE_TRIGGER = {
++        'booking' => 'reserved',
++        'reserved' => 'reserved',
++        'rental' => 'rental',
++        'done' => 'done',
++        'cancel' => 'cancel'
++      }.freeze
++
++      FALLBACK_STAGE_TERMS = {
++        'reserved' => %w[reserved booking booked],
++        'rental' => %w[rental active],
++        'done' => %w[done completed complete won],
++        'cancel' => %w[cancel cancelled canceled follow]
++      }.freeze
++
++      def initialize(account:, credential:, payload:, idempotency_key:)
++        @account = account
++        @credential = credential
++        @payload = payload.to_h.deep_stringify_keys
++        @idempotency_key = idempotency_key.to_s
++      end
++
++      def call
++        ActiveRecord::Base.transaction do
++          advisory_lock!
++
++          target_deal = explicit_pipeline_deal
++          if target_deal.present?
++            sync_existing_deal(target_deal, explicit: true)
++          else
++            existing_deal = CrmDeal.for_account(account.id).lock.where(booking_id: booking_id).includes(:stage, :contact, :conversation).first
++            if existing_deal.present?
++              sync_existing_deal(existing_deal, explicit: false)
++            else
++              contact = confirmed_contact
++              active_deals = contact.present? ? active_deals_for(contact) : []
++              active_deals.any? ? pending_user_action(active_deals) : sync_new_deal(contact || create_booking_contact!)
++            end
++          end
++        end
++      rescue ActiveRecord::RecordNotUnique
++        ActiveRecord::Base.transaction do
++          advisory_lock!
++          deal = CrmDeal.for_account(account.id).lock.find_by!(booking_id: booking_id)
++          sync_existing_deal(deal, explicit: false)
++        end
++      end
++
++      private
++
++      attr_reader :account, :credential, :payload, :idempotency_key
++
++      def explicit_pipeline_deal
++        raw = payload_value('pipeline_deal_id', 'pipelineDealId')
++        return if raw.blank?
++
++        id = stable_numeric_id(raw, 'deal')
++        raise InvalidRequestError, 'pipeline_deal_id must be a real crm_deals.id.' if id.blank?
++
++        deal = CrmDeal.where(id: id).includes(:stage, :contact, :conversation).first
++        raise WrongAccountError, 'Deal belongs to another account.' if deal.present? && deal.account_id != account.id
++
++        deal || raise(InvalidRequestError, 'pipeline_deal_id was not found.')
++      end
++
++      def sync_existing_deal(deal, explicit:)
++        deal.lock!
++        if explicit && deal.booking_id.present? && deal.booking_id != booking_id
++          raise InvalidRequestError, 'pipeline_deal_id is already linked to another booking.'
++        end
++
++        return stale_response(deal) if stale_event?(deal)
++
++        contact = confirmed_contact
++        assign_contact = contact.present? && explicit_contact_override?
++        update_deal!(deal, contact: contact, assign_contact: assign_contact, new_deal: false, explicit_deal: explicit)
++
++        synced_response(deal, mutated: true)
++      end
++
++      def sync_new_deal(contact)
++        stage = mapped_stage
++        deal = CrmDeal.create!(
++          account: account,
++          stage: stage,
++          contact: contact,
++          title: generated_title,
++          booking_id: booking_id,
++          car_model: vehicle_name,
++          rental_start: parse_time(payload_value('rental_start', 'rentalStart')),
++          rental_end: parse_time(payload_value('rental_end', 'rentalEnd')),
++          amount: decimal_value(payload_value('amount')),
++          client_phone: safe_client_phone_for_new_deal(contact),
++          custom_attributes: booking_snapshot.merge('stage_mapping' => stage_mapping_snapshot(stage))
++        )
++
++        synced_response(deal, mutated: true)
++      end
++
++      def update_deal!(deal, contact:, assign_contact:, new_deal:, explicit_deal:)
++        stage = mapped_stage
++        attrs = {
++          booking_id: booking_id,
++          stage: stage,
++          car_model: vehicle_name,
++          rental_start: parse_time(payload_value('rental_start', 'rentalStart')),
++          rental_end: parse_time(payload_value('rental_end', 'rentalEnd')),
++          amount: decimal_value(payload_value('amount')),
++          custom_attributes: deal_custom_attributes(deal, stage)
++        }
++
++        attrs[:contact] = contact if assign_contact || new_deal
++        attrs[:client_phone] = safe_client_phone_for_existing_deal(deal, contact, assign_contact, explicit_deal)
++
++        deal.update!(attrs)
++      end
++
++      def stale_event?(deal)
++        stored = deal.custom_attributes.is_a?(Hash) ? deal.custom_attributes['booking_version'] : nil
++        stored.present? && booking_version < stored.to_i
++      end
++
++      def stale_response(deal)
++        {
++          status: 'STALE_BOOKING_EVENT',
++          code: 'STALE_BOOKING_EVENT',
++          retryable: false,
++          accountId: "acc_#{account.id}",
++          fleexaCompanyId: credential&.fleexa_company_id,
++          bookingId: booking_id,
++          acceptedBookingVersion: deal.custom_attributes['booking_version'].to_i,
++          receivedBookingVersion: booking_version,
++          freshnessBasis: 'booking_version',
++          pipelineDealId: deal.id.to_s,
++          mutated: false
++        }
++      end
++
++      def pending_user_action(deals)
++        {
++          status: 'PENDING_USER_ACTION',
++          code: 'PENDING_USER_ACTION',
++          retryable: false,
++          accountId: "acc_#{account.id}",
++          fleexaCompanyId: credential&.fleexa_company_id,
++          bookingId: booking_id,
++          bookingVersion: booking_version,
++          freshnessBasis: 'booking_version',
++          pipelineDealId: nil,
++          mutated: false,
++          candidates: deals.map { |deal| deal_candidate(deal, 'multiple_active_deals') }
++        }
++      end
++
++      def synced_response(deal, mutated:)
++        {
++          status: 'SYNCED',
++          code: 'SYNCED',
++          retryable: false,
++          accountId: "acc_#{account.id}",
++          fleexaCompanyId: credential&.fleexa_company_id,
++          bookingId: booking_id,
++          bookingVersion: booking_version,
++          freshnessBasis: 'booking_version',
++          pipelineDealId: deal.id.to_s,
++          dealDisplayNumber: "D-#{deal.id}",
++          mutated: mutated,
++          candidates: []
++        }
++      end
++
++      def confirmed_contact
++        return @confirmed_contact if defined?(@confirmed_contact)
++
++        @confirmed_contact = Contact.where(account_id: account.id)
++                                    .where("custom_attributes ->> 'booking_client_id' = ?", booking_client_id)
++                                    .first
++      end
++
++      def phone_candidate_contacts
++        return Contact.none if booking_client_phone.blank?
++
++        Contact.where(account_id: account.id, phone_number: booking_client_phone)
++      end
++
++      def create_booking_contact!
++        Contact.create!(
++          account: account,
++          name: booking_client_name,
++          phone_number: safe_phone_for_new_contact,
++          custom_attributes: {
++            'booking_client_id' => booking_client_id,
++            'booking_client_name' => booking_client_name,
++            'booking_client_phone' => booking_client_phone
++          }.compact
++        )
++      end
++
++      def active_deals_for(contact)
++        CrmDeal
++          .for_account(account.id)
++          .where(contact_id: contact.id)
++          .includes(:stage, :contact, :conversation)
++          .select { |deal| active_deal?(deal) }
++      end
++
++      def active_deal?(deal)
++        trigger = deal.stage&.fleet_status_trigger.to_s
++        return false if %w[done cancel].include?(trigger)
++
++        label = [deal.stage&.slug, deal.stage&.name].compact.join(' ').downcase
++        !label.match?(/\b(done|complete|completed|won|cancel|cancelled|canceled|lost)\b/)
++      end
++
++      def mapped_stage
++        @mapped_stage ||= begin
++          trigger = STATUS_TO_STAGE_TRIGGER.fetch(booking_status) { 'reserved' }
++          exact = CrmPipelineStage.for_account(account.id).ordered.find_by(fleet_status_trigger: trigger)
++          exact || fallback_stage_for(trigger) || first_stage!
++        end
++      end
++
++      def fallback_stage_for(trigger)
++        terms = FALLBACK_STAGE_TERMS.fetch(trigger, [])
++        CrmPipelineStage.for_account(account.id).ordered.detect do |stage|
++          label = [stage.slug, stage.name].compact.join(' ').downcase
++          terms.any? { |term| label.include?(term) }
++        end
++      end
++
++      def first_stage!
++        CrmPipelineStage.for_account(account.id).ordered.first ||
++          raise(InvalidRequestError, 'No CRM pipeline stages are configured for this account.')
++      end
++
++      def stage_mapping_snapshot(stage)
++        trigger = STATUS_TO_STAGE_TRIGGER.fetch(booking_status) { 'reserved' }
++        {
++          'booking_status' => booking_status,
++          'target_trigger' => trigger,
++          'stage_id' => stage.id.to_s,
++          'stage_slug' => stage.slug.to_s,
++          'stage_trigger' => stage.fleet_status_trigger.presence,
++          'fallback' => stage.fleet_status_trigger.to_s != trigger
++        }
++      end
++
++      def deal_custom_attributes(deal, stage)
++        attrs = deal.custom_attributes.is_a?(Hash) ? deal.custom_attributes.deep_dup : {}
++        attrs.merge(booking_snapshot).merge('stage_mapping' => stage_mapping_snapshot(stage))
++      end
++
++      def booking_snapshot
++        {
++          'booking_number' => payload_value('booking_number', 'bookingNumber').to_s,
++          'booking_client_id' => booking_client_id,
++          'booking_client_name' => booking_client_name,
++          'booking_client_phone' => booking_client_phone,
++          'vehicle_id' => vehicle_value('vehicle_id', 'vehicleId'),
++          'vehicle_name' => vehicle_name,
++          'vehicle_plate' => vehicle_value('vehicle_plate', 'vehiclePlate'),
++          'rental_days' => integer_value(payload_value('rental_days', 'rentalDays')),
++          'currency' => payload_value('currency').to_s,
++          'booking_status' => booking_status,
++          'source' => source_type,
++          'referred_by_contact_id' => referred_by_contact_id,
++          'communication_phone' => communication_phone,
++          'booking_version' => booking_version,
++          'source_updated_at' => payload_value('source_updated_at', 'sourceUpdatedAt'),
++          'last_booking_event_id' => payload_value('event_id', 'eventId').presence || idempotency_key
++        }
++      end
++
++      def deal_candidate(deal, reason)
++        {
++          pipeline_deal_id: deal.id.to_s,
++          deal_display_number: "D-#{deal.id}",
++          title: deal.title.to_s,
++          stage: stage_preview(deal.stage),
++          client_preview: contact_preview(deal.contact),
++          conversation_id: deal.conversation&.display_id&.to_s,
++          existing_booking_id: deal.booking_id.presence,
++          reason: reason,
++          active: active_deal?(deal)
++        }
++      end
++
++      def stage_preview(stage)
++        return if stage.blank?
++
++        {
++          id: stage.id.to_s,
++          key: stage.slug.to_s,
++          name: stage.name.to_s,
++          fleet_status_trigger: stage.fleet_status_trigger.presence
++        }
++      end
++
++      def contact_preview(contact)
++        return if contact.blank?
++
++        {
++          id: contact.id.to_s,
++          displayName: contact.name.presence || contact.phone_number.presence || contact.email.presence || "Contact ##{contact.id}",
++          phone: contact.phone_number.presence,
++          phoneNumber: contact.phone_number.presence,
++          email: contact.email.presence
++        }
++      end
++
++      def explicit_contact_override?
++        ActiveModel::Type::Boolean.new.cast(
++          payload_value(
++            'confirmed_contact_override',
++            'confirmedContactOverride',
++            'manager_contact_override',
++            'managerContactOverride'
++          )
++        )
++      end
++
++      def safe_client_phone_for_existing_deal(deal, contact, assign_contact, explicit_deal)
++        return deal.client_phone unless assign_contact
++        return deal.client_phone if explicit_deal
++
++        safe_client_phone_for_new_deal(contact)
++      end
++
++      def safe_client_phone_for_new_deal(contact)
++        phone = booking_client_phone
++        return if phone.blank?
++        return phone if contact.present? && contact.phone_number == phone
++        return phone if phone_candidate_contacts.blank?
++      end
++
++      def safe_phone_for_new_contact
++        phone = booking_client_phone
++        return if phone.blank?
++        return unless phone.match?(/\A\+[1-9]\d{1,14}\z/)
++        return if phone_candidate_contacts.exists?
++
++        phone
++      end
++
++      def generated_title
++        [booking_client_name, vehicle_name.presence || payload_value('booking_number', 'bookingNumber')]
++          .compact
++          .join(' - ')
++          .presence
++          .to_s
++          .truncate(255)
++      end
++
++      def booking_id
++        payload_value('booking_id', 'bookingId').to_s
++      end
++
++      def booking_client_id
++        payload_value('booking_client_id', 'bookingClientId').to_s
++      end
++
++      def booking_client_name
++        payload_value('booking_client_name', 'bookingClientName').to_s
++      end
++
++      def booking_client_phone
++        payload_value('booking_client_phone', 'bookingClientPhone').presence
++      end
++
++      def booking_version
++        @booking_version ||= Integer(payload_value('booking_version', 'bookingVersion'))
++      end
++
++      def booking_status
++        payload_value('booking_status', 'bookingStatus').to_s
++      end
++
++      def source_type
++        source = payload_value('source')
++        return source.to_s if source.is_a?(String)
++
++        hash_value(source)['type'].presence || payload_value('source_type', 'sourceType').presence || 'Booking'
++      end
++
++      def communication_phone
++        source = hash_value(payload_value('source'))
++        referral = hash_value(payload_value('referral'))
++        payload_value('communication_phone', 'communicationPhone').presence ||
++          source['communication_phone'].presence ||
++          source['communicationPhone'].presence ||
++          referral['communication_phone'].presence ||
++          referral['communicationPhone'].presence
++      end
++
++      def referred_by_contact_id
++        referral = hash_value(payload_value('referral'))
++        payload_value('referred_by_contact_id', 'referredByContactId').presence ||
++          referral['referred_by_contact_id'].presence ||
++          referral['referredByContactId'].presence
++      end
++
++      def vehicle_name
++        vehicle_value('vehicle_name', 'vehicleName', 'brand_model', 'brandModel').presence ||
++          [vehicle_value('brand'), vehicle_value('model')].compact.join(' ').presence
++      end
++
++      def vehicle_value(*keys)
++        vehicle = hash_value(payload_value('vehicle'))
++        keys.each do |key|
++          return vehicle[key] if vehicle.key?(key)
++          return payload[key] if payload.key?(key)
++        end
++        nil
++      end
++
++      def payload_value(*keys)
++        keys.each do |key|
++          return payload[key] if payload.key?(key)
++        end
++        nil
++      end
++
++      def hash_value(value)
++        value.is_a?(Hash) ? value.deep_stringify_keys : {}
++      end
++
++      def stable_numeric_id(value, prefix)
++        raw = value.to_s.strip
++        raw.match(/\A#{Regexp.escape(prefix)}_(\d+)\z/)&.[](1)&.to_i || raw.match(/\A\d+\z/)&.[](0)&.to_i
++      end
++
++      def parse_time(value)
++        return if value.blank?
++
++        Time.zone.parse(value.to_s)
++      rescue ArgumentError, TypeError
++        nil
++      end
++
++      def decimal_value(value)
++        return if value.blank?
++
++        BigDecimal(value.to_s)
++      rescue ArgumentError
++        nil
++      end
++
++      def integer_value(value)
++        return if value.blank?
++
++        Integer(value)
++      rescue ArgumentError, TypeError
++        nil
++      end
++
++      def advisory_lock!
++        lock_key = Zlib.crc32("fleexa-booking-sync:#{account.id}:#{booking_id}")
++        ActiveRecord::Base.connection.execute("SELECT pg_advisory_xact_lock(#{lock_key}::bigint)")
++      end
++    end
++  end
++end
+diff --git a/spec/requests/api/fleexa_manager/v1/booking_sync_foundation_spec.rb b/spec/requests/api/fleexa_manager/v1/booking_sync_foundation_spec.rb
+index 97adf13..b01e5ea 100644
+--- a/spec/requests/api/fleexa_manager/v1/booking_sync_foundation_spec.rb
++++ b/spec/requests/api/fleexa_manager/v1/booking_sync_foundation_spec.rb
+@@ -133,20 +133,28 @@ RSpec.describe 'Fleexa Manager Booking sync foundation API', type: :request do
+       enable_booking_receiver!(account)
+     end
+ 
+-    it 'accepts the sync request contract without mutating crm_deals in Prompt 3B' do
++    it 'syncs a valid request into crm_deals once Prompt 4 logic is installed' do
+       create_booking_credential(account: account, token: service_token, scopes: ['booking:sync'])
++      CrmPipelineStage.create!(
++        account: account,
++        slug: 'reserved',
++        name: 'Booking',
++        color: '#0EA5A0',
++        position: 1,
++        fleet_status_trigger: 'reserved'
++      )
+ 
+       expect do
+         post sync_path, params: sync_payload, headers: booking_headers(service_token), as: :json
+-      end.not_to change { CrmDeal.count }
++      end.to change { CrmDeal.for_account(account.id).count }.by(1)
+ 
+       expect(response).to have_http_status(:ok)
+       expect(json_response).to include(
+-        'status' => 'ACCEPTED',
++        'status' => 'SYNCED',
+         'bookingId' => 'order_1001',
+         'bookingVersion' => 7,
+         'freshnessBasis' => 'booking_version',
+-        'mutated' => false
++        'mutated' => true
+       )
+     end
+ 
+@@ -173,13 +181,12 @@ RSpec.describe 'Fleexa Manager Booking sync foundation API', type: :request do
+            as: :json
+ 
+       expect(response).to have_http_status(:ok)
+-      expect(json_response['status']).to eq('ACCEPTED')
+-      expect(json_response['resolution']).to include(
+-        'status' => 'FOUNDATION_ONLY',
++      expect(json_response).to include(
++        'status' => 'NOT_FOUND',
+         'input' => '#344',
+-        'pipelineDealId' => nil,
+-        'conversationId' => nil,
+-        'ambiguous' => false
++        'pipeline_deal_id' => nil,
++        'conversation_id' => nil,
++        'candidates' => []
+       )
+     end
+ 
+@@ -195,23 +202,39 @@ RSpec.describe 'Fleexa Manager Booking sync foundation API', type: :request do
+       expect(json_response['error']['code']).to eq('service_auth_scope_missing')
+     end
+ 
+-    it 'accepts relink contract with relink scope without mutating deals in Prompt 3B' do
++    it 'relinks with relink scope and stores durable audit' do
+       create_booking_credential(account: account, token: service_token, scopes: ['booking:relink'])
++      stage = CrmPipelineStage.create!(
++        account: account,
++        slug: 'reserved',
++        name: 'Booking',
++        color: '#0EA5A0',
++        position: 1,
++        fleet_status_trigger: 'reserved'
++      )
++      old_deal = CrmDeal.create!(account: account, stage: stage, title: 'Old booking link', booking_id: 'order_1001')
++      new_deal = CrmDeal.create!(account: account, stage: stage, title: 'Correct booking link')
+ 
+       expect do
+         post relink_path,
+-             params: { new_pipeline_deal_id: 'deal_77', reason: 'Wrong link fixed by manager' },
++             params: { new_pipeline_deal_id: new_deal.id.to_s, reason: 'Wrong link fixed by manager' },
+              headers: booking_headers(service_token),
+              as: :json
+-      end.not_to change { CrmDeal.count }
++      end.to change { CrmDealActivity.where(account_id: account.id).count }.by(2)
+ 
+       expect(response).to have_http_status(:ok)
+       expect(json_response).to include(
+-        'status' => 'ACCEPTED',
++        'status' => 'RELINKED',
+         'bookingId' => 'order_1001',
+-        'newPipelineDealId' => 'deal_77',
++        'oldPipelineDealId' => old_deal.id.to_s,
++        'newPipelineDealId' => new_deal.id.to_s,
+         'auditRequired' => true,
+-        'mutated' => false
++        'mutated' => true
++      )
++      expect(old_deal.reload.booking_id).to be_nil
++      expect(new_deal.reload.custom_attributes['booking_relink_audit'].last).to include(
++        'booking_id' => 'order_1001',
++        'reason' => 'Wrong link fixed by manager'
+       )
+     end
+   end
+diff --git a/spec/requests/api/fleexa_manager/v1/booking_sync_logic_spec.rb b/spec/requests/api/fleexa_manager/v1/booking_sync_logic_spec.rb
+new file mode 100644
+index 0000000..46e8741
+--- /dev/null
++++ b/spec/requests/api/fleexa_manager/v1/booking_sync_logic_spec.rb
+@@ -0,0 +1,365 @@
++require 'rails_helper'
++
++RSpec.describe 'Fleexa Manager Booking sync logic API', type: :request do
++  let(:account) { create(:account) }
++  let(:other_account) { create(:account) }
++  let(:service_token) { 'booking-service-token-prompt-4' }
++
++  def booking_headers(token = service_token)
++    { 'X-Fleexa-Booking-Token' => token }
++  end
++
++  def create_booking_credential(account:, token: service_token, scopes: ['booking:sync'])
++    FleexaManagerBookingCredential.create!(
++      account: account,
++      fleexa_company_id: "fleexa_company_#{account.id}",
++      token_digest: FleexaManagerBookingCredential.digest_token(token),
++      scopes: scopes,
++      active: true
++    )
++  end
++
++  def enable_booking_receiver!(target_account = account)
++    target_account.update!(
++      settings: (target_account.settings || {}).merge(
++        'fleexa_booking_pipeline_sync' => {
++          'receiver_enabled' => true
++        }
++      )
++    )
++  end
++
++  def stage(slug:, name:, position:, trigger:, target_account: account)
++    CrmPipelineStage.create!(
++      account: target_account,
++      slug: slug,
++      name: name,
++      color: '#0EA5A0',
++      position: position,
++      fleet_status_trigger: trigger
++    )
++  end
++
++  def build_pipeline!
++    @reserved_stage = stage(slug: 'reserved', name: 'Booking', position: 1, trigger: 'reserved')
++    @rental_stage = stage(slug: 'active_rental', name: 'Active rental', position: 2, trigger: 'rental')
++    @done_stage = stage(slug: 'completed', name: 'Completed', position: 3, trigger: 'done')
++    @cancel_stage = stage(slug: 'follow_up_cancel', name: 'Cancel follow-up', position: 4, trigger: 'cancel')
++  end
++
++  def sync_path(target_account = account)
++    "/api/fleexa-manager/v1/accounts/acc_#{target_account.id}/bookings/sync"
++  end
++
++  def resolve_deal_path(target_account = account)
++    "/api/fleexa-manager/v1/accounts/acc_#{target_account.id}/bookings/resolve-deal"
++  end
++
++  def relink_path(booking_id = 'order_1001', target_account = account)
++    "/api/fleexa-manager/v1/accounts/acc_#{target_account.id}/bookings/#{booking_id}/relink-deal"
++  end
++
++  def sync_payload(overrides = {})
++    {
++      booking_id: 'order_1001',
++      booking_number: 'BK-1001',
++      booking_client_id: 'booking_contact_501',
++      booking_client_name: 'Mina Patel',
++      booking_client_phone: '+971501112233',
++      booking_version: 7,
++      source_updated_at: '2026-07-18T10:00:00Z',
++      event_id: SecureRandom.uuid,
++      pipeline_deal_id: nil,
++      vehicle: {
++        vehicle_id: 'vehicle_77',
++        vehicle_name: 'Range Rover Sport',
++        vehicle_plate: 'D 83839'
++      },
++      rental_start: '2026-07-20T10:00:00Z',
++      rental_end: '2026-07-22T10:00:00Z',
++      rental_days: 2,
++      amount: '1800.00',
++      currency: 'AED',
++      booking_status: 'reserved',
++      source: {
++        type: 'Booking'
++      },
++      referral: {
++        communication_phone: nil,
++        referred_by_contact_id: nil
++      }
++    }.deep_merge(overrides)
++  end
++
++  def booking_contact(booking_client_id:, phone: nil, name: 'Mina Patel')
++    Contact.create!(
++      account: account,
++      name: name,
++      phone_number: phone,
++      custom_attributes: { 'booking_client_id' => booking_client_id }
++    )
++  end
++
++  before do
++    enable_booking_receiver!
++    create_booking_credential(account: account)
++    build_pipeline!
++  end
++
++  it 'returns AMBIGUOUS_REFERENCE when #344 matches a deal and a different conversation-linked deal' do
++    direct_contact = create(:contact, account: account, name: 'Direct Client')
++    conversation_contact = create(:contact, account: account, name: 'Conversation Client')
++    inbox = create(:inbox, account: account)
++    contact_inbox = create(:contact_inbox, contact: conversation_contact, inbox: inbox)
++    conversation = create(:conversation, account: account, inbox: inbox, contact: conversation_contact, contact_inbox: contact_inbox, display_id: 344)
++
++    direct_deal = CrmDeal.create!(id: 344, account: account, stage: @reserved_stage, contact: direct_contact, title: 'Deal id 344')
++    conversation_deal = CrmDeal.create!(account: account, stage: @reserved_stage, contact: conversation_contact, conversation: conversation, title: 'Conversation 344 deal')
++
++    post resolve_deal_path,
++         params: { pipeline_deal_ref_input: '#344' },
++         headers: booking_headers,
++         as: :json
++
++    expect(response).to have_http_status(:ok)
++    expect(json_response['status']).to eq('AMBIGUOUS_REFERENCE')
++    expect(json_response['candidates'].map { |candidate| candidate['pipeline_deal_id'] }).to match_array(
++      [direct_deal.id.to_s, conversation_deal.id.to_s]
++    )
++  end
++
++  it 'rejects resolving a deal that belongs to another account' do
++    other_stage = stage(slug: 'reserved', name: 'Other booking', position: 1, trigger: 'reserved', target_account: other_account)
++    other_deal = CrmDeal.create!(account: other_account, stage: other_stage, title: 'Other account deal')
++
++    post resolve_deal_path,
++         params: { pipeline_deal_ref_input: "deal_#{other_deal.id}" },
++         headers: booking_headers,
++         as: :json
++
++    expect(response).to have_http_status(:forbidden)
++    expect(json_response['error']['code']).to eq('forbidden')
++  end
++
++  it 'updates an explicit existing deal without overwriting contact_id or client_phone' do
++    existing_contact = create(:contact, account: account, name: 'Existing Client', phone_number: '+971501110000')
++    confirmed_contact = booking_contact(booking_client_id: 'booking_contact_501', phone: '+971501112233', name: 'Booking Client')
++    deal = CrmDeal.create!(
++      account: account,
++      stage: @reserved_stage,
++      contact: existing_contact,
++      title: 'Existing linked deal',
++      client_phone: '+971501110000',
++      amount: 500,
++      custom_attributes: { 'booking_version' => 1 }
++    )
++
++    post sync_path,
++         params: sync_payload(pipeline_deal_id: deal.id.to_s, booking_status: 'rental', amount: '2400.00'),
++         headers: booking_headers,
++         as: :json
++
++    expect(response).to have_http_status(:ok)
++    expect(json_response['status']).to eq('SYNCED')
++    expect(json_response['pipelineDealId']).to eq(deal.id.to_s)
++    deal.reload
++    expect(deal.contact_id).to eq(existing_contact.id)
++    expect(deal.contact_id).not_to eq(confirmed_contact.id)
++    expect(deal.client_phone).to eq('+971501110000')
++    expect(deal.booking_id).to eq('order_1001')
++    expect(deal.stage_id).to eq(@rental_stage.id)
++    expect(deal.car_model).to eq('Range Rover Sport')
++    expect(deal.amount).to eq(BigDecimal('2400.0'))
++    expect(deal.custom_attributes).to include(
++      'booking_client_phone' => '+971501112233',
++      'vehicle_id' => 'vehicle_77',
++      'booking_version' => 7
++    )
++    expect(deal.custom_attributes['last_booking_event_id']).to be_present
++  end
++
++  it 'changes contact_id only when explicit contact override is present' do
++    existing_contact = create(:contact, account: account, name: 'Existing Client', phone_number: '+971501110001')
++    confirmed_contact = booking_contact(booking_client_id: 'booking_contact_501', phone: '+971501112234', name: 'Booking Client')
++    deal = CrmDeal.create!(account: account, stage: @reserved_stage, contact: existing_contact, title: 'Existing linked deal')
++
++    post sync_path,
++         params: sync_payload(
++           pipeline_deal_id: deal.id.to_s,
++           booking_client_phone: '+971501112234',
++           confirmed_contact_override: true
++         ),
++         headers: booking_headers,
++         as: :json
++
++    expect(response).to have_http_status(:ok)
++    expect(deal.reload.contact_id).to eq(confirmed_contact.id)
++  end
++
++  it 'returns PENDING_USER_ACTION without creating a duplicate when the confirmed contact has active deals' do
++    contact = booking_contact(booking_client_id: 'booking_contact_501', phone: '+971501112233')
++    active_deal = CrmDeal.create!(account: account, stage: @reserved_stage, contact: contact, title: 'Active candidate')
++
++    expect do
++      post sync_path, params: sync_payload, headers: booking_headers, as: :json
++    end.not_to change { CrmDeal.for_account(account.id).count }
++
++    expect(response).to have_http_status(:ok)
++    expect(json_response['status']).to eq('PENDING_USER_ACTION')
++    expect(json_response['retryable']).to be(false)
++    expect(json_response['candidates'].first).to include(
++      'pipeline_deal_id' => active_deal.id.to_s,
++      'reason' => 'multiple_active_deals'
++    )
++  end
++
++  it 'creates a contact and deal when no deal id and no active deals exist' do
++    expect do
++      post sync_path, params: sync_payload, headers: booking_headers, as: :json
++    end.to change { CrmDeal.for_account(account.id).count }.by(1)
++      .and change { Contact.where(account_id: account.id).count }.by(1)
++
++    deal = CrmDeal.for_account(account.id).order(:created_at).last
++    expect(response).to have_http_status(:ok)
++    expect(json_response['status']).to eq('SYNCED')
++    expect(deal.booking_id).to eq('order_1001')
++    expect(deal.contact.custom_attributes['booking_client_id']).to eq('booking_contact_501')
++  end
++
++  it 'does not create a second deal on repeat sync' do
++    post sync_path, params: sync_payload(event_id: 'evt_booking_1001_v7'), headers: booking_headers, as: :json
++    first_deal_id = json_response['pipelineDealId']
++
++    expect do
++      post sync_path, params: sync_payload(event_id: 'evt_booking_1001_v7_repeat'), headers: booking_headers, as: :json
++    end.not_to change { CrmDeal.for_account(account.id).count }
++
++    expect(response).to have_http_status(:ok)
++    expect(json_response['pipelineDealId']).to eq(first_deal_id)
++  end
++
++  it 'does not merge people by phone when booking_client_id differs' do
++    existing_contact = booking_contact(booking_client_id: 'booking_contact_old', phone: '+971501112233', name: 'Existing Phone Owner')
++
++    post sync_path,
++         params: sync_payload(booking_client_id: 'booking_contact_new', booking_client_name: 'New Renter'),
++         headers: booking_headers,
++         as: :json
++
++    deal = CrmDeal.for_account(account.id).order(:created_at).last
++    expect(response).to have_http_status(:ok)
++    expect(json_response['status']).to eq('SYNCED')
++    expect(deal.contact_id).not_to eq(existing_contact.id)
++    expect(deal.contact.phone_number).to be_nil
++    expect(deal.contact.custom_attributes['booking_client_id']).to eq('booking_contact_new')
++    expect(existing_contact.reload.custom_attributes['booking_client_id']).to eq('booking_contact_old')
++  end
++
++  it 'keeps referral communication phone out of the renter phone' do
++    referral_source = create(:contact, account: account, name: 'Old Client', phone_number: '+971509990000')
++
++    post sync_path,
++         params: sync_payload(
++           booking_id: 'order_referral_1',
++           booking_number: 'BK-REF-1',
++           booking_client_id: 'booking_contact_friend',
++           booking_client_name: 'Friend Renter',
++           booking_client_phone: nil,
++           source: { type: 'Referral', communication_phone: '+971509990000' },
++           referral: { referred_by_contact_id: referral_source.id.to_s }
++         ),
++         headers: booking_headers,
++         as: :json
++
++    deal = CrmDeal.for_account(account.id).order(:created_at).last
++    expect(response).to have_http_status(:ok)
++    expect(deal.client_phone).to be_nil
++    expect(deal.contact.phone_number).to be_nil
++    expect(deal.custom_attributes).to include(
++      'source' => 'Referral',
++      'communication_phone' => '+971509990000',
++      'referred_by_contact_id' => referral_source.id.to_s,
++      'booking_client_phone' => nil
++    )
++  end
++
++  it 'treats older booking_version as a successful stale no-op' do
++    deal = CrmDeal.create!(
++      account: account,
++      stage: @reserved_stage,
++      title: 'Fresher deal',
++      booking_id: 'order_1001',
++      car_model: 'Old model',
++      amount: 1000,
++      custom_attributes: { 'booking_version' => 9, 'booking_status' => 'reserved' }
++    )
++
++    post sync_path,
++         params: sync_payload(booking_version: 7, amount: '3000.00', vehicle: { vehicle_name: 'New model' }),
++         headers: booking_headers,
++         as: :json
++
++    expect(response).to have_http_status(:ok)
++    expect(json_response).to include(
++      'status' => 'STALE_BOOKING_EVENT',
++      'acceptedBookingVersion' => 9,
++      'receivedBookingVersion' => 7
++    )
++    deal.reload
++    expect(deal.car_model).to eq('Old model')
++    expect(deal.amount).to eq(BigDecimal('1000.0'))
++  end
++
++  it 'maps cancel through fleet_status_trigger cancel instead of assuming lost' do
++    lost_stage = stage(slug: 'lost', name: 'Lost', position: 5, trigger: nil)
++
++    post sync_path,
++         params: sync_payload(booking_status: 'cancel'),
++         headers: booking_headers,
++         as: :json
++
++    deal = CrmDeal.for_account(account.id).order(:created_at).last
++    expect(response).to have_http_status(:ok)
++    expect(deal.stage_id).to eq(@cancel_stage.id)
++    expect(deal.stage_id).not_to eq(lost_stage.id)
++  end
++
++  it 'returns SYNC_DISABLED as a no-write business response when feature flag is off' do
++    disabled_account = create(:account)
++    disabled_token = 'booking-service-token-disabled'
++    create_booking_credential(account: disabled_account, token: disabled_token)
++    disabled_stage = stage(slug: 'reserved', name: 'Booking', position: 1, trigger: 'reserved', target_account: disabled_account)
++
++    expect do
++      post sync_path(disabled_account), params: sync_payload, headers: booking_headers(disabled_token), as: :json
++    end.not_to change { CrmDeal.for_account(disabled_account.id).count }
++
++    expect(disabled_stage).to be_present
++    expect(response).to have_http_status(:ok)
++    expect(json_response['status']).to eq('SYNC_DISABLED')
++  end
++
++  it 'relinks booking_id transactionally and records durable audit' do
++    relink_token = 'booking-service-token-relink'
++    create_booking_credential(account: account, token: relink_token, scopes: ['booking:relink'])
++    old_deal = CrmDeal.create!(account: account, stage: @reserved_stage, title: 'Wrong deal', booking_id: 'order_1001')
++    new_deal = CrmDeal.create!(account: account, stage: @reserved_stage, title: 'Correct deal')
++
++    post relink_path,
++         params: { new_pipeline_deal_id: new_deal.id.to_s, reason: 'Manager selected the correct deal' },
++         headers: booking_headers(relink_token),
++         as: :json
++
++    expect(response).to have_http_status(:ok)
++    expect(json_response['status']).to eq('RELINKED')
++    expect(old_deal.reload.booking_id).to be_nil
++    expect(new_deal.reload.booking_id).to eq('order_1001')
++    expect(new_deal.custom_attributes['booking_relink_audit'].last).to include(
++      'old_deal_id' => old_deal.id.to_s,
++      'new_deal_id' => new_deal.id.to_s,
++      'booking_id' => 'order_1001',
++      'reason' => 'Manager selected the correct deal'
++    )
++    expect(CrmDealActivity.where(account_id: account.id, activity_type: 'booking_relinked').count).to eq(2)
++  end
++end
