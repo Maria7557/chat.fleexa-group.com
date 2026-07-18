@@ -1,0 +1,1720 @@
+openapi: 3.1.0
+info:
+  title: Fleexa Manager Mobile API
+  version: 0.1.0
+  summary: API-first contract for Expo web and iPhone manager surfaces.
+  description: |
+    This contract defines the Fleexa Manager facade API. It intentionally does
+    not expose raw Chatwoot objects, database rows, Vue view models, or upstream
+    route shapes. The server maps Chatwoot conversations, CRM deals, and booking
+    records into stable mobile-ready DTOs.
+
+    All account resources are isolated by `accountId`. The authenticated user
+    must have an active membership in the requested account and the endpoint
+    permission listed by `x-permission`.
+servers:
+  - url: https://api.fleexa.example.com/api/fleexa-manager/v1
+    description: Production API base path placeholder.
+  - url: http://localhost:3000/api/fleexa-manager/v1
+    description: Local development API base path placeholder.
+security:
+  - bearerAuth: []
+tags:
+  - name: Session
+  - name: Conversations
+  - name: Messages
+  - name: Deals
+  - name: Pipeline
+  - name: Bookings
+  - name: Counters
+
+paths:
+  /session/current:
+    get:
+      tags:
+        - Session
+      operationId: getCurrentSession
+      summary: Get the current user, account memberships, permissions, and realtime bootstrap.
+      x-permission: session:read
+      parameters:
+        - $ref: "#/components/parameters/ActiveAccountIdQuery"
+      responses:
+        "200":
+          description: Current authenticated session.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CurrentSessionResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /accounts/{accountId}/conversations:
+    get:
+      tags:
+        - Conversations
+      operationId: listConversations
+      summary: List manager conversations with mobile-ready summaries.
+      description: |
+        Returns normalized conversation list items. The response must not leak
+        raw Chatwoot conversation payloads, inbox rows, contact rows, or message
+        internals.
+      x-account-isolation: required
+      x-permission: conversations:read
+      parameters:
+        - $ref: "#/components/parameters/AccountId"
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+        - name: status
+          in: query
+          schema:
+            $ref: "#/components/schemas/ConversationStatus"
+        - name: assignment
+          in: query
+          description: Filter conversations by ownership bucket.
+          schema:
+            type: string
+            enum:
+              - mine
+              - unassigned
+              - all
+            default: all
+        - name: channel
+          in: query
+          schema:
+            type: string
+            examples:
+              - whatsapp
+              - instagram
+              - web_widget
+        - name: updatedAfter
+          in: query
+          schema:
+            type: string
+            format: date-time
+      responses:
+        "200":
+          description: Paginated conversation summaries.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConversationListResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /accounts/{accountId}/conversations/{conversationId}:
+    get:
+      tags:
+        - Conversations
+      operationId: getConversationDetail
+      summary: Get one manager conversation detail.
+      x-account-isolation: required
+      x-permission: conversations:read
+      parameters:
+        - $ref: "#/components/parameters/AccountId"
+        - $ref: "#/components/parameters/ConversationId"
+      responses:
+        "200":
+          description: Conversation detail.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConversationDetailResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /accounts/{accountId}/conversations/{conversationId}/messages:
+    get:
+      tags:
+        - Messages
+      operationId: listMessages
+      summary: List normalized messages for a conversation.
+      x-account-isolation: required
+      x-permission: conversations:read
+      parameters:
+        - $ref: "#/components/parameters/AccountId"
+        - $ref: "#/components/parameters/ConversationId"
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+        - name: order
+          in: query
+          schema:
+            type: string
+            enum:
+              - asc
+              - desc
+            default: desc
+      responses:
+        "200":
+          description: Paginated message DTOs.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /accounts/{accountId}/conversations/{conversationId}/messages/text:
+    post:
+      tags:
+        - Messages
+      operationId: sendTextMessage
+      summary: Send a text message to the conversation contact.
+      description: |
+        The client must provide both `Idempotency-Key` and `clientMessageId`.
+        Repeating the same request returns the original accepted message DTO.
+      x-account-isolation: required
+      x-permission: messages:send
+      parameters:
+        - $ref: "#/components/parameters/AccountId"
+        - $ref: "#/components/parameters/ConversationId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SendTextMessageRequest"
+      responses:
+        "201":
+          description: Message accepted for delivery.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageSendResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /accounts/{accountId}/conversations/{conversationId}/linked-deal:
+    get:
+      tags:
+        - Deals
+      operationId: getLinkedDeal
+      summary: Get the CRM deal linked to a conversation.
+      x-account-isolation: required
+      x-permission: deals:read
+      parameters:
+        - $ref: "#/components/parameters/AccountId"
+        - $ref: "#/components/parameters/ConversationId"
+      responses:
+        "200":
+          description: Linked deal state for the conversation.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LinkedDealResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /accounts/{accountId}/deals/{dealId}/stage:
+    patch:
+      tags:
+        - Deals
+      operationId: updateDealStage
+      summary: Move a deal to another pipeline stage.
+      description: |
+        Stage movement rules are enforced by the backend. The client must not
+        infer required fields, terminal-stage semantics, or blocked transitions
+        from UI state alone.
+      x-account-isolation: required
+      x-permission: deals:update_stage
+      parameters:
+        - $ref: "#/components/parameters/AccountId"
+        - $ref: "#/components/parameters/DealId"
+        - $ref: "#/components/parameters/OptionalIdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DealStageUpdateRequest"
+      responses:
+        "200":
+          description: Deal moved or already in requested stage.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DealStageUpdateResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+
+  /accounts/{accountId}/pipeline/stages:
+    get:
+      tags:
+        - Pipeline
+      operationId: listPipelineStages
+      summary: List manager pipeline stages.
+      x-account-isolation: required
+      x-permission: pipeline:read
+      parameters:
+        - $ref: "#/components/parameters/AccountId"
+        - name: includeCounters
+          in: query
+          schema:
+            type: boolean
+            default: true
+      responses:
+        "200":
+          description: Ordered pipeline stages.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PipelineStagesResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /accounts/{accountId}/pipeline/stages/{stageId}/deals:
+    get:
+      tags:
+        - Pipeline
+      operationId: listDealsByStage
+      summary: List deals in one stage.
+      x-account-isolation: required
+      x-permission: deals:read
+      parameters:
+        - $ref: "#/components/parameters/AccountId"
+        - $ref: "#/components/parameters/StageId"
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+        - name: assignedTo
+          in: query
+          schema:
+            type: string
+            examples:
+              - me
+              - user_01J5N2C9X3H3STQW1MGJ8B6RWD
+        - name: sort
+          in: query
+          schema:
+            type: string
+            enum:
+              - last_activity_desc
+              - created_desc
+              - amount_desc
+              - amount_asc
+            default: last_activity_desc
+      responses:
+        "200":
+          description: Paginated deals in the requested stage.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DealsByStageResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /accounts/{accountId}/deals/{dealId}/booking:
+    get:
+      tags:
+        - Bookings
+      operationId: getBookingByDeal
+      summary: Get the booking linked to a deal.
+      x-account-isolation: required
+      x-permission: bookings:read
+      parameters:
+        - $ref: "#/components/parameters/AccountId"
+        - $ref: "#/components/parameters/DealId"
+      responses:
+        "200":
+          description: Booking link state for the deal.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BookingByDealResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /accounts/{accountId}/manager/counters:
+    get:
+      tags:
+        - Counters
+      operationId: getManagerCounters
+      summary: Get dashboard counters for the current manager/operator.
+      description: Counters are computed by the backend and filtered by permission.
+      x-account-isolation: required
+      x-permission: counters:read
+      parameters:
+        - $ref: "#/components/parameters/AccountId"
+        - name: date
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: timeZone
+          in: query
+          schema:
+            type: string
+            examples:
+              - Asia/Dubai
+      responses:
+        "200":
+          description: Manager counters.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ManagerCountersResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+webhooks:
+  bookingUpserted:
+    post:
+      tags:
+        - Bookings
+      operationId: receiveBookingUpsertedWebhook
+      summary: Receive an idempotent booking created, updated, or cancelled event.
+      description: |
+        Booking providers call this endpoint when booking state changes. The
+        integration layer must deduplicate by `Idempotency-Key` and by
+        `sourceEventId` within `(accountId, sourceSystem)`.
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - $ref: "#/components/parameters/WebhookSignature"
+        - $ref: "#/components/parameters/WebhookTimestamp"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BookingWebhookEnvelope"
+      responses:
+        "202":
+          description: Event accepted, including duplicate accepted deliveries.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebhookAcceptedResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/InvalidWebhookSignature"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    AccountId:
+      name: accountId
+      in: path
+      required: true
+      description: Fleexa account identifier. The server must verify membership.
+      schema:
+        type: string
+        pattern: "^acc_[A-Za-z0-9]+$"
+    ActiveAccountIdQuery:
+      name: activeAccountId
+      in: query
+      required: false
+      schema:
+        type: string
+        pattern: "^acc_[A-Za-z0-9]+$"
+    ConversationId:
+      name: conversationId
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: "^conv_[A-Za-z0-9]+$"
+    DealId:
+      name: dealId
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: "^deal_[A-Za-z0-9]+$"
+    StageId:
+      name: stageId
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: "^stage_[A-Za-z0-9]+$"
+    Cursor:
+      name: cursor
+      in: query
+      required: false
+      description: Opaque pagination cursor returned by the previous page.
+      schema:
+        type: string
+    Limit:
+      name: limit
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 30
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema:
+        type: string
+        minLength: 16
+        maxLength: 120
+    OptionalIdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      schema:
+        type: string
+        minLength: 16
+        maxLength: 120
+    WebhookSignature:
+      name: X-Fleexa-Booking-Signature
+      in: header
+      required: true
+      description: HMAC-SHA256 signature over timestamp, idempotency key, and raw body.
+      schema:
+        type: string
+    WebhookTimestamp:
+      name: X-Fleexa-Booking-Timestamp
+      in: header
+      required: true
+      schema:
+        type: string
+        format: date-time
+
+  responses:
+    BadRequest:
+      description: Invalid request shape or query parameters.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Unauthorized:
+      description: Missing, expired, or invalid authentication token.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Forbidden:
+      description: Authenticated user lacks the required account permission.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    NotFound:
+      description: Resource not found in this account or not visible to the user.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Conflict:
+      description: Version conflict, duplicate mutation, or idempotency key reuse with different payload.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    UnprocessableEntity:
+      description: Domain validation failed.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    RateLimited:
+      description: Request rate limit exceeded.
+      headers:
+        Retry-After:
+          schema:
+            type: integer
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    InvalidWebhookSignature:
+      description: Webhook signature verification failed.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+
+  schemas:
+    CurrentSessionResponse:
+      type: object
+      required:
+        - user
+        - memberships
+        - permissions
+        - realtime
+        - serverTime
+        - apiVersion
+      properties:
+        user:
+          $ref: "#/components/schemas/ManagerUser"
+        activeAccountId:
+          type:
+            - string
+            - "null"
+        memberships:
+          type: array
+          items:
+            $ref: "#/components/schemas/AccountMembership"
+        permissions:
+          type: array
+          items:
+            $ref: "#/components/schemas/Permission"
+        realtime:
+          $ref: "#/components/schemas/RealtimeBootstrap"
+        serverTime:
+          type: string
+          format: date-time
+        apiVersion:
+          type: string
+
+    AccountMembership:
+      type: object
+      required:
+        - accountId
+        - accountName
+        - role
+        - permissions
+      properties:
+        accountId:
+          type: string
+        accountName:
+          type: string
+        role:
+          type: string
+          enum:
+            - operator
+            - manager
+            - marketing_admin
+            - owner
+        permissions:
+          type: array
+          items:
+            $ref: "#/components/schemas/Permission"
+        features:
+          type: array
+          items:
+            type: string
+
+    ManagerUser:
+      type: object
+      required:
+        - id
+        - name
+        - email
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        email:
+          type: string
+          format: email
+        avatarUrl:
+          type:
+            - string
+            - "null"
+          format: uri
+        locale:
+          type: string
+          examples:
+            - en
+            - ru
+        timeZone:
+          type: string
+          examples:
+            - Asia/Dubai
+
+    Permission:
+      type: string
+      enum:
+        - session:read
+        - conversations:read
+        - messages:send
+        - deals:read
+        - deals:update_stage
+        - pipeline:read
+        - bookings:read
+        - counters:read
+        - settings:read
+        - settings:write
+
+    RealtimeBootstrap:
+      type: object
+      required:
+        - url
+        - token
+        - tokenExpiresAt
+      properties:
+        url:
+          type: string
+          format: uri
+        token:
+          type: string
+          description: Short-lived token scoped to visible account events.
+        tokenExpiresAt:
+          type: string
+          format: date-time
+        lastEventCursor:
+          type:
+            - string
+            - "null"
+
+    ConversationListResponse:
+      type: object
+      required:
+        - data
+        - page
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/ConversationListItem"
+        page:
+          $ref: "#/components/schemas/CursorPage"
+
+    ConversationDetailResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          $ref: "#/components/schemas/ConversationDetail"
+
+    ConversationListItem:
+      type: object
+      required:
+        - id
+        - accountId
+        - title
+        - status
+        - channel
+        - contact
+        - lastActivityAt
+        - unreadCount
+        - permissions
+      properties:
+        id:
+          type: string
+        accountId:
+          type: string
+        title:
+          type: string
+        status:
+          $ref: "#/components/schemas/ConversationStatus"
+        priority:
+          type: string
+          enum:
+            - low
+            - normal
+            - high
+            - urgent
+          default: normal
+        channel:
+          $ref: "#/components/schemas/ChannelSummary"
+        contact:
+          $ref: "#/components/schemas/ContactSummary"
+        assignee:
+          oneOf:
+            - $ref: "#/components/schemas/Actor"
+            - type: "null"
+        lastMessage:
+          oneOf:
+            - $ref: "#/components/schemas/MessagePreview"
+            - type: "null"
+        linkedDeal:
+          oneOf:
+            - $ref: "#/components/schemas/DealSummary"
+            - type: "null"
+        unreadCount:
+          type: integer
+          minimum: 0
+        canReply:
+          type: boolean
+        replyWindow:
+          oneOf:
+            - $ref: "#/components/schemas/ReplyWindow"
+            - type: "null"
+        lastActivityAt:
+          type: string
+          format: date-time
+        permissions:
+          type: array
+          items:
+            $ref: "#/components/schemas/Permission"
+
+    ConversationDetail:
+      allOf:
+        - $ref: "#/components/schemas/ConversationListItem"
+        - type: object
+          required:
+            - participants
+            - tags
+            - createdAt
+            - updatedAt
+          properties:
+            participants:
+              type: array
+              items:
+                $ref: "#/components/schemas/Actor"
+            tags:
+              type: array
+              items:
+                type: string
+            createdAt:
+              type: string
+              format: date-time
+            updatedAt:
+              type: string
+              format: date-time
+
+    ConversationStatus:
+      type: string
+      enum:
+        - open
+        - pending
+        - resolved
+        - snoozed
+
+    ChannelSummary:
+      type: object
+      required:
+        - type
+        - displayName
+      properties:
+        type:
+          type: string
+          enum:
+            - whatsapp
+            - instagram
+            - web_widget
+            - email
+            - phone
+            - telegram
+            - other
+        displayName:
+          type: string
+
+    ContactSummary:
+      type: object
+      required:
+        - id
+        - displayName
+      properties:
+        id:
+          type: string
+        displayName:
+          type: string
+        phone:
+          type:
+            - string
+            - "null"
+        email:
+          type:
+            - string
+            - "null"
+          format: email
+
+    Actor:
+      type: object
+      required:
+        - id
+        - displayName
+        - type
+      properties:
+        id:
+          type: string
+        displayName:
+          type: string
+        type:
+          type: string
+          enum:
+            - user
+            - contact
+            - system
+            - bot
+        avatarUrl:
+          type:
+            - string
+            - "null"
+          format: uri
+
+    MessageListResponse:
+      type: object
+      required:
+        - data
+        - page
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/ManagerMessage"
+        page:
+          $ref: "#/components/schemas/CursorPage"
+
+    ManagerMessage:
+      type: object
+      required:
+        - id
+        - conversationId
+        - direction
+        - visibility
+        - type
+        - createdAt
+      properties:
+        id:
+          type: string
+        conversationId:
+          type: string
+        clientMessageId:
+          type:
+            - string
+            - "null"
+        direction:
+          type: string
+          enum:
+            - incoming
+            - outgoing
+        visibility:
+          type: string
+          enum:
+            - customer
+            - private_note
+            - system
+        type:
+          type: string
+          enum:
+            - text
+            - attachment
+            - template
+            - system
+        text:
+          type:
+            - string
+            - "null"
+        sender:
+          oneOf:
+            - $ref: "#/components/schemas/Actor"
+            - type: "null"
+        deliveryStatus:
+          type: string
+          enum:
+            - queued
+            - sending
+            - sent
+            - delivered
+            - read
+            - failed
+          default: sent
+        failureReason:
+          type:
+            - string
+            - "null"
+        attachments:
+          type: array
+          items:
+            $ref: "#/components/schemas/MessageAttachment"
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type:
+            - string
+            - "null"
+          format: date-time
+
+    MessagePreview:
+      type: object
+      required:
+        - id
+        - text
+        - direction
+        - createdAt
+      properties:
+        id:
+          type: string
+        text:
+          type: string
+        direction:
+          type: string
+          enum:
+            - incoming
+            - outgoing
+        createdAt:
+          type: string
+          format: date-time
+
+    MessageAttachment:
+      type: object
+      required:
+        - id
+        - kind
+        - url
+      properties:
+        id:
+          type: string
+        kind:
+          type: string
+          enum:
+            - image
+            - video
+            - audio
+            - document
+            - other
+        fileName:
+          type:
+            - string
+            - "null"
+        url:
+          type: string
+          format: uri
+        contentType:
+          type:
+            - string
+            - "null"
+
+    SendTextMessageRequest:
+      type: object
+      required:
+        - clientMessageId
+        - text
+      properties:
+        clientMessageId:
+          type: string
+          format: uuid
+        text:
+          type: string
+          minLength: 1
+          maxLength: 4000
+        quotedMessageId:
+          type:
+            - string
+            - "null"
+
+    MessageSendResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          $ref: "#/components/schemas/ManagerMessage"
+
+    ReplyWindow:
+      type: object
+      required:
+        - canReply
+        - reason
+      properties:
+        canReply:
+          type: boolean
+        reason:
+          type: string
+          enum:
+            - open
+            - expired
+            - missing_channel_permission
+            - unsupported_channel
+        closesAt:
+          type:
+            - string
+            - "null"
+          format: date-time
+
+    LinkedDealResponse:
+      type: object
+      required:
+        - conversationId
+        - linkState
+        - deal
+      properties:
+        conversationId:
+          type: string
+        linkState:
+          type: string
+          enum:
+            - linked
+            - missing
+            - inaccessible
+        deal:
+          oneOf:
+            - $ref: "#/components/schemas/DealSummary"
+            - type: "null"
+
+    DealSummary:
+      type: object
+      required:
+        - id
+        - accountId
+        - title
+        - stage
+        - amount
+        - createdAt
+        - updatedAt
+        - permissions
+      properties:
+        id:
+          type: string
+        accountId:
+          type: string
+        title:
+          type: string
+        stage:
+          $ref: "#/components/schemas/PipelineStageRef"
+        amount:
+          oneOf:
+            - $ref: "#/components/schemas/Money"
+            - type: "null"
+        bookingRef:
+          oneOf:
+            - $ref: "#/components/schemas/BookingRef"
+            - type: "null"
+        contact:
+          oneOf:
+            - $ref: "#/components/schemas/ContactSummary"
+            - type: "null"
+        assignee:
+          oneOf:
+            - $ref: "#/components/schemas/Actor"
+            - type: "null"
+        sourceAttribution:
+          oneOf:
+            - $ref: "#/components/schemas/SourceAttribution"
+            - type: "null"
+        qualification:
+          oneOf:
+            - $ref: "#/components/schemas/LeadQualification"
+            - type: "null"
+        lastActivityAt:
+          type:
+            - string
+            - "null"
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        permissions:
+          type: array
+          items:
+            $ref: "#/components/schemas/Permission"
+
+    PipelineStageRef:
+      type: object
+      required:
+        - id
+        - key
+        - name
+      properties:
+        id:
+          type: string
+        key:
+          type: string
+        name:
+          type: string
+
+    DealStageUpdateRequest:
+      type: object
+      required:
+        - stageId
+        - clientMutationId
+      properties:
+        stageId:
+          type: string
+        clientMutationId:
+          type: string
+          format: uuid
+        expectedVersion:
+          type:
+            - integer
+            - "null"
+        note:
+          type:
+            - string
+            - "null"
+          maxLength: 1000
+
+    DealStageUpdateResponse:
+      type: object
+      required:
+        - data
+        - transition
+      properties:
+        data:
+          $ref: "#/components/schemas/DealSummary"
+        transition:
+          $ref: "#/components/schemas/DealStageTransition"
+        emittedEventId:
+          type:
+            - string
+            - "null"
+
+    DealStageTransition:
+      type: object
+      required:
+        - fromStage
+        - toStage
+        - changedAt
+        - changedBy
+      properties:
+        fromStage:
+          oneOf:
+            - $ref: "#/components/schemas/PipelineStageRef"
+            - type: "null"
+        toStage:
+          $ref: "#/components/schemas/PipelineStageRef"
+        changedAt:
+          type: string
+          format: date-time
+        changedBy:
+          $ref: "#/components/schemas/Actor"
+
+    PipelineStagesResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/PipelineStage"
+
+    PipelineStage:
+      type: object
+      required:
+        - id
+        - key
+        - name
+        - position
+        - kind
+        - isTerminal
+      properties:
+        id:
+          type: string
+        key:
+          type: string
+        name:
+          type: string
+        position:
+          type: integer
+        kind:
+          type: string
+          enum:
+            - intake
+            - active
+            - successful
+            - lost
+        isTerminal:
+          type: boolean
+        counters:
+          oneOf:
+            - $ref: "#/components/schemas/StageCounters"
+            - type: "null"
+        requiredFields:
+          type: array
+          items:
+            $ref: "#/components/schemas/RequiredFieldRef"
+
+    StageCounters:
+      type: object
+      required:
+        - dealCount
+        - totalAmount
+      properties:
+        dealCount:
+          type: integer
+          minimum: 0
+        totalAmount:
+          $ref: "#/components/schemas/Money"
+
+    RequiredFieldRef:
+      type: object
+      required:
+        - key
+        - label
+      properties:
+        key:
+          type: string
+        label:
+          type: string
+
+    DealsByStageResponse:
+      type: object
+      required:
+        - stage
+        - data
+        - page
+      properties:
+        stage:
+          $ref: "#/components/schemas/PipelineStageRef"
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/DealSummary"
+        page:
+          $ref: "#/components/schemas/CursorPage"
+
+    BookingByDealResponse:
+      type: object
+      required:
+        - dealId
+        - linkState
+        - booking
+      properties:
+        dealId:
+          type: string
+        linkState:
+          type: string
+          enum:
+            - linked
+            - missing
+            - inaccessible
+            - conflict
+        booking:
+          oneOf:
+            - $ref: "#/components/schemas/BookingSummary"
+            - type: "null"
+
+    BookingRef:
+      type: object
+      required:
+        - bookingId
+        - status
+      properties:
+        bookingId:
+          type: string
+        status:
+          $ref: "#/components/schemas/BookingStatus"
+        externalBookingId:
+          type:
+            - string
+            - "null"
+
+    BookingSummary:
+      type: object
+      required:
+        - id
+        - accountId
+        - status
+        - sourceSystem
+        - period
+        - version
+      properties:
+        id:
+          type: string
+        accountId:
+          type: string
+        dealId:
+          type:
+            - string
+            - "null"
+        externalBookingId:
+          type:
+            - string
+            - "null"
+        status:
+          $ref: "#/components/schemas/BookingStatus"
+        customer:
+          $ref: "#/components/schemas/ContactSummary"
+        vehicle:
+          oneOf:
+            - $ref: "#/components/schemas/VehicleSummary"
+            - type: "null"
+        period:
+          $ref: "#/components/schemas/BookingPeriod"
+        total:
+          oneOf:
+            - $ref: "#/components/schemas/Money"
+            - type: "null"
+        sourceSystem:
+          type: string
+        lastSyncedAt:
+          type:
+            - string
+            - "null"
+          format: date-time
+        version:
+          type: integer
+          minimum: 1
+
+    BookingStatus:
+      type: string
+      enum:
+        - draft
+        - pending
+        - confirmed
+        - active
+        - completed
+        - cancelled
+        - no_show
+
+    BookingPeriod:
+      type: object
+      required:
+        - startsAt
+        - endsAt
+      properties:
+        startsAt:
+          type: string
+          format: date-time
+        endsAt:
+          type: string
+          format: date-time
+
+    VehicleSummary:
+      type: object
+      properties:
+        id:
+          type:
+            - string
+            - "null"
+        label:
+          type: string
+        plateNumber:
+          type:
+            - string
+            - "null"
+
+    ManagerCountersResponse:
+      type: object
+      required:
+        - accountId
+        - asOf
+        - counters
+      properties:
+        accountId:
+          type: string
+        asOf:
+          type: string
+          format: date-time
+        counters:
+          type: object
+          required:
+            - conversations
+            - deals
+            - bookings
+          properties:
+            conversations:
+              $ref: "#/components/schemas/ConversationCounters"
+            deals:
+              $ref: "#/components/schemas/DealCounters"
+            bookings:
+              $ref: "#/components/schemas/BookingCounters"
+
+    ConversationCounters:
+      type: object
+      required:
+        - open
+        - mine
+        - unassigned
+        - unread
+        - overdueFirstResponse
+      properties:
+        open:
+          type: integer
+        mine:
+          type: integer
+        unassigned:
+          type: integer
+        unread:
+          type: integer
+        overdueFirstResponse:
+          type: integer
+
+    DealCounters:
+      type: object
+      required:
+        - active
+        - wonToday
+        - lostToday
+        - byStage
+      properties:
+        active:
+          type: integer
+        wonToday:
+          type: integer
+        lostToday:
+          type: integer
+        byStage:
+          type: array
+          items:
+            $ref: "#/components/schemas/StageCounter"
+
+    StageCounter:
+      type: object
+      required:
+        - stageId
+        - count
+      properties:
+        stageId:
+          type: string
+        count:
+          type: integer
+
+    BookingCounters:
+      type: object
+      required:
+        - pickupToday
+        - returnToday
+        - active
+        - overdue
+      properties:
+        pickupToday:
+          type: integer
+        returnToday:
+          type: integer
+        active:
+          type: integer
+        overdue:
+          type: integer
+
+    SourceAttribution:
+      type: object
+      properties:
+        trafficSourceKey:
+          type:
+            - string
+            - "null"
+        trafficSourceLabel:
+          type:
+            - string
+            - "null"
+        leadOriginKey:
+          type:
+            - string
+            - "null"
+        leadOriginLabel:
+          type:
+            - string
+            - "null"
+        detectionMethod:
+          type:
+            - string
+            - "null"
+        needsClarification:
+          type: boolean
+          default: false
+
+    LeadQualification:
+      type: object
+      properties:
+        status:
+          type: string
+          enum:
+            - unknown
+            - unqualified
+            - qualified
+        lostReasonKey:
+          type:
+            - string
+            - "null"
+        lostReasonLabel:
+          type:
+            - string
+            - "null"
+
+    Money:
+      type: object
+      required:
+        - amount
+        - currency
+      properties:
+        amount:
+          type: string
+          pattern: "^-?[0-9]+(\\.[0-9]{1,2})?$"
+        currency:
+          type: string
+          minLength: 3
+          maxLength: 3
+          examples:
+            - AED
+
+    CursorPage:
+      type: object
+      required:
+        - limit
+        - hasMore
+      properties:
+        limit:
+          type: integer
+        nextCursor:
+          type:
+            - string
+            - "null"
+        previousCursor:
+          type:
+            - string
+            - "null"
+        hasMore:
+          type: boolean
+
+    BookingWebhookEnvelope:
+      type: object
+      required:
+        - accountId
+        - sourceSystem
+        - sourceEventId
+        - eventType
+        - occurredAt
+        - booking
+      properties:
+        accountId:
+          type: string
+        sourceSystem:
+          type: string
+          examples:
+            - fleetly
+            - rental_core
+        sourceEventId:
+          type: string
+        eventType:
+          type: string
+          enum:
+            - booking.created
+            - booking.updated
+            - booking.status_changed
+            - booking.cancelled
+        occurredAt:
+          type: string
+          format: date-time
+        booking:
+          $ref: "#/components/schemas/BookingWebhookPayload"
+
+    BookingWebhookPayload:
+      type: object
+      required:
+        - externalBookingId
+        - status
+        - period
+      properties:
+        externalBookingId:
+          type: string
+        status:
+          $ref: "#/components/schemas/BookingStatus"
+        dealId:
+          type:
+            - string
+            - "null"
+        customer:
+          $ref: "#/components/schemas/ContactSummary"
+        vehicle:
+          oneOf:
+            - $ref: "#/components/schemas/VehicleSummary"
+            - type: "null"
+        period:
+          $ref: "#/components/schemas/BookingPeriod"
+        total:
+          oneOf:
+            - $ref: "#/components/schemas/Money"
+            - type: "null"
+        version:
+          type:
+            - integer
+            - "null"
+
+    WebhookAcceptedResponse:
+      type: object
+      required:
+        - accepted
+        - duplicate
+        - eventId
+      properties:
+        accepted:
+          type: boolean
+        duplicate:
+          type: boolean
+        eventId:
+          type: string
+
+    ErrorResponse:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: object
+          required:
+            - code
+            - message
+            - requestId
+          properties:
+            code:
+              type: string
+              enum:
+                - bad_request
+                - unauthenticated
+                - forbidden
+                - not_found
+                - conflict
+                - validation_failed
+                - rate_limited
+                - invalid_webhook_signature
+                - internal_error
+            message:
+              type: string
+            requestId:
+              type: string
+            details:
+              type: object
+              additionalProperties: true
