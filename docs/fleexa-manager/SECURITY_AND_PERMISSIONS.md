@@ -47,6 +47,16 @@ Refresh and revoke limitations:
 - Permission changes are detected by `GET /session/current` and future realtime
   session events, not by Manager refresh-token rotation.
 
+Stage 2 expired or invalid session behavior:
+
+- Missing, invalid, revoked, or inactive Chatwoot credentials return
+  `401 unauthenticated` with the standard Manager error envelope.
+- Account membership failures return `403 forbidden`.
+- Resource/account mismatches return `404 not_found` when confirming existence
+  would leak cross-account data.
+- Auth tokens must never be logged, embedded in docs, or committed in local env
+  files. Local development must use untracked `.env` files only.
+
 This is temporary because Chatwoot tokens are not the final Manager auth
 boundary. Before production beta, replace this with Manager-owned session
 endpoints, short-lived access tokens, refresh-token rotation, server-side revoke,
@@ -162,6 +172,7 @@ Message send:
   `clientMessageId`.
 - Uses `Idempotency-Key` when present, otherwise `clientMessageId`, as the
   idempotency key.
+- Rejects empty text and text longer than 4000 characters.
 - Must store `(accountId, conversationId, idempotencyKey, requestBodyHash,
   createdMessageId)`.
 - Repeating the same request with the same key must return the original
@@ -230,6 +241,12 @@ Audit logs should store account id, actor id, action, target id, timestamp,
 request id, and safe metadata.
 
 ## Rate Limits
+
+Stage 2 has a minimal abuse guard for message sends: authentication is required,
+the account and conversation are scoped before mutation, text length is capped at
+4000 characters, idempotency keys are length-limited, and duplicate retries reuse
+the original message instead of creating another one. This is not a replacement
+for production rate limiting.
 
 Apply separate limits for:
 

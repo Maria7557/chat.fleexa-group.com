@@ -64,8 +64,8 @@ index 0000000..d353b9a
 +  rescue ActiveRecord::RecordInvalid => e
 +    render_manager_error('validation_failed', e.record.errors.full_messages.join(', '), status: :unprocessable_entity)
 +  rescue StandardError => e
-+    Rails.logger.info("Fleexa Manager message send failed: #{e.class}: #{e.message}")
-+    render_manager_error('validation_failed', e.message, status: :unprocessable_entity)
++    Rails.logger.warn("Fleexa Manager message send failed request_id=#{request.request_id} error_class=#{e.class.name}")
++    render_manager_error('validation_failed', 'Message could not be sent.', status: :unprocessable_entity)
 +  end
 +
 +  private
@@ -1247,7 +1247,7 @@ new file mode 100644
 index 0000000..a013597
 --- /dev/null
 +++ b/spec/requests/api/fleexa_manager/v1/chat_api_spec.rb
-@@ -0,0 +1,190 @@
+@@ -0,0 +1,239 @@
 +require 'rails_helper'
 +
 +RSpec.describe 'Fleexa Manager chat API', type: :request do
@@ -1301,6 +1301,15 @@ index 0000000..a013597
 +
 +      expect(response).to have_http_status(:unauthorized)
 +      expect(json_response['error']['code']).to eq('unauthenticated')
++    end
++
++    it 'denies invalid bearer tokens with the stable error envelope' do
++      get '/api/fleexa-manager/v1/session/current', headers: { 'Authorization' => 'Bearer invalid-token' }
++
++      expect(response).to have_http_status(:unauthorized)
++      expect(json_response['error']['code']).to eq('unauthenticated')
++      expect(json_response['error']).to include('message', 'requestId')
++      expect(json_response['error']).not_to include('exception', 'trace')
 +    end
 +
 +    it 'denies an inactive unconfirmed user when Devise marks it inactive' do
@@ -1399,6 +1408,46 @@ index 0000000..a013597
 +
 +      expect(response).to have_http_status(:unprocessable_entity)
 +      expect(json_response['error']['code']).to eq('validation_failed')
++    end
++
++    it 'rejects oversized text payloads' do
++      post message_path, params: payload.merge(text: 'x' * 4001), headers: idempotent_headers
++
++      expect(response).to have_http_status(:unprocessable_entity)
++      expect(json_response['error']['code']).to eq('validation_failed')
++    end
++
++    it 'does not send through an inaccessible account id' do
++      wrong_account_path = "/api/fleexa-manager/v1/accounts/acc_#{other_account.id}/conversations/conv_#{conversation.display_id}/messages/text"
++
++      expect do
++        post wrong_account_path, params: payload, headers: idempotent_headers
++      end.not_to change { conversation.messages.count }
++
++      expect(response).to have_http_status(:forbidden)
++      expect(json_response['error']['code']).to eq('forbidden')
++    end
++
++    it 'does not send when the conversation belongs to another account' do
++      other_inbox = create(:inbox, account: other_account)
++      other_contact = create(:contact, account: other_account)
++      other_contact_inbox = create(:contact_inbox, contact: other_contact, inbox: other_inbox)
++      other_conversation = create(
++        :conversation,
++        account: other_account,
++        inbox: other_inbox,
++        contact: other_contact,
++        contact_inbox: other_contact_inbox,
++        display_id: 88
++      )
++      wrong_account_path = "/api/fleexa-manager/v1/accounts/acc_#{account.id}/conversations/conv_#{other_conversation.display_id}/messages/text"
++
++      expect do
++        post wrong_account_path, params: payload, headers: idempotent_headers
++      end.not_to change { other_conversation.messages.count }
++
++      expect(response).to have_http_status(:not_found)
++      expect(json_response['error']['code']).to eq('not_found')
 +    end
 +
 +    it 'creates one Chatwoot message and returns a Manager DTO' do
