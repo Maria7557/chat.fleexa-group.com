@@ -48,6 +48,43 @@ flows, commonly into `/tmp/fleexa-chatwoot-app-build`.
 - Design new APIs so they can be consumed by Expo web and native without
   Chatwoot route helpers or Vue-specific data shapes.
 
+## App-First Feature Classification
+
+Before implementing any product feature, classify it and state the placement.
+Use this exact pre-coding output:
+
+```text
+Feature classification:
+Manager / Backoffice / Shared infrastructure
+
+Implementation placement:
+Backend / Expo / Vue / Shared packages
+
+App reuse:
+Full / Partial / Not applicable
+
+Contract changes:
+Yes / No
+```
+
+If classification is ambiguous, ask whether the feature belongs to the Manager
+product or backoffice before coding. Do not ask when these rules make the
+classification clear.
+
+Mandatory classification rules:
+
+- Daily manager workflow: backend/API first, then Expo Manager UI. Vue is
+  allowed only when explicitly justified as a temporary backoffice or urgent
+  demo exception.
+- Admin/backoffice functionality: may remain in Chatwoot/Vue.
+- Business logic: must live in backend/domain services. It must not be
+  implemented only in Vue or Expo.
+- Shared contracts: update OpenAPI, `packages/fleexa-domain`, and
+  `packages/fleexa-api-client`; keep Manager DTOs independent from raw
+  Chatwoot objects.
+- Ambiguous feature: stop before coding and ask whether it belongs to the
+  Manager product or backoffice.
+
 ## Required Baseline Before Work
 
 Before editing, capture:
@@ -78,12 +115,16 @@ Use these Fleexa Manager architecture docs as the current source map:
 - `docs/fleexa-manager/PRODUCT_SCOPE.md`
 - `docs/fleexa-manager/SYSTEM_ARCHITECTURE.md`
 - `docs/fleexa-manager/DOMAIN_OWNERSHIP.md`
+- `docs/fleexa-manager/DEVELOPMENT_POLICY.md`
+- `docs/fleexa-manager/CURRENT_STATUS.md`
+- `docs/fleexa-manager/FEATURE_CHECKLIST.md`
 - `docs/fleexa-manager/ROADMAP_90_DAYS.md`
 - `docs/fleexa-manager/adr/0001-manager-frontend-direction.md`
 - `docs/fleexa-manager/adr/0002-business-logic-backend-first.md`
 - `docs/fleexa-manager/adr/0003-chatwoot-as-backoffice.md`
 - `docs/fleexa-manager/adr/0004-manager-api-layer-placement.md`
 - `docs/fleexa-manager/adr/0006-manager-session-transport-and-refresh.md`
+- `docs/fleexa-manager/adr/0007-app-first-feature-development.md`
 - `docs/fleexa-manager/CONTROLLED_BETA_GATE.md`
 - `docs/fleexa-manager/OPERATIONS_RUNBOOK.md`
 - `docs/fleexa-manager/STAGE_4_REVIEW.md`

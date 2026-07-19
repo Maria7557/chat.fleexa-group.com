@@ -3,11 +3,24 @@
 Date: 2026-07-19
 Branch: `codex/fleexa-manager-stage-4-hardening`
 
+## Current Status Override
+
+This operational beta plan is **PAUSED** by
+`docs/fleexa-manager/CURRENT_STATUS.md`.
+
+The plan below remains useful as the future controlled-beta checklist, but it is
+not the current execution order. Current work may continue on product
+functionality and interface development, using the app-first policy in
+`docs/fleexa-manager/DEVELOPMENT_POLICY.md`.
+
+Resume this staging/beta plan 4-6 weeks before the first client or earlier if
+external testing begins.
+
 ## Goal
 
 Turn the Stage 4 local hardening checkpoint into a controlled-beta-ready release.
-Do not start new product features until remote staging, iOS, observability,
-browser E2E, backup/restore, and rollback are proven.
+While this plan is paused, do not treat remote staging, iOS, observability,
+browser E2E, backup/restore, or rollback as complete.
 
 ## Non-Negotiables
 
