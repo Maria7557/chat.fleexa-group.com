@@ -2,7 +2,7 @@
 
 Date: 2026-07-19
 Branch: `codex/fleexa-manager-stage-4-hardening`
-Candidate commit: `27ce468`
+Current local candidate commit: `5726f12`
 
 ## Current Status
 
@@ -16,15 +16,27 @@ Evidence checked:
 
 - `git remote -v` points to `origin`
   `https://github.com/Maria7557/chat.fleexa-group.com.git`.
-- `git push -u origin codex/fleexa-manager-stage-4-hardening` published only
-  this feature branch as the staging candidate.
+- Local branch `codex/fleexa-manager-stage-4-hardening` is ahead of `origin` by
+  one docs-only blocker commit, `5726f12`.
 - `git ls-remote --heads origin codex/fleexa-manager-stage-4-hardening main`
-  shows the feature branch at `27ce468` and `main` unchanged at `6af8928`.
+  shows the remote feature branch at `27ce468` and `main` unchanged at
+  `6af8928`; remote does not yet contain local blocker-doc commit `5726f12`.
 - GitHub repo metadata has default branch `main`.
 - GitHub environments API returned no configured environments.
 - `gh workflow list` and `gh run list --branch
   codex/fleexa-manager-stage-4-hardening --limit 5` returned no remote
   workflows/runs.
+- GitHub auth is available for repo/workflow access, but no staging
+  environment, deployment target, runner workflow, secrets, or environment
+  protection exists in the repository.
+- Docker contexts are local only: Docker Desktop/default Unix sockets. No remote
+  Docker context or registry target is configured.
+- `kubectl` is installed but has no current context, clusters, auth info, or
+  namespaces configured.
+- Common cloud/deploy CLIs are not available in this environment:
+  `aws`, `gcloud`, `az`, `doctl`, `flyctl`, `heroku`, `railway`, `render`,
+  `dokku`, and `kamal`.
+- No staging-related environment variable names are present in the local shell.
 - Repository deploy files are limited to local Docker/Makefile flows:
   `Dockerfile.chatwoot`, `docker-compose.local.yml`,
   `docker-compose.chatwoot-override.yml`, and `Makefile`.
@@ -37,14 +49,18 @@ Evidence checked:
 
 ## Safe Delivery Method
 
-Chosen method: **push only
-`codex/fleexa-manager-stage-4-hardening` to `origin`**.
+Chosen method for this pass: **no remote delivery used**.
 
-Why: branch push is the smallest reversible remote candidate. It does not merge
-`main`, does not push `main`, does not deploy production, does not overwrite a
-registry image, and does not enable Booking receiver.
+Why: pushing the feature branch alone would update source code on GitHub, but it
+would not create a staging URL, isolated database, isolated Redis, WSS
+ActionCable endpoint, deployment environment, registry image, or health checks.
+Since no remote staging consumer exists yet, branch push is not enough to
+advance controlled beta validation.
 
-Never force push this branch for staging validation. Use a new commit instead.
+Once real staging infrastructure exists, the safest source delivery method is to
+push only `codex/fleexa-manager-stage-4-hardening` to `origin` and build
+staging from that branch or an immutable image tag. Never force push this branch
+for staging validation. Use a new commit instead.
 
 ## Required Remote Staging Shape
 
@@ -92,7 +108,9 @@ Do not set `EXPO_PUBLIC_FLEEXA_API_MODE=mock` for staging acceptance. Do not set
    git push -u origin codex/fleexa-manager-stage-4-hardening
    ```
 
-   Status: completed for candidate commit `27ce468`.
+   Status: not run in this pass. The remote feature branch currently points to
+   `27ce468`; the local candidate is `5726f12`. Push `5726f12` only after a
+   real remote staging mechanism is ready to consume the branch.
 
 3. Build staging from the branch using one of these future remote mechanisms:
 
@@ -151,6 +169,36 @@ Booking receiver:
 4. No authenticated staging monitor user is available.
 5. iOS simulator validation remains blocked until a machine with full Xcode and
    `simctl` runs the smoke.
+
+## Missing Access And Infrastructure Checklist
+
+Controlled beta staging cannot be provisioned from this checkout until these
+items exist outside the repository:
+
+1. DNS/domain access for a dedicated staging host, for example
+   `staging.chat.fleexa-group.com`.
+2. HTTPS/TLS termination for that staging host.
+3. A remote runtime target, such as a VM, Kubernetes cluster, PaaS app, or
+   container hosting service, explicitly marked staging.
+4. A safe deployment mechanism for the patched Chatwoot backend from this
+   branch or an immutable staging image tag.
+5. A safe deployment mechanism for the Expo Manager web artifact from this
+   branch.
+6. Isolated staging PostgreSQL host, database name, user, password, and backup
+   access. The database must not be production or a writable production replica.
+7. Isolated staging Redis host/database index for Rails cache, Sidekiq, and
+   ActionCable.
+8. WSS-capable ActionCable routing for `/cable`.
+9. Staging secret store or GitHub `staging` environment secrets for Rails,
+   Postgres, Redis, Manager web, Sentry, and monitor credentials.
+10. Staging-only storage bucket/path or isolated local volume for Chatwoot
+    uploads.
+11. Staging monitor Manager account/session for authenticated health checks.
+12. Explicit proof that Booking receiver is default-off in staging and that no
+    production Booking credentials are present.
+13. Rollback target metadata: current backend image, previous known-good backend
+    image, current Manager web artifact, and previous known-good Manager web
+    artifact.
 
 Until these are closed, controlled beta validation must remain
 `DO_NOT_CONTINUE`.
