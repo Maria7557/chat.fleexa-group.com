@@ -6,16 +6,25 @@ or database callbacks.
 
 ## Transport
 
-Initial target:
+Stage 4 production path:
 
-- WebSocket endpoint: `/api/fleexa-manager/v1/accounts/{accountId}/realtime`
-- Auth: short-lived realtime token returned by `GET /session/current`
-- Scope: one account per connection
+- WebSocket endpoint: Chatwoot ActionCable `/cable`
+- Channel: `FleexaManager::V1::RealtimeChannel`
+- Subscription identifier: `{ "accountId": "acc_1" }`
+- Web auth: existing Manager HttpOnly session cookie
+- Native/dev fallback auth: short-lived realtime token returned by
+  `GET /session/current`, sent inside the ActionCable subscription identifier
+- Scope: one account per subscription and one user-specific stream per manager
 - Delivery: at-least-once
-- Ordering: monotonically increasing `sequence` per account
-- Resume: client reconnects with the last seen `cursor`
+- Ordering: best effort for Stage 4; persisted `sequence` is reserved for a
+  future event log
+- Resume: client reconnects with the last seen `cursor` when present and always
+  dedupes by `eventId`
 
-Server-sent events can be added later with the same envelope and cursor rules.
+The contract-level endpoint
+`/api/fleexa-manager/v1/accounts/{accountId}/realtime` remains reserved for a
+future dedicated gateway. Server-sent events can be added later with the same
+envelope and cursor rules.
 
 ## Envelope
 
@@ -45,23 +54,20 @@ Rules:
 - `accountId` must match the active realtime account.
 - `payload` must use the same Manager DTO family as `openapi.yaml`.
 - Raw Chatwoot payloads must not be sent to Manager clients.
-- Events that the user is not permitted to read must not be delivered.
+- Events that the user is not permitted to read must not be delivered. Stage 4
+  streams to `account + user` stream names after checking account membership and
+  conversation visibility.
 
 ## Event Types
 
 Conversation events:
 
-- `conversation.created`
 - `conversation.updated`
 - `conversation.assigned`
-- `conversation.status_changed`
-- `conversation.read_state_changed`
 
 Message events:
 
 - `message.created`
-- `message.delivery_status_changed`
-- `message.deleted`
 
 Deal events:
 
@@ -89,6 +95,11 @@ Counter and access events:
 - `manager.counters.updated`
 - `permissions.changed`
 - `session.revoked`
+
+Stage 4 implements the chat subset: `message.created`,
+`conversation.updated`, `conversation.assigned`, and
+`manager.counters.updated`. Deal, pipeline, booking, permission, and session
+events stay contractual until backend broadcasters are added for those domains.
 
 ## Payload Contracts
 
@@ -186,12 +197,18 @@ Counter and access events:
 
 Clients must dedupe by `eventId`.
 
-On reconnect:
+On reconnect in Stage 4:
 
-1. Send the last stored `cursor`.
-2. Server replays all visible events after that cursor when available.
-3. If the cursor is too old, server returns `resync_required`.
-4. Client refreshes the affected lists through REST and stores the new cursor.
+1. Reopen the ActionCable subscription for the active account.
+2. Send the last stored `cursor` when one exists.
+3. Dedupe all received events by `eventId`.
+4. Keep REST polling enabled only while realtime is disconnected.
+5. Refresh affected REST queries after reconnect if the connection was down
+   long enough to miss visible messages.
+
+Stage 4 does not yet persist an event log, so server-side replay is not a
+production guarantee. A persisted account event log is required before mobile
+background replay can be considered complete.
 
 ## Permission Changes
 

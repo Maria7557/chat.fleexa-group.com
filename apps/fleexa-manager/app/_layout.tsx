@@ -10,6 +10,7 @@ import { Button, Screen, colors, spacing } from '@fleexa/ui';
 import { AuthProvider } from '@/src/auth/AuthProvider';
 import { getRuntimeConfig } from '@/src/config/runtime';
 import { initializeSentry, wrapWithSentry } from '@/src/observability/sentry';
+import { ManagerRealtimeProvider } from '@/src/realtime/ManagerRealtimeProvider';
 
 function RootLayout() {
   const runtimeConfig = useMemo(() => getRuntimeConfig(), []);
@@ -48,7 +49,9 @@ function RootLayout() {
       <StatusBar style="dark" />
       <QueryClientProvider client={queryClient}>
         <AuthProvider config={runtimeConfig.config}>
-          <Stack screenOptions={{ headerShown: false }} />
+          <ManagerRealtimeProvider enabled={runtimeConfig.config.apiMode === 'live'}>
+            <Stack screenOptions={{ headerShown: false }} />
+          </ManagerRealtimeProvider>
         </AuthProvider>
       </QueryClientProvider>
     </SafeAreaProvider>

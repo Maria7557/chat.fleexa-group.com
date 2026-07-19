@@ -1394,9 +1394,10 @@ components:
         url:
           type: string
           format: uri
+          description: Stage 4 ActionCable URL, usually `/cable` with `ws` or `wss` scheme.
         token:
           type: string
-          description: Short-lived token scoped to visible account events.
+          description: Native fallback token scoped to visible account events. Web uses the HttpOnly Manager session cookie when possible.
         tokenExpiresAt:
           type: string
           format: date-time
@@ -1404,6 +1405,106 @@ components:
           type:
             - string
             - "null"
+
+    ManagerRealtimeEvent:
+      type: object
+      required:
+        - eventId
+        - eventType
+        - accountId
+        - occurredAt
+        - payload
+      properties:
+        eventId:
+          type: string
+          examples:
+            - evt_msg_421_created
+        eventType:
+          type: string
+          enum:
+            - message.created
+            - conversation.updated
+            - conversation.assigned
+            - manager.counters.updated
+            - permissions.changed
+            - session.revoked
+        accountId:
+          type: string
+          examples:
+            - acc_1
+        occurredAt:
+          type: string
+          format: date-time
+        cursor:
+          type:
+            - string
+            - "null"
+          description: Opaque resume cursor when an event log is available.
+        sequence:
+          type:
+            - integer
+            - "null"
+          description: Account sequence when an event log is available.
+        actor:
+          oneOf:
+            - $ref: "#/components/schemas/Actor"
+            - type: "null"
+        payload:
+          oneOf:
+            - $ref: "#/components/schemas/ManagerMessageCreatedEventPayload"
+            - $ref: "#/components/schemas/ManagerConversationUpdatedEventPayload"
+            - $ref: "#/components/schemas/ManagerCountersUpdatedEventPayload"
+
+    ManagerMessageCreatedEventPayload:
+      type: object
+      required:
+        - conversationId
+        - message
+        - conversation
+      properties:
+        conversationId:
+          type: string
+        message:
+          $ref: "#/components/schemas/ManagerMessage"
+        conversation:
+          $ref: "#/components/schemas/ConversationListItem"
+        counters:
+          oneOf:
+            - $ref: "#/components/schemas/ManagerCountersResponse"
+            - type: "null"
+
+    ManagerConversationUpdatedEventPayload:
+      type: object
+      required:
+        - conversation
+        - changedFields
+      properties:
+        conversation:
+          $ref: "#/components/schemas/ConversationListItem"
+        changedFields:
+          type: array
+          items:
+            type: string
+            enum:
+              - assignedManager
+              - assignee
+              - unreadCount
+              - replyState
+              - lastCustomerMessageAt
+              - lastAgentReplyAt
+              - status
+        counters:
+          oneOf:
+            - $ref: "#/components/schemas/ManagerCountersResponse"
+            - type: "null"
+
+    ManagerCountersUpdatedEventPayload:
+      type: object
+      required:
+        - counters
+      properties:
+        counters:
+          $ref: "#/components/schemas/ManagerCountersResponse"
 
     ConversationListResponse:
       type: object

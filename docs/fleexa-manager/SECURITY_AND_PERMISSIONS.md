@@ -65,8 +65,9 @@ Expiration, refresh, and revoke:
 - Expired sessions return `401 unauthenticated`.
 - `DELETE /session` revokes the Manager session server-side and clears the web
   cookie.
-- Permission changes are detected by `GET /session/current` and future realtime
-  session events, not by Manager refresh-token rotation.
+- Permission changes are detected by `GET /session/current`. Stage 4 reserves
+  realtime `permissions.changed` and `session.revoked` events, but only chat
+  update events are wired today.
 
 Stage 3 expired or invalid session behavior:
 
@@ -91,7 +92,10 @@ Future Manager auth requirements:
 - Refresh tokens must be stored with platform-appropriate secure storage.
 - `GET /session/current` is the source of truth for current roles,
   permissions, feature flags, and realtime bootstrap data.
-- Realtime tokens must be short-lived and account-scoped.
+- Realtime tokens must be short-lived and account-scoped. Stage 4 web realtime
+  uses the HttpOnly Manager session cookie for ActionCable when possible; the
+  realtime token is a native/dev fallback and must not be placed in the
+  WebSocket URL.
 
 ## Account Isolation
 
@@ -229,15 +233,29 @@ Webhook secrets must never be available to Expo clients.
 
 ## Realtime Security
 
-Realtime connections use short-lived account-scoped tokens.
+Stage 4 realtime uses Chatwoot ActionCable `/cable` with
+`FleexaManager::V1::RealtimeChannel`.
 
 The server must:
 
 - Verify account membership before connection.
-- Filter each event by permission.
+- Reject wrong-account subscriptions.
+- Stream to account + user stream names, not a broad raw Chatwoot room.
+- Filter conversation/message events through visible conversation membership.
+- Emit Manager DTOs only; raw Chatwoot ActionCable payloads are not exposed.
 - Stop delivery immediately after membership or permission changes.
 - Emit `permissions.changed` when the client should refresh session state.
 - Emit `session.revoked` when credentials must be cleared.
+
+Stage 4 implementation status:
+
+- Implemented: `message.created`, `conversation.updated`,
+  `conversation.assigned`, and `manager.counters.updated` payloads.
+- Implemented: wrong-account ActionCable subscription rejection.
+- Implemented: Expo web ActionCable subscription with polling only as fallback.
+- Not implemented: persisted event log, server-side replay after mobile
+  backgrounding, realtime reconnect rate limits, and live permission/session
+  revocation broadcasts.
 
 ## Data Minimization
 

@@ -197,6 +197,7 @@ crm-copy-patches: ensure-env
 	$(COMPOSE) cp chatwoot-patches/fleexa-manager-security-rate-limits-backend.patch rails:/tmp/fleexa-manager-security-rate-limits-backend.patch
 	$(COMPOSE) cp chatwoot-patches/fleexa-manager-session-strategy-backend.patch rails:/tmp/fleexa-manager-session-strategy-backend.patch
 	$(COMPOSE) cp chatwoot-patches/fleexa-manager-concurrency-safety-backend.patch rails:/tmp/fleexa-manager-concurrency-safety-backend.patch
+	$(COMPOSE) cp chatwoot-patches/fleexa-manager-realtime-backend.patch rails:/tmp/fleexa-manager-realtime-backend.patch
 	@echo "CRM patch files copied to Rails container"
 
 crm-patch-check: crm-copy-patches
@@ -230,6 +231,7 @@ crm-patch-check: crm-copy-patches
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply --check /tmp/fleexa-manager-security-rate-limits-backend.patch"
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply --check /tmp/fleexa-manager-session-strategy-backend.patch"
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply --check /tmp/fleexa-manager-concurrency-safety-backend.patch"
+	$(COMPOSE) exec rails sh -lc "cd /app && git apply --check /tmp/fleexa-manager-realtime-backend.patch"
 	@echo "CRM patches validated"
 
 crm-patch:
@@ -263,6 +265,7 @@ crm-patch:
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply /tmp/fleexa-manager-security-rate-limits-backend.patch"
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply /tmp/fleexa-manager-session-strategy-backend.patch"
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply /tmp/fleexa-manager-concurrency-safety-backend.patch"
+	$(COMPOSE) exec rails sh -lc "cd /app && git apply /tmp/fleexa-manager-realtime-backend.patch"
 	@echo "CRM patches applied to Rails container"
 
 crm-install: crm-copy-patches crm-patch
@@ -428,6 +431,7 @@ crm-assets-build-host:
 	git apply "$(CURDIR)/chatwoot-patches/fleexa-manager-security-rate-limits-backend.patch"; \
 	git apply "$(CURDIR)/chatwoot-patches/fleexa-manager-session-strategy-backend.patch"; \
 	git apply "$(CURDIR)/chatwoot-patches/fleexa-manager-concurrency-safety-backend.patch"; \
+	git apply "$(CURDIR)/chatwoot-patches/fleexa-manager-realtime-backend.patch"; \
 	git apply "$(CURDIR)/chatwoot-patches/crm-pipeline-vue.patch"; \
 	git apply "$(CURDIR)/chatwoot-patches/crm-deal-workspace-vue.patch"; \
 	git apply "$(CURDIR)/chatwoot-patches/crm-deal-fields-vue.patch"; \

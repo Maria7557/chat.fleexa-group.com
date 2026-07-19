@@ -72,6 +72,7 @@ fleexa-manager-booking-sync-logic-backend.patch
 fleexa-manager-security-rate-limits-backend.patch
 fleexa-manager-session-strategy-backend.patch
 fleexa-manager-concurrency-safety-backend.patch
+fleexa-manager-realtime-backend.patch
 "
 
 for patch_file in $PATCHES; do
@@ -121,5 +122,7 @@ bundle exec rspec \
   spec/requests/api/fleexa_manager/v1/booking_sync_logic_spec.rb \
   spec/requests/api/fleexa_manager/v1/security_rate_limits_spec.rb \
   spec/requests/api/fleexa_manager/v1/session_strategy_spec.rb \
+  spec/channels/fleexa_manager/v1/realtime_channel_spec.rb \
+  spec/services/fleexa_manager/v1/realtime_broadcaster_spec.rb \
   --format documentation
 '

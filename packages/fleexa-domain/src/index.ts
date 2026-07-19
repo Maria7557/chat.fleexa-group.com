@@ -410,6 +410,79 @@ export interface ManagerCountersResponse {
   };
 }
 
+export type ManagerRealtimeEventType =
+  | 'message.created'
+  | 'conversation.updated'
+  | 'conversation.assigned'
+  | 'manager.counters.updated'
+  | 'permissions.changed'
+  | 'session.revoked';
+
+export interface ManagerRealtimeEnvelopeBase {
+  eventId: string;
+  eventType: ManagerRealtimeEventType;
+  accountId: string;
+  occurredAt: IsoDateTime;
+  cursor?: string | null;
+  sequence?: number | null;
+  actor?: Actor | null;
+}
+
+export interface ManagerMessageCreatedPayload {
+  conversationId: string;
+  message: ManagerMessage;
+  conversation: ConversationListItem;
+  counters?: ManagerCountersResponse | null;
+}
+
+export interface ManagerConversationUpdatedPayload {
+  conversation: ConversationListItem;
+  changedFields: Array<
+    | 'assignedManager'
+    | 'assignee'
+    | 'unreadCount'
+    | 'replyState'
+    | 'lastCustomerMessageAt'
+    | 'lastAgentReplyAt'
+    | 'status'
+  >;
+  counters?: ManagerCountersResponse | null;
+}
+
+export interface ManagerCountersUpdatedPayload {
+  counters: ManagerCountersResponse;
+}
+
+export interface ManagerPermissionsChangedPayload {
+  reason: 'role_changed' | 'membership_changed' | 'session_refreshed';
+}
+
+export interface ManagerSessionRevokedPayload {
+  reason: 'expired' | 'revoked' | 'disabled_user';
+}
+
+export type ManagerRealtimeEvent =
+  | (ManagerRealtimeEnvelopeBase & {
+      eventType: 'message.created';
+      payload: ManagerMessageCreatedPayload;
+    })
+  | (ManagerRealtimeEnvelopeBase & {
+      eventType: 'conversation.updated' | 'conversation.assigned';
+      payload: ManagerConversationUpdatedPayload;
+    })
+  | (ManagerRealtimeEnvelopeBase & {
+      eventType: 'manager.counters.updated';
+      payload: ManagerCountersUpdatedPayload;
+    })
+  | (ManagerRealtimeEnvelopeBase & {
+      eventType: 'permissions.changed';
+      payload: ManagerPermissionsChangedPayload;
+    })
+  | (ManagerRealtimeEnvelopeBase & {
+      eventType: 'session.revoked';
+      payload: ManagerSessionRevokedPayload;
+    });
+
 export type ServerApiErrorCode =
   | 'bad_request'
   | 'unauthenticated'

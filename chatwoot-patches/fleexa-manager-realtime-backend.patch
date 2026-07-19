@@ -1,0 +1,445 @@
+diff --git a/app/channels/fleexa_manager/v1/realtime_channel.rb b/app/channels/fleexa_manager/v1/realtime_channel.rb
+new file mode 100644
+index 0000000..0e61bca
+--- /dev/null
++++ b/app/channels/fleexa_manager/v1/realtime_channel.rb
+@@ -0,0 +1,59 @@
++class FleexaManager::V1::RealtimeChannel < ApplicationCable::Channel
++  MANAGER_SESSION_COOKIE = 'fleexa_manager_session'.freeze
++
++  def subscribed
++    user = current_manager_user
++    account = current_manager_account(user)
++
++    return reject if user.blank? || account.blank?
++    return reject if user.respond_to?(:active_for_authentication?) && !user.active_for_authentication?
++
++    stream_from FleexaManager::V1::RealtimeBroadcaster.stream_name(account, user)
++  rescue ActiveRecord::RecordNotFound
++    reject
++  end
++
++  private
++
++  def current_manager_user
++    @current_manager_user ||= begin
++      session = current_manager_session
++      if session.present?
++        session.user
++      else
++        token = params[:token].presence || params[:pubsub_token].presence
++        token.present? ? User.find_by(pubsub_token: token) : nil
++      end
++    end
++  end
++
++  def current_manager_session
++    @current_manager_session ||= begin
++      if connection.respond_to?(:cookies)
++        raw_token = connection.cookies.encrypted[MANAGER_SESSION_COOKIE].presence
++        session = raw_token.present? ? FleexaManagerSession.authenticate(raw_token) : nil
++        session if session&.user&.active_for_authentication? && session.account&.active?
++      end
++    end
++  rescue ActiveSupport::MessageVerifier::InvalidSignature
++    nil
++  end
++
++  def current_manager_account(user)
++    return if user.blank?
++
++    account_id = stable_account_id(params[:accountId] || params[:account_id])
++    return if account_id.blank?
++
++    account = Account.find_by(id: account_id)
++    return if account.blank? || !account.active?
++    return if current_manager_session.present? && current_manager_session.account_id != account.id
++    return if account.account_users.find_by(user_id: user.id).blank?
++
++    account
++  end
++
++  def stable_account_id(value)
++    value.to_s.match(/\Aacc_(\d+)\z/)&.[](1)&.to_i
++  end
++end
+diff --git a/app/listeners/action_cable_listener.rb b/app/listeners/action_cable_listener.rb
+index 3bc2215..18127fb 100644
+--- a/app/listeners/action_cable_listener.rb
++++ b/app/listeners/action_cable_listener.rb
+@@ -231,4 +231,35 @@ class ActionCableListener < BaseListener
+   end
+ end
+ 
++module FleexaManager
++  module V1
++    module RealtimeActionCableListenerPatch
++      def message_created(event)
++        super
++        FleexaManager::V1::RealtimeBroadcaster.message_created(event.data[:message], actor: event.data[:performed_by])
++      end
++
++      def conversation_updated(event)
++        super
++        FleexaManager::V1::RealtimeBroadcaster.conversation_updated(
++          event.data[:conversation],
++          changed_attributes: event.data[:changed_attributes] || {},
++          actor: event.data[:performed_by]
++        )
++      end
++
++      def assignee_changed(event)
++        super
++        FleexaManager::V1::RealtimeBroadcaster.conversation_updated(
++          event.data[:conversation],
++          changed_attributes: event.data[:changed_attributes] || { 'assignee_id' => true },
++          event_type: 'conversation.assigned',
++          actor: event.data[:performed_by]
++        )
++      end
++    end
++  end
++end
++
++ActionCableListener.prepend(FleexaManager::V1::RealtimeActionCableListenerPatch)
+ ActionCableListener.prepend_mod_with('ActionCableListener')
+diff --git a/app/services/fleexa_manager/v1/dto_serializer.rb b/app/services/fleexa_manager/v1/dto_serializer.rb
+index 468f017..0ec6577 100644
+--- a/app/services/fleexa_manager/v1/dto_serializer.rb
++++ b/app/services/fleexa_manager/v1/dto_serializer.rb
+@@ -182,9 +182,10 @@ module FleexaManager
+ 
+         def realtime_bootstrap(user)
+           frontend_url = ENV.fetch('FRONTEND_URL', 'http://localhost:3000').to_s.chomp('/')
++          websocket_url = frontend_url.sub(/\Ahttp:/, 'ws:').sub(/\Ahttps:/, 'wss:')
+ 
+           {
+-            url: "#{frontend_url}/cable",
++            url: "#{websocket_url}/cable",
+             token: user.pubsub_token.to_s,
+             tokenExpiresAt: 1.hour.from_now.utc.iso8601,
+             lastEventCursor: nil
+diff --git a/app/services/fleexa_manager/v1/realtime_broadcaster.rb b/app/services/fleexa_manager/v1/realtime_broadcaster.rb
+new file mode 100644
+index 0000000..dd44314
+--- /dev/null
++++ b/app/services/fleexa_manager/v1/realtime_broadcaster.rb
+@@ -0,0 +1,169 @@
++module FleexaManager
++  module V1
++    class RealtimeBroadcaster
++      MESSAGE_CHANGED_FIELDS = %w[unreadCount replyState lastCustomerMessageAt lastAgentReplyAt].freeze
++      ASSIGNMENT_CHANGED_FIELDS = %w[assignedManager assignee].freeze
++      CONVERSATION_PERMISSIONS = %w[conversations:read messages:send].freeze
++
++      class << self
++        def stream_name(account, user)
++          "fleexa_manager:v1:account:#{account.id}:user:#{user.id}"
++        end
++
++        def message_created(message, actor: nil)
++          return if message.blank? || !visible_customer_message?(message)
++
++          conversation = message.conversation
++          users = visible_users(conversation)
++          broadcast_to_users(conversation.account, users) do |user|
++            realtime_event(
++              event_id: "evt_msg_#{message.id}_created",
++              event_type: 'message.created',
++              account: conversation.account,
++              actor: actor,
++              payload: {
++                conversationId: DtoSerializer.conversation_id(conversation),
++                message: DtoSerializer.message(message),
++                conversation: conversation_payload(conversation),
++                counters: counters_payload(conversation.account, user)
++              }
++            )
++          end
++          counters_updated(conversation.account, users: users, source_key: "msg_#{message.id}_created")
++        end
++
++        def conversation_updated(conversation, changed_attributes:, event_type: 'conversation.updated', actor: nil)
++          return if conversation.blank?
++
++          changed_fields = changed_fields_for(changed_attributes)
++          changed_fields = ASSIGNMENT_CHANGED_FIELDS if event_type == 'conversation.assigned' && changed_fields.blank?
++          changed_fields = MESSAGE_CHANGED_FIELDS if changed_fields.blank?
++
++          users = visible_users(conversation)
++          broadcast_to_users(conversation.account, users) do |user|
++            realtime_event(
++              event_id: "evt_conv_#{conversation.id}_#{event_type.tr('.', '_')}_#{conversation.updated_at.to_i}",
++              event_type: event_type,
++              account: conversation.account,
++              actor: actor,
++              payload: {
++                conversation: conversation_payload(conversation),
++                changedFields: changed_fields,
++                counters: counters_payload(conversation.account, user)
++              }
++            )
++          end
++          counters_updated(conversation.account, users: users, source_key: "conv_#{conversation.id}_#{event_type.tr('.', '_')}")
++        end
++
++        def counters_updated(account, users:, source_key:)
++          Array(users).compact.uniq.each do |user|
++            next unless user_visible_account?(account, user)
++
++            payload = counters_payload(account, user)
++            broadcast(
++              account,
++              user,
++              realtime_event(
++                event_id: "evt_counters_#{account.id}_#{user.id}_#{source_key}",
++                event_type: 'manager.counters.updated',
++                account: account,
++                actor: nil,
++                payload: { counters: payload }
++              )
++            )
++          end
++        end
++
++        private
++
++        def broadcast_to_users(account, users)
++          users.each do |user|
++            broadcast(account, user, yield(user))
++          end
++        end
++
++        def broadcast(account, user, event)
++          ActionCable.server.broadcast(stream_name(account, user), event)
++        end
++
++        def realtime_event(event_id:, event_type:, account:, actor:, payload:)
++          {
++            eventId: event_id,
++            eventType: event_type,
++            accountId: DtoSerializer.account_id(account),
++            occurredAt: Time.current.utc.iso8601,
++            cursor: nil,
++            sequence: nil,
++            actor: DtoSerializer.actor_ref(actor || Current.user),
++            payload: payload
++          }
++        end
++
++        def conversation_payload(conversation)
++          DtoSerializer.conversation_summary(conversation, permissions: CONVERSATION_PERMISSIONS)
++        end
++
++        def counters_payload(account, user)
++          scope = visible_conversation_scope(account, user)
++
++          {
++            accountId: DtoSerializer.account_id(account),
++            generatedAt: Time.current.utc.iso8601,
++            counters: {
++              unread: unread_count(scope, account),
++              assigned: scope.where.not(assignee_id: nil).count,
++              unassigned: scope.where(assignee_id: nil).count
++            }
++          }
++        end
++
++        def unread_count(scope, account)
++          scope.joins(:messages)
++               .where(messages: { account_id: account.id, message_type: Message.message_types[:incoming] })
++               .where('conversations.agent_last_seen_at IS NULL OR messages.created_at > conversations.agent_last_seen_at')
++               .distinct
++               .count
++        end
++
++        def visible_users(conversation)
++          account = conversation.account
++          users = conversation.inbox.members.to_a + account.administrators.to_a
++          users.uniq.select { |user| visible_conversation_scope(account, user).where(id: conversation.id).exists? }
++        end
++
++        def user_visible_account?(account, user)
++          return false unless user.is_a?(User)
++          return false if user.respond_to?(:active_for_authentication?) && !user.active_for_authentication?
++
++          account.account_users.exists?(user_id: user.id)
++        end
++
++        def visible_conversation_scope(account, user)
++          Conversations::PermissionFilterService.new(account.conversations, user, account).perform
++        end
++
++        def visible_customer_message?(message)
++          return false if message.private?
++          return false if message.activity?
++
++          message.incoming? || message.outgoing?
++        end
++
++        def changed_fields_for(changed_attributes)
++          keys = if changed_attributes.respond_to?(:keys)
++                   changed_attributes.keys.map(&:to_s)
++                 else
++                   []
++                 end
++          fields = []
++          fields.concat(ASSIGNMENT_CHANGED_FIELDS) if keys.intersect?(%w[assignee_id assignee_agent_bot_id])
++          fields << 'status' if keys.include?('status')
++          fields << 'unreadCount' if keys.intersect?(%w[agent_last_seen_at assignee_last_seen_at])
++          fields.concat(%w[replyState lastCustomerMessageAt lastAgentReplyAt]) if keys.intersect?(%w[waiting_since first_reply_created_at last_activity_at])
++          fields.uniq
++        end
++      end
++    end
++  end
++end
+diff --git a/spec/channels/fleexa_manager/v1/realtime_channel_spec.rb b/spec/channels/fleexa_manager/v1/realtime_channel_spec.rb
+new file mode 100644
+index 0000000..ac76eea
+--- /dev/null
++++ b/spec/channels/fleexa_manager/v1/realtime_channel_spec.rb
+@@ -0,0 +1,32 @@
++require 'rails_helper'
++
++RSpec.describe FleexaManager::V1::RealtimeChannel do
++  let(:account) { create(:account) }
++  let(:other_account) { create(:account) }
++  let(:user) { create(:user, account: account, role: :administrator) }
++
++  before do
++    stub_connection
++  end
++
++  it 'subscribes an authenticated manager to their account/user stream' do
++    subscribe(accountId: "acc_#{account.id}", token: user.pubsub_token)
++
++    expect(subscription).to be_confirmed
++    expect(subscription).to have_stream_from(
++      FleexaManager::V1::RealtimeBroadcaster.stream_name(account, user)
++    )
++  end
++
++  it 'rejects a subscription for an account the manager cannot access' do
++    subscribe(accountId: "acc_#{other_account.id}", token: user.pubsub_token)
++
++    expect(subscription).to be_rejected
++  end
++
++  it 'rejects missing authentication' do
++    subscribe(accountId: "acc_#{account.id}")
++
++    expect(subscription).to be_rejected
++  end
++end
+diff --git a/spec/services/fleexa_manager/v1/realtime_broadcaster_spec.rb b/spec/services/fleexa_manager/v1/realtime_broadcaster_spec.rb
+new file mode 100644
+index 0000000..b2c7f3b
+--- /dev/null
++++ b/spec/services/fleexa_manager/v1/realtime_broadcaster_spec.rb
+@@ -0,0 +1,105 @@
++require 'rails_helper'
++
++RSpec.describe FleexaManager::V1::RealtimeBroadcaster do
++  let(:account) { create(:account) }
++  let(:other_account) { create(:account) }
++  let(:user) { create(:user, account: account, role: :administrator) }
++  let(:other_user) { create(:user, account: other_account, role: :administrator) }
++  let(:inbox) { create(:inbox, account: account) }
++  let(:contact) { create(:contact, account: account) }
++  let(:contact_inbox) { create(:contact_inbox, contact: contact, inbox: inbox) }
++  let(:conversation) do
++    create(:conversation, account: account, inbox: inbox, contact: contact, contact_inbox: contact_inbox, assignee: user)
++  end
++  let(:message) do
++    create(
++      :message,
++      account: account,
++      inbox: inbox,
++      conversation: conversation,
++      sender: contact,
++      message_type: :incoming,
++      content: 'New customer message'
++    )
++  end
++
++  before do
++    user
++    other_user
++    allow_any_instance_of(Conversation).to receive(:can_reply?).and_return(true)
++  end
++
++  it 'broadcasts Manager message DTOs only to visible same-account manager streams' do
++    created_message = message
++    allow(ActionCable.server).to receive(:broadcast)
++
++    described_class.message_created(created_message)
++
++    expect(ActionCable.server).to have_received(:broadcast).with(
++      described_class.stream_name(account, user),
++      hash_including(
++          eventType: 'message.created',
++          accountId: "acc_#{account.id}",
++          payload: hash_including(
++            conversationId: "conv_#{conversation.id}",
++            message: hash_including(id: "msg_#{created_message.id}", text: 'New customer message'),
++            conversation: hash_including(id: "conv_#{conversation.id}", accountId: "acc_#{account.id}"),
++            counters: hash_including(accountId: "acc_#{account.id}")
++          )
++      )
++    )
++    expect(ActionCable.server).not_to have_received(:broadcast).with(
++      described_class.stream_name(other_account, other_user),
++      anything
++    )
++  end
++
++  it 'broadcasts Manager counters updates without exposing another account' do
++    allow(ActionCable.server).to receive(:broadcast)
++
++    described_class.counters_updated(account, users: [user, other_user], source_key: 'spec')
++
++    expect(ActionCable.server).to have_received(:broadcast).with(
++      described_class.stream_name(account, user),
++      hash_including(
++        eventType: 'manager.counters.updated',
++        accountId: "acc_#{account.id}",
++        payload: hash_including(
++          counters: hash_including(
++            accountId: "acc_#{account.id}",
++            counters: include(:unread, :assigned, :unassigned)
++          )
++        )
++      )
++    )
++    expect(ActionCable.server).not_to have_received(:broadcast).with(
++      described_class.stream_name(other_account, other_user),
++      anything
++    )
++  end
++
++  it 'broadcasts assignment/reply-state changes as Manager conversation DTOs' do
++    conversation.update!(waiting_since: Time.current)
++    allow(ActionCable.server).to receive(:broadcast)
++
++    described_class.conversation_updated(
++      conversation,
++      changed_attributes: { 'assignee_id' => [nil, user.id], 'waiting_since' => [nil, Time.current] },
++      event_type: 'conversation.assigned'
++    )
++
++    expect(ActionCable.server).to have_received(:broadcast).with(
++      described_class.stream_name(account, user),
++      hash_including(
++        eventType: 'conversation.assigned',
++        payload: hash_including(
++          conversation: hash_including(
++            id: "conv_#{conversation.id}",
++            assignedManager: hash_including(id: "user_#{user.id}")
++          ),
++          changedFields: include('assignedManager', 'assignee', 'replyState')
++        )
++      )
++    )
++  end
++end
