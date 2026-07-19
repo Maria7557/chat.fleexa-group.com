@@ -6,7 +6,7 @@ CHATWOOT_BASE_IMAGE := chatwoot/chatwoot:v4.14.2
 CHATWOOT_LOCAL_IMAGE := fleexa-chatwoot:v4.14.2-patch1
 CRM_ASSETS_BUILD_DIR := /tmp/fleexa-chatwoot-app-build
 
-.PHONY: setup up down logs migrate seed shell verify-patch ensure-env crm-apply crm-migrate crm-seed crm-autocreate-backfill crm-marketing-spend-migrate crm-marketing-spend-demo crm-marketing-spend-rebuild crm-marketing-demo-seed crm-marketing-google-airbyte-migrate crm-marketing-google-airbyte-seed crm-marketing-google-airbyte-normalize crm-marketing-google-airbyte-clear crm-marketing-meta-airbyte-migrate crm-marketing-meta-airbyte-seed crm-marketing-meta-airbyte-normalize crm-marketing-meta-airbyte-clear crm-marketing-source-mapping-migrate crm-marketing-source-mapping-seed fleexa-manager-booking-sync-migrate fleexa-manager-session-migrate fleexa-manager-concurrency-migrate fleexa-manager-rspec crm-copy-patches crm-patch-check crm-patch crm-install crm-vue-copy crm-vue-check crm-vue-patch crm-assets-build-host crm-assets-install-local crm-assets-refresh-local
+.PHONY: setup up down logs migrate seed shell verify-patch ensure-env crm-apply crm-migrate crm-seed crm-autocreate-backfill crm-marketing-spend-migrate crm-marketing-spend-demo crm-marketing-spend-rebuild crm-marketing-demo-seed crm-marketing-google-airbyte-migrate crm-marketing-google-airbyte-seed crm-marketing-google-airbyte-normalize crm-marketing-google-airbyte-clear crm-marketing-meta-airbyte-migrate crm-marketing-meta-airbyte-seed crm-marketing-meta-airbyte-normalize crm-marketing-meta-airbyte-clear crm-marketing-source-mapping-migrate crm-marketing-source-mapping-seed fleexa-manager-booking-sync-migrate fleexa-manager-session-migrate fleexa-manager-concurrency-migrate fleexa-manager-openapi-check fleexa-manager-rspec fleexa-manager-e2e-smoke fleexa-manager-health-check fleexa-manager-ci-check crm-copy-patches crm-patch-check crm-patch crm-install crm-vue-copy crm-vue-check crm-vue-patch crm-assets-build-host crm-assets-install-local crm-assets-refresh-local
 
 ensure-env:
 	@test -f $(ENV_FILE) || (echo "$(ENV_FILE) is missing. Run: make setup"; exit 1)
@@ -161,6 +161,26 @@ fleexa-manager-concurrency-migrate: ensure-env
 
 fleexa-manager-rspec: ensure-env
 	sh scripts/fleexa-manager-rspec.sh
+
+fleexa-manager-e2e-smoke: ensure-env
+	FLEEXA_MANAGER_RSPEC_FILES="spec/requests/api/fleexa_manager/v1/controlled_beta_smoke_spec.rb" sh scripts/fleexa-manager-rspec.sh
+
+fleexa-manager-openapi-check:
+	ruby -ryaml -e "YAML.load_file('docs/fleexa-manager/openapi.yaml'); puts 'OpenAPI YAML parsed'"
+
+fleexa-manager-health-check:
+	sh scripts/fleexa-manager-health-check.sh
+
+fleexa-manager-ci-check:
+	npm run lint
+	npm run typecheck
+	npm test
+	npm run smoke:web
+	$(MAKE) fleexa-manager-openapi-check
+	$(MAKE) fleexa-manager-rspec
+	$(MAKE) fleexa-manager-e2e-smoke
+	$(MAKE) crm-assets-build-host
+	git diff --check
 
 crm-marketing-demo-seed: ensure-env
 	@test -n "$(ACCOUNT_ID)" || (echo "Usage: ACCOUNT_ID=1 make crm-marketing-demo-seed" && exit 1)

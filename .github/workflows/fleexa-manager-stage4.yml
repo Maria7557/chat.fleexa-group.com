@@ -1,0 +1,63 @@
+name: Fleexa Manager Stage 4 Gate
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/fleexa-manager-stage4.yml'
+      - 'apps/fleexa-manager/**'
+      - 'packages/fleexa-*/**'
+      - 'chatwoot-patches/**'
+      - 'docs/fleexa-manager/**'
+      - 'scripts/fleexa-manager-*.sh'
+      - 'Makefile'
+      - 'package.json'
+      - 'package-lock.json'
+  workflow_dispatch:
+
+jobs:
+  controlled-beta-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Prepare local Chatwoot env
+        run: cp .env.local.example .env.local
+
+      - name: Frontend lint
+        run: npm run lint
+
+      - name: Frontend typecheck
+        run: npm run typecheck
+
+      - name: Frontend tests
+        run: npm test
+
+      - name: Expo web smoke
+        run: npm run smoke:web
+
+      - name: OpenAPI YAML parse
+        run: npm run openapi:check
+
+      - name: Rails request specs
+        run: make fleexa-manager-rspec
+
+      - name: Controlled beta E2E smoke
+        run: npm run smoke:e2e
+
+      - name: Patch-chain build
+        run: make crm-assets-build-host
+
+      - name: Whitespace check
+        run: git diff --check

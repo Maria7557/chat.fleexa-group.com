@@ -12,7 +12,11 @@
     "test": "vitest run",
     "validate:env": "npm --workspace @fleexa/manager run validate:env",
     "web": "npm --workspace @fleexa/manager run web",
-    "smoke:web": "npm --workspace @fleexa/manager run smoke:web"
+    "smoke:web": "npm --workspace @fleexa/manager run smoke:web",
+    "smoke:e2e": "make fleexa-manager-e2e-smoke",
+    "openapi:check": "make fleexa-manager-openapi-check",
+    "health:manager": "make fleexa-manager-health-check",
+    "ci:fleexa-manager": "make fleexa-manager-ci-check"
   },
   "overrides": {
     "@sentry/react-native": "7.11.0",

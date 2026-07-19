@@ -190,6 +190,27 @@ Rules:
 Error messages must be safe to show in mobile UI and must not include secrets,
 raw SQL, provider payloads, or internal Chatwoot exception text.
 
+## Observability And Safe Logging
+
+Sentry configuration is environment-driven and must not commit DSNs, auth
+tokens, or source-map upload tokens.
+
+- Expo web and iOS use `EXPO_PUBLIC_SENTRY_DSN` and
+  `EXPO_PUBLIC_SENTRY_TRACES_SAMPLE_RATE`.
+- Expo build-time source-map upload uses `SENTRY_ORG`, `SENTRY_PROJECT`,
+  `SENTRY_URL`, and CI-only Sentry auth credentials.
+- Backend Chatwoot uses `SENTRY_DSN`, `SENTRY_ENVIRONMENT`, and
+  `SENTRY_TRACES_SAMPLE_RATE` when configured by the runtime host.
+- Backend PII defaults must stay off with `SENTRY_SEND_DEFAULT_PII=false`
+  unless there is a specific written exception.
+
+Logs and error trackers must never capture Manager bearer tokens,
+`fleexa_manager_session` cookie values, Chatwoot `api_access_token`, Booking
+service tokens, webhook signatures, passwords, or raw Booking/customer PII
+payloads. The Stage 4 backend patch filters Manager auth fields, Booking token
+headers, signature headers, and booking identity fields. New endpoints must add
+new secret-bearing field names before beta.
+
 ## Mutations
 
 Message send:

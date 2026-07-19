@@ -1,0 +1,216 @@
+diff --git a/spec/requests/api/fleexa_manager/v1/controlled_beta_smoke_spec.rb b/spec/requests/api/fleexa_manager/v1/controlled_beta_smoke_spec.rb
+new file mode 100644
+index 0000000..23e16c1
+--- /dev/null
++++ b/spec/requests/api/fleexa_manager/v1/controlled_beta_smoke_spec.rb
+@@ -0,0 +1,210 @@
++require 'rails_helper'
++
++RSpec.describe 'Fleexa Manager controlled beta smoke', type: :request do
++  let(:account) { create(:account) }
++  let(:user) { create(:user) }
++  let!(:account_user) { create(:account_user, account: account, user: user, role: :administrator) }
++  let(:password) { 'FleexaBetaSmoke!2026' }
++  let(:inbox) { create(:inbox, account: account) }
++  let(:contact) { create(:contact, account: account, name: 'Beta Smoke Client') }
++  let(:contact_inbox) { create(:contact_inbox, contact: contact, inbox: inbox) }
++  let!(:conversation) do
++    create(
++      :conversation,
++      account: account,
++      inbox: inbox,
++      contact: contact,
++      contact_inbox: contact_inbox,
++      assignee: user,
++      agent_last_seen_at: 1.hour.ago,
++      last_activity_at: 10.minutes.ago,
++      display_id: 420
++    )
++  end
++  let!(:unassigned_conversation) do
++    create(
++      :conversation,
++      account: account,
++      inbox: inbox,
++      contact: contact,
++      contact_inbox: contact_inbox,
++      assignee: nil,
++      last_activity_at: 20.minutes.ago,
++      display_id: 421
++    )
++  end
++  let!(:intake_stage) do
++    CrmPipelineStage.create!(
++      account: account,
++      slug: 'new',
++      name: 'New',
++      color: '#0EA5A0',
++      position: 1
++    )
++  end
++  let!(:active_stage) do
++    CrmPipelineStage.create!(
++      account: account,
++      slug: 'in_progress',
++      name: 'In progress',
++      color: '#2563EB',
++      position: 2
++    )
++  end
++
++  before do
++    user.update!(password: password, password_confirmation: password)
++    allow_any_instance_of(Conversation).to receive(:can_reply?).and_return(true)
++    account.update!(
++      settings: {
++        'crm_marketing_dashboard' => {
++          'traffic_sources' => [
++            { 'key' => 'meta_ads', 'label' => 'Meta Ads', 'is_active' => true, 'sort_order' => 1 }
++          ],
++          'lead_origins' => [
++            { 'key' => 'whatsapp', 'label' => 'WhatsApp', 'is_active' => true, 'sort_order' => 1 }
++          ]
++        }
++      }
++    )
++    create(
++      :message,
++      account: account,
++      inbox: inbox,
++      conversation: conversation,
++      content: 'Customer needs a reply',
++      message_type: :incoming,
++      created_at: 10.minutes.ago
++    )
++  end
++
++  def json_data
++    json_response['data']
++  end
++
++  def account_id
++    "acc_#{account.id}"
++  end
++
++  def conversation_id
++    "conv_#{conversation.id}"
++  end
++
++  def login_headers
++    post '/api/fleexa-manager/v1/session',
++         params: {
++           email: user.email,
++           password: password,
++           accountHint: account_id,
++           clientPlatform: 'ios'
++         }
++
++    expect(response).to have_http_status(:created)
++    expect(json_response['auth']).to include('transport' => 'bearer_token', 'refresh' => 'none')
++    expect(json_response['accessToken']).to be_present
++    expect(json_response['session']).to include('activeAccountId' => account_id)
++
++    { 'Authorization' => "Bearer #{json_response['accessToken']}" }
++  end
++
++  it 'runs login to chat to linked deal to pipeline stage move through the Manager API' do
++    auth_headers = login_headers
++
++    get '/api/fleexa-manager/v1/session/current', headers: auth_headers
++    expect(response).to have_http_status(:ok)
++    expect(json_response).to include('activeAccountId' => account_id)
++    expect(json_response['permissions']).to include('conversations:read', 'messages:send', 'deals:update_stage')
++
++    get "/api/fleexa-manager/v1/accounts/#{account_id}/conversations?filter=all", headers: auth_headers
++    expect(response).to have_http_status(:ok)
++    expect(json_data.map { |item| item['id'] }).to include(conversation_id)
++    expect(json_data.first).not_to include('custom_attributes', 'additional_attributes', 'display_id')
++
++    {
++      'mine' => conversation_id,
++      'unread' => conversation_id,
++      'waiting_for_reply' => conversation_id,
++      'unassigned' => "conv_#{unassigned_conversation.id}"
++    }.each do |filter, expected_id|
++      get "/api/fleexa-manager/v1/accounts/#{account_id}/conversations?filter=#{filter}", headers: auth_headers
++      expect(response).to have_http_status(:ok)
++      expect(json_data.map { |item| item['id'] }).to include(expected_id)
++    end
++
++    get "/api/fleexa-manager/v1/accounts/#{account_id}/conversations/#{conversation_id}", headers: auth_headers
++    expect(response).to have_http_status(:ok)
++    expect(json_data).to include(
++      'id' => conversation_id,
++      'accountId' => account_id,
++      'replyState' => 'waiting_for_reply'
++    )
++    expect(json_data).not_to include('messages', 'uuid', 'identifier')
++
++    get "/api/fleexa-manager/v1/accounts/#{account_id}/conversations/#{conversation_id}/messages",
++        headers: auth_headers
++    expect(response).to have_http_status(:ok)
++    expect(json_data.map { |message| message['direction'] }).to include('incoming')
++    expect(json_data.first).not_to include('content_attributes', 'additional_attributes', 'source_id')
++
++    client_message_id = SecureRandom.uuid
++    message_path = "/api/fleexa-manager/v1/accounts/#{account_id}/conversations/#{conversation_id}/messages/text"
++    expect do
++      post message_path,
++           params: { text: 'Controlled beta smoke reply', clientMessageId: client_message_id },
++           headers: auth_headers.merge('Idempotency-Key' => client_message_id)
++    end.to change { conversation.messages.count }.by(1)
++    expect(response).to have_http_status(:created)
++    expect(json_data).to include(
++      'conversationId' => conversation_id,
++      'clientMessageId' => client_message_id,
++      'direction' => 'outgoing'
++    )
++
++    expect do
++      post message_path,
++           params: { text: 'Controlled beta smoke reply', clientMessageId: client_message_id },
++           headers: auth_headers.merge('Idempotency-Key' => client_message_id)
++    end.not_to change { conversation.messages.count }
++    expect(response).to have_http_status(:created)
++    expect(json_response['idempotency']).to include('duplicate' => true)
++
++    deal_path = "/api/fleexa-manager/v1/accounts/#{account_id}/conversations/#{conversation_id}/deal"
++    get deal_path, headers: auth_headers
++    expect(response).to have_http_status(:ok)
++    expect(json_response).to include('linkState' => 'missing', 'deal' => nil)
++
++    post deal_path,
++         params: {
++           deal: {
++             title: 'Controlled beta rental',
++             stageKey: 'new',
++             amount: { amount: '1500', currency: 'AED' },
++             trafficSourceKey: 'meta_ads',
++             leadOriginKey: 'whatsapp'
++           }
++         },
++         headers: auth_headers
++    expect(response).to have_http_status(:created)
++    deal = json_response['deal']
++    expect(deal).to include('conversationId' => conversation_id, 'stageKey' => 'new', 'version' => 0)
++    expect(deal).not_to include('custom_attributes', 'stage_id', 'conversation_id')
++
++    get "/api/fleexa-manager/v1/accounts/#{account_id}/pipeline/stages", headers: auth_headers
++    expect(response).to have_http_status(:ok)
++    expect(json_data.map { |stage| stage['id'] }).to include("stage_#{intake_stage.id}", "stage_#{active_stage.id}")
++
++    get "/api/fleexa-manager/v1/accounts/#{account_id}/pipeline/deals", headers: auth_headers
++    expect(response).to have_http_status(:ok)
++    expect(json_data.map { |pipeline_deal| pipeline_deal['id'] }).to include(deal['id'])
++
++    patch "/api/fleexa-manager/v1/accounts/#{account_id}/deals/#{deal['id']}/stage",
++          params: {
++            stageId: "stage_#{active_stage.id}",
++            expectedVersion: deal['version'],
++            clientMutationId: SecureRandom.uuid
++          },
++          headers: auth_headers
++    expect(response).to have_http_status(:ok)
++    expect(json_data).to include('id' => deal['id'], 'stageId' => "stage_#{active_stage.id}", 'stageKey' => 'in_progress')
++  end
++end

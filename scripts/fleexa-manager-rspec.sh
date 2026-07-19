@@ -11,6 +11,17 @@ TMP_APP=${CHATWOOT_RSPEC_APP_DIR:-/tmp/fleexa-chatwoot-rspec-app}
 SUPPORT_DIR=${CHATWOOT_TEST_SUPPORT_DIR:-/tmp/chatwoot-v4.14.2-test-support}
 TEST_DB=${CHATWOOT_TEST_DB:-chatwoot_test}
 TEST_NETWORK=${CHATWOOT_TEST_NETWORK:-fleexa-chatwoot-local_default}
+DEFAULT_RSPEC_FILES="
+spec/requests/api/fleexa_manager/v1/chat_api_spec.rb
+spec/requests/api/fleexa_manager/v1/booking_sync_foundation_spec.rb
+spec/requests/api/fleexa_manager/v1/booking_sync_logic_spec.rb
+spec/requests/api/fleexa_manager/v1/security_rate_limits_spec.rb
+spec/requests/api/fleexa_manager/v1/session_strategy_spec.rb
+spec/requests/api/fleexa_manager/v1/controlled_beta_smoke_spec.rb
+spec/channels/fleexa_manager/v1/realtime_channel_spec.rb
+spec/services/fleexa_manager/v1/realtime_broadcaster_spec.rb
+"
+RSPEC_FILES=${FLEEXA_MANAGER_RSPEC_FILES:-$DEFAULT_RSPEC_FILES}
 
 test -f "$ENV_FILE" || {
   echo "$ENV_FILE is missing. Run: make setup"
@@ -73,6 +84,7 @@ fleexa-manager-security-rate-limits-backend.patch
 fleexa-manager-session-strategy-backend.patch
 fleexa-manager-concurrency-safety-backend.patch
 fleexa-manager-realtime-backend.patch
+fleexa-manager-controlled-beta-smoke-backend.patch
 "
 
 for patch_file in $PATCHES; do
@@ -101,6 +113,7 @@ docker run --rm --platform linux/amd64 \
   -e POSTGRES_HOST=postgres \
   -e POSTGRES_PORT=5432 \
   -e POSTGRES_DB="$TEST_DB" \
+  -e FLEEXA_MANAGER_RSPEC_FILES="$RSPEC_FILES" \
   -e REDIS_URL=redis://redis:6379/1 \
   -e SECRET_KEY_BASE=test_secret_key_base_for_fleexa_manager_rspec \
   -v "$TMP_APP:/app" \
@@ -116,13 +129,5 @@ PGPASSWORD="$POSTGRES_PASSWORD" psql -h "$POSTGRES_HOST" -p "$POSTGRES_PORT" -U 
 PGPASSWORD="$POSTGRES_PASSWORD" psql -h "$POSTGRES_HOST" -p "$POSTGRES_PORT" -U "$POSTGRES_USERNAME" -d "$POSTGRES_DB" -f /workspace/chatwoot-patches/fleexa-manager-booking-sync-foundation.sql >/tmp/fleexa-manager-booking-sync-foundation.log
 PGPASSWORD="$POSTGRES_PASSWORD" psql -h "$POSTGRES_HOST" -p "$POSTGRES_PORT" -U "$POSTGRES_USERNAME" -d "$POSTGRES_DB" -f /workspace/chatwoot-patches/fleexa-manager-sessions.sql >/tmp/fleexa-manager-sessions.log
 PGPASSWORD="$POSTGRES_PASSWORD" psql -h "$POSTGRES_HOST" -p "$POSTGRES_PORT" -U "$POSTGRES_USERNAME" -d "$POSTGRES_DB" -f /workspace/chatwoot-patches/fleexa-manager-concurrency-safety.sql >/tmp/fleexa-manager-concurrency-safety.log
-bundle exec rspec \
-  spec/requests/api/fleexa_manager/v1/chat_api_spec.rb \
-  spec/requests/api/fleexa_manager/v1/booking_sync_foundation_spec.rb \
-  spec/requests/api/fleexa_manager/v1/booking_sync_logic_spec.rb \
-  spec/requests/api/fleexa_manager/v1/security_rate_limits_spec.rb \
-  spec/requests/api/fleexa_manager/v1/session_strategy_spec.rb \
-  spec/channels/fleexa_manager/v1/realtime_channel_spec.rb \
-  spec/services/fleexa_manager/v1/realtime_broadcaster_spec.rb \
-  --format documentation
+bundle exec rspec $FLEEXA_MANAGER_RSPEC_FILES --format documentation
 '

@@ -54,8 +54,20 @@ bundle exec rspec \
   spec/requests/api/fleexa_manager/v1/booking_sync_logic_spec.rb \
   spec/requests/api/fleexa_manager/v1/security_rate_limits_spec.rb \
   spec/requests/api/fleexa_manager/v1/session_strategy_spec.rb \
+  spec/requests/api/fleexa_manager/v1/controlled_beta_smoke_spec.rb \
+  spec/channels/fleexa_manager/v1/realtime_channel_spec.rb \
+  spec/services/fleexa_manager/v1/realtime_broadcaster_spec.rb \
   --format documentation
 ```
+
+The isolated controlled beta E2E smoke can be run by itself:
+
+```sh
+make fleexa-manager-e2e-smoke
+```
+
+It sets `FLEEXA_MANAGER_RSPEC_FILES` to
+`spec/requests/api/fleexa_manager/v1/controlled_beta_smoke_spec.rb`.
 
 ## Resolved Blockers
 
@@ -82,6 +94,9 @@ bundle exec rspec \
   retry safety, Booking idempotency retry safety, linked-deal uniqueness, deal
   optimistic concurrency conflicts, repeated stage move no-ops, and stale
   Booking event no-overwrite behavior.
+- Stage 4E controlled beta gate: added a test-only patch containing an
+  isolated Manager API E2E smoke for login, conversations, filters, chat send,
+  linked deal, pipeline, and stage move.
 
 ## Latest Result
 
@@ -94,7 +109,7 @@ make fleexa-manager-rspec
 Result:
 
 ```text
-102 examples, 0 failures
+109 examples, 0 failures
 ```
 
 ## Stage 4 Verification Run
@@ -106,7 +121,8 @@ Checked on 2026-07-19:
 | `git fetch origin main --prune` | Pass, `main`, `origin/main`, and branch base are `6af8928`. |
 | OpenAPI YAML parse | Pass. |
 | Ruby syntax for patched Manager API files | Pass from the RSpec image against `/tmp/fleexa-chatwoot-rspec-app`. |
-| `make fleexa-manager-rspec` | Pass, `102 examples, 0 failures`. |
+| `make fleexa-manager-rspec` | Pass, `109 examples, 0 failures`. |
+| `make fleexa-manager-e2e-smoke` | Pass, `1 example, 0 failures`. |
 | `make crm-assets-build-host` | Pass, `CRM host assets built`. |
 | `git diff --check` | Pass. |
 

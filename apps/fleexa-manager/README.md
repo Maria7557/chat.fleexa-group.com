@@ -22,18 +22,19 @@ Mock mode is only for UI development. It is rejected when
 `EXPO_PUBLIC_FLEEXA_APP_ENV=production` and cannot satisfy production acceptance
 criteria.
 
-For Stage 3 Manager API live mode, use `EXPO_PUBLIC_FLEEXA_API_DRIVER=manager`
+For Stage 4 Manager API live mode, use `EXPO_PUBLIC_FLEEXA_API_DRIVER=manager`
 and point `EXPO_PUBLIC_FLEEXA_API_BASE_URL` at `/api/fleexa-manager/v1`. This is
 the default live path and the only route that can satisfy production acceptance.
 The login screen accepts manager email/password credentials and calls
-`POST /session`; the returned temporary Chatwoot user access token is stored
-internally and is never shown in the UI. Native builds use Expo SecureStore.
-Web uses session-scoped browser storage through the same abstraction with a
-memory fallback for non-browser render contexts.
+`POST /session`. Web uses the HttpOnly Manager session cookie. iOS/native stores
+the Manager session bearer token internally through Expo SecureStore. Tokens are
+never shown in the UI and production web must not use `localStorage` or
+`sessionStorage` as the auth path.
 
-The Stage 3 login endpoint is still a temporary adapter over existing Chatwoot
-authentication. Refresh, revoke, device/session inventory, and production-beta
-MFA support remain backend work.
+The Stage 4 login endpoint validates credentials through Chatwoot Devise and
+issues a Manager-owned session. It supports logout/revoke and fixed expiration.
+Refresh tokens, device/session inventory, and production-beta MFA support remain
+backend work.
 
 The legacy `EXPO_PUBLIC_FLEEXA_API_DRIVER=chatwoot` adapter still exists for
 local development against raw Chatwoot `/api/v1` routes:
@@ -48,3 +49,5 @@ and must not be used for live acceptance.
 - `npm --workspace @fleexa/manager run typecheck`
 - `npm --workspace @fleexa/manager run web`
 - `npm --workspace @fleexa/manager run smoke:web`
+- root: `npm run smoke:e2e`
+- root: `npm run ci:fleexa-manager`
