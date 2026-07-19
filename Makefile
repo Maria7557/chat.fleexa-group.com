@@ -6,7 +6,7 @@ CHATWOOT_BASE_IMAGE := chatwoot/chatwoot:v4.14.2
 CHATWOOT_LOCAL_IMAGE := fleexa-chatwoot:v4.14.2-patch1
 CRM_ASSETS_BUILD_DIR := /tmp/fleexa-chatwoot-app-build
 
-.PHONY: setup up down logs migrate seed shell verify-patch ensure-env crm-apply crm-migrate crm-seed crm-autocreate-backfill crm-marketing-spend-migrate crm-marketing-spend-demo crm-marketing-spend-rebuild crm-marketing-demo-seed crm-marketing-google-airbyte-migrate crm-marketing-google-airbyte-seed crm-marketing-google-airbyte-normalize crm-marketing-google-airbyte-clear crm-marketing-meta-airbyte-migrate crm-marketing-meta-airbyte-seed crm-marketing-meta-airbyte-normalize crm-marketing-meta-airbyte-clear crm-marketing-source-mapping-migrate crm-marketing-source-mapping-seed fleexa-manager-booking-sync-migrate crm-copy-patches crm-patch-check crm-patch crm-install crm-vue-copy crm-vue-check crm-vue-patch crm-assets-build-host crm-assets-install-local crm-assets-refresh-local
+.PHONY: setup up down logs migrate seed shell verify-patch ensure-env crm-apply crm-migrate crm-seed crm-autocreate-backfill crm-marketing-spend-migrate crm-marketing-spend-demo crm-marketing-spend-rebuild crm-marketing-demo-seed crm-marketing-google-airbyte-migrate crm-marketing-google-airbyte-seed crm-marketing-google-airbyte-normalize crm-marketing-google-airbyte-clear crm-marketing-meta-airbyte-migrate crm-marketing-meta-airbyte-seed crm-marketing-meta-airbyte-normalize crm-marketing-meta-airbyte-clear crm-marketing-source-mapping-migrate crm-marketing-source-mapping-seed fleexa-manager-booking-sync-migrate fleexa-manager-rspec crm-copy-patches crm-patch-check crm-patch crm-install crm-vue-copy crm-vue-check crm-vue-patch crm-assets-build-host crm-assets-install-local crm-assets-refresh-local
 
 ensure-env:
 	@test -f $(ENV_FILE) || (echo "$(ENV_FILE) is missing. Run: make setup"; exit 1)
@@ -140,6 +140,9 @@ fleexa-manager-booking-sync-migrate: ensure-env
 	$(COMPOSE) cp chatwoot-patches/fleexa-manager-booking-sync-foundation.sql postgres:/tmp/fleexa-manager-booking-sync-foundation.sql
 	$(COMPOSE) exec postgres psql -U chatwoot -d chatwoot_production -f /tmp/fleexa-manager-booking-sync-foundation.sql
 	@echo "Fleexa Manager booking sync foundation migration complete"
+
+fleexa-manager-rspec: ensure-env
+	sh scripts/fleexa-manager-rspec.sh
 
 crm-marketing-demo-seed: ensure-env
 	@test -n "$(ACCOUNT_ID)" || (echo "Usage: ACCOUNT_ID=1 make crm-marketing-demo-seed" && exit 1)

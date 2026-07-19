@@ -332,7 +332,7 @@ new file mode 100644
 index 0000000..bca41a5
 --- /dev/null
 +++ b/app/controllers/api/fleexa_manager/v1/base_controller.rb
-@@ -0,0 +1,206 @@
+@@ -0,0 +1,207 @@
 +require 'base64'
 +require 'json'
 +
@@ -466,12 +466,13 @@ index 0000000..bca41a5
 +  end
 +
 +  def find_visible_conversation!(conversation_id_param)
-+    display_id = stable_id_value(conversation_id_param, 'conv')
-+    return render_manager_error('bad_request', 'Invalid conversationId.', status: :bad_request) if display_id.blank?
++    conversation_id = stable_id_value(conversation_id_param, 'conv')
++    return render_manager_error('bad_request', 'Invalid conversationId.', status: :bad_request) if conversation_id.blank?
 +
 +    conversation = account_conversations_scope
++                   .where(account_id: Current.account.id)
 +                   .includes(:inbox, :contact, :assignee, :messages)
-+                   .find_by(display_id: display_id)
++                   .find_by(id: conversation_id)
 +    return render_manager_error('not_found', 'Conversation was not found.', status: :not_found) if conversation.blank?
 +
 +    conversation
@@ -847,7 +848,7 @@ index 0000000..0b6da2c
 +        end
 +
 +        def conversation_id(conversation)
-+          "conv_#{conversation.display_id}"
++          "conv_#{conversation.id}"
 +        end
 +
 +        def account_id(account)
@@ -1328,6 +1329,32 @@ index 22341dc..ac0712b 100644
    namespace :api, defaults: { format: 'json' } do
      namespace :v1 do
        # ----------------------------------
+diff --git a/spec/factories/access_tokens.rb b/spec/factories/access_tokens.rb
+new file mode 100644
+index 0000000..7e7cc1f
+--- /dev/null
++++ b/spec/factories/access_tokens.rb
+@@ -0,0 +1,5 @@
++FactoryBot.define do
++  factory :access_token do
++    association :owner, factory: :user
++  end
++end
+diff --git a/spec/support/fleexa_manager_request_helpers.rb b/spec/support/fleexa_manager_request_helpers.rb
+new file mode 100644
+index 0000000..17fda9e
+--- /dev/null
++++ b/spec/support/fleexa_manager_request_helpers.rb
+@@ -0,0 +1,9 @@
++module FleexaManagerRequestHelpers
++  def json_response
++    response.parsed_body
++  end
++end
++
++RSpec.configure do |config|
++  config.include FleexaManagerRequestHelpers, type: :request
++end
 diff --git a/spec/requests/api/fleexa_manager/v1/chat_api_spec.rb b/spec/requests/api/fleexa_manager/v1/chat_api_spec.rb
 new file mode 100644
 index 0000000..b6179af
@@ -1481,7 +1508,7 @@ index 0000000..b6179af
 +
 +      expect(response).to have_http_status(:ok)
 +      expect(json_response['data'].first).to include(
-+        'id' => "conv_#{conversation.display_id}",
++        'id' => "conv_#{conversation.id}",
 +        'accountId' => "acc_#{account.id}"
 +      )
 +      expect(json_response['data'].first).not_to include('custom_attributes', 'additional_attributes', 'display_id')
@@ -1508,7 +1535,7 @@ index 0000000..b6179af
 +
 +  describe 'GET /api/fleexa-manager/v1/accounts/:account_id/conversations/:id' do
 +    it 'returns a normalized conversation detail DTO' do
-+      get "/api/fleexa-manager/v1/accounts/acc_#{account.id}/conversations/conv_#{conversation.display_id}", headers: headers
++      get "/api/fleexa-manager/v1/accounts/acc_#{account.id}/conversations/conv_#{conversation.id}", headers: headers
 +
 +      expect(response).to have_http_status(:ok)
 +      expect(json_response['data']).to include('participants', 'tags', 'createdAt', 'updatedAt')
@@ -1528,7 +1555,7 @@ index 0000000..b6179af
 +        display_id: 77
 +      )
 +
-+      get "/api/fleexa-manager/v1/accounts/acc_#{account.id}/conversations/conv_#{other_conversation.display_id}", headers: headers
++      get "/api/fleexa-manager/v1/accounts/acc_#{account.id}/conversations/conv_#{other_conversation.id}", headers: headers
 +
 +      expect(response).to have_http_status(:not_found)
 +      expect(json_response['error']['code']).to eq('not_found')
@@ -1539,7 +1566,7 @@ index 0000000..b6179af
 +    it 'returns Manager message DTOs without raw Chatwoot fields' do
 +      create(:message, account: account, inbox: inbox, conversation: conversation, content: 'Hello', message_type: :incoming)
 +
-+      get "/api/fleexa-manager/v1/accounts/acc_#{account.id}/conversations/conv_#{conversation.display_id}/messages",
++      get "/api/fleexa-manager/v1/accounts/acc_#{account.id}/conversations/conv_#{conversation.id}/messages",
 +          headers: headers
 +
 +      expect(response).to have_http_status(:ok)
@@ -1550,7 +1577,7 @@ index 0000000..b6179af
 +
 +  describe 'POST /api/fleexa-manager/v1/accounts/:account_id/conversations/:id/messages/text' do
 +    let(:message_path) do
-+      "/api/fleexa-manager/v1/accounts/acc_#{account.id}/conversations/conv_#{conversation.display_id}/messages/text"
++      "/api/fleexa-manager/v1/accounts/acc_#{account.id}/conversations/conv_#{conversation.id}/messages/text"
 +    end
 +    let(:client_message_id) { SecureRandom.uuid }
 +    let(:payload) { { text: 'Manager reply', clientMessageId: client_message_id } }
@@ -1571,7 +1598,7 @@ index 0000000..b6179af
 +    end
 +
 +    it 'does not send through an inaccessible account id' do
-+      wrong_account_path = "/api/fleexa-manager/v1/accounts/acc_#{other_account.id}/conversations/conv_#{conversation.display_id}/messages/text"
++      wrong_account_path = "/api/fleexa-manager/v1/accounts/acc_#{other_account.id}/conversations/conv_#{conversation.id}/messages/text"
 +
 +      expect do
 +        post wrong_account_path, params: payload, headers: idempotent_headers
@@ -1593,7 +1620,7 @@ index 0000000..b6179af
 +        contact_inbox: other_contact_inbox,
 +        display_id: 88
 +      )
-+      wrong_account_path = "/api/fleexa-manager/v1/accounts/acc_#{account.id}/conversations/conv_#{other_conversation.display_id}/messages/text"
++      wrong_account_path = "/api/fleexa-manager/v1/accounts/acc_#{account.id}/conversations/conv_#{other_conversation.id}/messages/text"
 +
 +      expect do
 +        post wrong_account_path, params: payload, headers: idempotent_headers
@@ -1610,7 +1637,7 @@ index 0000000..b6179af
 +
 +      expect(response).to have_http_status(:created)
 +      expect(json_response['data']).to include(
-+        'conversationId' => "conv_#{conversation.display_id}",
++        'conversationId' => "conv_#{conversation.id}",
 +        'clientMessageId' => client_message_id,
 +        'direction' => 'outgoing'
 +      )

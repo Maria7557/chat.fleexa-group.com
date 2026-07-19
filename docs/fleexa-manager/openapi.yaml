@@ -1013,6 +1013,7 @@ components:
       name: conversationId
       in: path
       required: true
+      description: Opaque Manager conversation identifier returned by this API. It must not be treated as raw Chatwoot display_id.
       schema:
         type: string
         pattern: "^conv_[A-Za-z0-9]+$"
@@ -1383,6 +1384,7 @@ components:
       properties:
         id:
           type: string
+          description: Opaque Manager conversation identifier, unique across Chatwoot conversations and safe to round-trip in Manager API paths.
         accountId:
           type: string
         title:

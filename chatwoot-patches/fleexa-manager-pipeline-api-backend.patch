@@ -545,7 +545,7 @@ index 36cb7b2..d4f5ec9 100644
 +      expect(json_response['data'].map { |deal| deal['id'] }).to eq(["deal_#{account_deal.id}"])
 +      expect(json_response['data'].first).to include(
 +        'id' => "deal_#{account_deal.id}",
-+        'conversationId' => "conv_#{conversation.display_id}",
++        'conversationId' => "conv_#{conversation.id}",
 +        'title' => 'Account pipeline deal',
 +        'clientName' => contact.name,
 +        'stageId' => "stage_#{active_stage.id}",

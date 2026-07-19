@@ -177,7 +177,7 @@ diff -ruN a/spec/requests/api/fleexa_manager/v1/chat_api_spec.rb b/spec/requests
 +  end
 +
 +  def manager_conversation_id(record)
-+    "conv_#{record.display_id}"
++    "conv_#{record.id}"
 +  end
 +
    describe 'OPTIONS /api/fleexa-manager/v1/*path' do
@@ -186,7 +186,7 @@ diff -ruN a/spec/requests/api/fleexa_manager/v1/chat_api_spec.rb b/spec/requests
 @@ -146,11 +157,109 @@
        expect(response).to have_http_status(:ok)
        expect(json_response['data'].first).to include(
-         'id' => "conv_#{conversation.display_id}",
+         'id' => "conv_#{conversation.id}",
 -        'accountId' => "acc_#{account.id}"
 +        'accountId' => "acc_#{account.id}",
 +        'assignedManager' => nil,
@@ -312,7 +312,7 @@ diff -ruN a/spec/requests/api/fleexa_manager/v1/chat_api_spec.rb b/spec/requests
 +        created_at: now - 3.hours
 +      )
 +
-+      get "/api/fleexa-manager/v1/accounts/acc_#{account.id}/conversations/conv_#{conversation.display_id}", headers: headers
++      get "/api/fleexa-manager/v1/accounts/acc_#{account.id}/conversations/conv_#{conversation.id}", headers: headers
 +
 +      expect(response).to have_http_status(:ok)
 +      expect(json_response['data']).to include(
@@ -332,7 +332,7 @@ diff -ruN a/spec/requests/api/fleexa_manager/v1/chat_api_spec.rb b/spec/requests
 +        created_at: now - 2.hours
 +      )
 +
-+      get "/api/fleexa-manager/v1/accounts/acc_#{account.id}/conversations/conv_#{conversation.display_id}", headers: headers
++      get "/api/fleexa-manager/v1/accounts/acc_#{account.id}/conversations/conv_#{conversation.id}", headers: headers
 +
 +      expect(response).to have_http_status(:ok)
 +      expect(json_response['data']).to include(
@@ -350,7 +350,7 @@ diff -ruN a/spec/requests/api/fleexa_manager/v1/chat_api_spec.rb b/spec/requests
 +        created_at: now - 1.hour
 +      )
 +
-+      get "/api/fleexa-manager/v1/accounts/acc_#{account.id}/conversations/conv_#{conversation.display_id}", headers: headers
++      get "/api/fleexa-manager/v1/accounts/acc_#{account.id}/conversations/conv_#{conversation.id}", headers: headers
 +
 +      expect(response).to have_http_status(:ok)
 +      expect(json_response['data']).to include(

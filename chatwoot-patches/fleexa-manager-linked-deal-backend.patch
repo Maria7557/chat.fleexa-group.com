@@ -664,7 +664,7 @@ index 0752332..5171d5c 100644
 +      )
 +    end
 +    let(:deal_path) do
-+      "/api/fleexa-manager/v1/accounts/acc_#{account.id}/conversations/conv_#{conversation.display_id}/deal"
++      "/api/fleexa-manager/v1/accounts/acc_#{account.id}/conversations/conv_#{conversation.id}/deal"
 +    end
 +
 +    before do
@@ -729,7 +729,7 @@ index 0752332..5171d5c 100644
 +
 +      expect(response).to have_http_status(:ok)
 +      expect(json_response).to include(
-+        'conversationId' => "conv_#{conversation.display_id}",
++        'conversationId' => "conv_#{conversation.id}",
 +        'linkState' => 'missing',
 +        'deal' => nil
 +      )
@@ -839,13 +839,13 @@ index 0752332..5171d5c 100644
 +        display_id: 99
 +      )
 +
-+      get "/api/fleexa-manager/v1/accounts/acc_#{other_account.id}/conversations/conv_#{conversation.display_id}/deal",
++      get "/api/fleexa-manager/v1/accounts/acc_#{other_account.id}/conversations/conv_#{conversation.id}/deal",
 +          headers: headers
 +
 +      expect(response).to have_http_status(:forbidden)
 +      expect(json_response['error']['code']).to eq('forbidden')
 +
-+      get "/api/fleexa-manager/v1/accounts/acc_#{account.id}/conversations/conv_#{other_conversation.display_id}/deal",
++      get "/api/fleexa-manager/v1/accounts/acc_#{account.id}/conversations/conv_#{other_conversation.id}/deal",
 +          headers: headers
 +
 +      expect(response).to have_http_status(:not_found)
