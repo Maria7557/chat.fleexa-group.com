@@ -265,19 +265,54 @@ request id, and safe metadata.
 
 ## Rate Limits
 
-Stage 2 has a minimal abuse guard for message sends: authentication is required,
-the account and conversation are scoped before mutation, text length is capped at
-4000 characters, idempotency keys are length-limited, and duplicate retries reuse
-the original message instead of creating another one. This is not a replacement
-for production rate limiting.
+Stage 4 adds server-side fixed-window rate limits on the first production
+mutation paths that can create user-visible or booking-visible side effects.
+Limiter identities are hashed before being stored in Rails cache keys.
 
-Apply separate limits for:
+Current limits:
 
-- session reads
-- conversation/message reads
-- message sends
-- deal mutations
-- booking webhooks
-- realtime reconnects
+| Path | Bucket | Default |
+| --- | --- | --- |
+| `POST /api/fleexa-manager/v1/session` | `login` | 10 attempts per 60 seconds per remote IP and normalized email |
+| `POST /accounts/{accountId}/conversations/{conversationId}/messages/text` | `message_send` | 60 sends per 60 seconds per account, manager, and conversation |
+| `POST /accounts/{accountId}/bookings/sync` | `booking_sync` | 120 requests per 60 seconds per account, credential, and endpoint |
+| `POST /accounts/{accountId}/bookings/{bookingId}/relink-deal` | `booking_relink` | 120 requests per 60 seconds per account, credential, and endpoint |
 
-Return `Retry-After` for `429 rate_limited`.
+Environment overrides:
+
+- `FLEEXA_MANAGER_LOGIN_RATE_LIMIT`
+- `FLEEXA_MANAGER_LOGIN_RATE_LIMIT_WINDOW`
+- `FLEEXA_MANAGER_MESSAGE_SEND_RATE_LIMIT`
+- `FLEEXA_MANAGER_MESSAGE_SEND_RATE_LIMIT_WINDOW`
+- `FLEEXA_MANAGER_BOOKING_SYNC_RATE_LIMIT`
+- `FLEEXA_MANAGER_BOOKING_SYNC_RATE_LIMIT_WINDOW`
+- `FLEEXA_MANAGER_BOOKING_RELINK_RATE_LIMIT`
+- `FLEEXA_MANAGER_BOOKING_RELINK_RATE_LIMIT_WINDOW`
+
+Rate-limited responses return `429 rate_limited`, the standard Manager error
+envelope, and `Retry-After`. A blocked message send, Booking sync, or Booking
+relink request must not perform the side effect.
+
+Still required before production beta:
+
+- read-path limits for session refresh, conversation/message reads, pipeline
+  reads, and deal reads
+- deal mutation limits
+- realtime reconnect limits
+- a distributed limiter backend with production observability if Rails cache is
+  not backed by Redis
+
+## Sensitive Log Filtering
+
+Manager Rails patches add filter parameters for:
+
+- bearer and `api_access_token` credentials
+- login passwords and password confirmations
+- Booking service tokens
+- Booking webhook signatures
+- booking client id, name, phone, and communication phone
+
+Logs must not include raw bearer tokens, service tokens, webhook signatures,
+passwords, or unnecessary customer PII. Request specs assert the configured
+filter list contains the Manager auth, Booking token/signature, and Booking PII
+keys.

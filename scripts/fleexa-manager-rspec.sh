@@ -69,6 +69,7 @@ fleexa-manager-linked-deal-backend.patch
 fleexa-manager-pipeline-api-backend.patch
 fleexa-manager-booking-sync-foundation-backend.patch
 fleexa-manager-booking-sync-logic-backend.patch
+fleexa-manager-security-rate-limits-backend.patch
 "
 
 for patch_file in $PATCHES; do
@@ -114,5 +115,6 @@ bundle exec rspec \
   spec/requests/api/fleexa_manager/v1/chat_api_spec.rb \
   spec/requests/api/fleexa_manager/v1/booking_sync_foundation_spec.rb \
   spec/requests/api/fleexa_manager/v1/booking_sync_logic_spec.rb \
+  spec/requests/api/fleexa_manager/v1/security_rate_limits_spec.rb \
   --format documentation
 '

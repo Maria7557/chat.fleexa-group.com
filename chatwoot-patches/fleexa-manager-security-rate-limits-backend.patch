@@ -1,0 +1,562 @@
+diff --git a/app/controllers/api/fleexa_manager/v1/accounts/bookings_controller.rb b/app/controllers/api/fleexa_manager/v1/accounts/bookings_controller.rb
+index cab25998..dbec6439 100644
+--- a/app/controllers/api/fleexa_manager/v1/accounts/bookings_controller.rb
++++ b/app/controllers/api/fleexa_manager/v1/accounts/bookings_controller.rb
+@@ -15,6 +15,8 @@ class Api::FleexaManager::V1::Accounts::BookingsController < Api::FleexaManager:
+     %w[amount]
+   ].freeze
+ 
++  before_action :enforce_booking_write_rate_limit, only: [:sync, :relink_deal]
++
+   def resolve_deal
+     ref = payload_value('ref', 'dealRef', 'pipeline_deal_ref_input', 'pipelineDealRefInput')
+     return payload_error('ref is required.', missing_fields: ['ref']) if ref.blank?
+@@ -74,6 +76,20 @@ class Api::FleexaManager::V1::Accounts::BookingsController < Api::FleexaManager:
+ 
+   private
+ 
++  def enforce_booking_write_rate_limit
++    bucket = action_name == 'relink_deal' ? 'booking_relink' : 'booking_sync'
++    limit_env = action_name == 'relink_deal' ? 'FLEEXA_MANAGER_BOOKING_RELINK_RATE_LIMIT' : 'FLEEXA_MANAGER_BOOKING_SYNC_RATE_LIMIT'
++    window_env = action_name == 'relink_deal' ? 'FLEEXA_MANAGER_BOOKING_RELINK_RATE_LIMIT_WINDOW' : 'FLEEXA_MANAGER_BOOKING_SYNC_RATE_LIMIT_WINDOW'
++
++    enforce_manager_rate_limit!(
++      bucket: bucket,
++      identity: "account:#{@service_account.id}:credential:#{@booking_service_credential.id}:#{action_name}",
++      limit: ENV.fetch(limit_env, 120),
++      window: ENV.fetch(window_env, 60),
++      message: 'Too many Booking service requests. Try again later.'
++    )
++  end
++
+   def required_booking_scope
+     action_name == 'relink_deal' ? 'booking:relink' : 'booking:sync'
+   end
+diff --git a/app/controllers/api/fleexa_manager/v1/accounts/conversations/messages_controller.rb b/app/controllers/api/fleexa_manager/v1/accounts/conversations/messages_controller.rb
+index 0cbaeb70..0246f601 100644
+--- a/app/controllers/api/fleexa_manager/v1/accounts/conversations/messages_controller.rb
++++ b/app/controllers/api/fleexa_manager/v1/accounts/conversations/messages_controller.rb
+@@ -3,6 +3,7 @@ class Api::FleexaManager::V1::Accounts::Conversations::MessagesController < Api:
+ 
+   before_action :set_current_account_from_params
+   before_action :set_conversation
++  before_action :enforce_message_send_rate_limit, only: [:create_text]
+ 
+   def index
+     limit = request_limit
+@@ -68,6 +69,16 @@ class Api::FleexaManager::V1::Accounts::Conversations::MessagesController < Api:
+     @conversation = find_visible_conversation!(params[:conversation_id])
+   end
+ 
++  def enforce_message_send_rate_limit
++    enforce_manager_rate_limit!(
++      bucket: 'message_send',
++      identity: "account:#{Current.account.id}:user:#{current_manager_user.id}:conversation:#{@conversation.id}",
++      limit: ENV.fetch('FLEEXA_MANAGER_MESSAGE_SEND_RATE_LIMIT', 60),
++      window: ENV.fetch('FLEEXA_MANAGER_MESSAGE_SEND_RATE_LIMIT_WINDOW', 60),
++      message: 'Too many messages sent. Try again later.'
++    )
++  end
++
+   def message_order
+     order = params[:order].presence || 'desc'
+     return order.to_sym if %w[asc desc].include?(order)
+diff --git a/app/controllers/api/fleexa_manager/v1/base_controller.rb b/app/controllers/api/fleexa_manager/v1/base_controller.rb
+index c5c9b97d..c1ac4276 100644
+--- a/app/controllers/api/fleexa_manager/v1/base_controller.rb
++++ b/app/controllers/api/fleexa_manager/v1/base_controller.rb
+@@ -103,6 +103,33 @@ class Api::FleexaManager::V1::BaseController < Api::BaseController
+     Current.user || current_user
+   end
+ 
++  def enforce_manager_rate_limit!(bucket:, identity:, limit:, window:, message:)
++    result = FleexaManager::V1::RateLimiter.check!(
++      bucket: bucket,
++      identity: identity,
++      limit: limit,
++      window: window
++    )
++    return false unless result.limited?
++
++    response.headers['Retry-After'] = result.retry_after.to_s
++    render_manager_error(
++      'rate_limited',
++      message,
++      status: :too_many_requests,
++      details: {
++        retryAfterSeconds: result.retry_after,
++        limit: result.limit,
++        windowSeconds: result.window
++      }
++    )
++    true
++  end
++
++  def rate_limit_remote_ip
++    request.remote_ip.presence || request.ip.presence || 'unknown'
++  end
++
+   def set_current_account_from_params
+     return if performed?
+ 
+diff --git a/app/controllers/api/fleexa_manager/v1/session_controller.rb b/app/controllers/api/fleexa_manager/v1/session_controller.rb
+index be4c6fc8..431dd76f 100644
+--- a/app/controllers/api/fleexa_manager/v1/session_controller.rb
++++ b/app/controllers/api/fleexa_manager/v1/session_controller.rb
+@@ -8,6 +8,7 @@ class Api::FleexaManager::V1::SessionController < Api::FleexaManager::V1::BaseCo
+     if email.blank? || password.blank?
+       return render_manager_error('validation_failed', 'Email and password are required.', status: :unprocessable_entity)
+     end
++    return if login_rate_limited?(email)
+ 
+     user = User.from_email(email)
+     return render_invalid_credentials unless user&.valid_password?(password)
+@@ -68,6 +69,16 @@ class Api::FleexaManager::V1::SessionController < Api::FleexaManager::V1::BaseCo
+     params[:email].to_s.strip.downcase
+   end
+ 
++  def login_rate_limited?(email)
++    enforce_manager_rate_limit!(
++      bucket: 'login',
++      identity: "#{rate_limit_remote_ip}:#{email}",
++      limit: ENV.fetch('FLEEXA_MANAGER_LOGIN_RATE_LIMIT', 10),
++      window: ENV.fetch('FLEEXA_MANAGER_LOGIN_RATE_LIMIT_WINDOW', 60),
++      message: 'Too many login attempts. Try again later.'
++    )
++  end
++
+   def manager_mfa_required?(user)
+     return false unless user.respond_to?(:mfa_enabled?)
+     return false unless user.mfa_enabled?
+diff --git a/app/services/fleexa_manager/v1/rate_limiter.rb b/app/services/fleexa_manager/v1/rate_limiter.rb
+new file mode 100644
+index 00000000..985e3326
+--- /dev/null
++++ b/app/services/fleexa_manager/v1/rate_limiter.rb
+@@ -0,0 +1,72 @@
++require 'digest'
++
++module FleexaManager
++  module V1
++    class RateLimiter
++      MAX_LIMIT = 100_000
++      MAX_WINDOW = 86_400
++
++      Result = Struct.new(:limited, :retry_after, :limit, :window, keyword_init: true) do
++        def limited?
++          limited
++        end
++      end
++
++      class << self
++        def check!(bucket:, identity:, limit:, window:)
++          limit = bounded_integer(limit, MAX_LIMIT)
++          window = bounded_integer(window, MAX_WINDOW)
++          return Result.new(limited: false, retry_after: 0, limit: limit, window: window) if limit.zero? || window.zero?
++
++          now = Time.current.to_i
++          period = now / window
++          key = cache_key(bucket, identity, period)
++          count = increment_counter(key, window * 2)
++          retry_after = [((period + 1) * window) - now, 1].max
++
++          Result.new(
++            limited: count.to_i > limit,
++            retry_after: retry_after,
++            limit: limit,
++            window: window
++          )
++        end
++
++        def reset_local!
++          @local_counts = {}
++        end
++
++        private
++
++        def bounded_integer(value, max)
++          Integer(value).clamp(0, max)
++        rescue ArgumentError, TypeError
++          0
++        end
++
++        def cache_key(bucket, identity, period)
++          normalized_bucket = bucket.to_s.gsub(/[^a-z0-9_:-]/i, '_')
++          digest = Digest::SHA256.hexdigest(identity.to_s)
++
++          "fleexa_manager:rate_limit:#{normalized_bucket}:#{period}:#{digest}"
++        end
++
++        def increment_counter(key, ttl_seconds)
++          Rails.cache.write(key, 0, expires_in: ttl_seconds.seconds) unless Rails.cache.exist?(key)
++          Rails.cache.increment(key, 1) || increment_local_counter(key, ttl_seconds)
++        end
++
++        def increment_local_counter(key, ttl_seconds)
++          now = Time.current.to_i
++          @local_counts ||= {}
++          current = @local_counts[key]
++          current = nil if current.present? && current[:expires_at] <= now
++          current ||= { count: 0, expires_at: now + ttl_seconds }
++          current[:count] += 1
++          @local_counts[key] = current
++          current[:count]
++        end
++      end
++    end
++  end
++end
+diff --git a/config/initializers/fleexa_manager_filter_parameter_logging.rb b/config/initializers/fleexa_manager_filter_parameter_logging.rb
+new file mode 100644
+index 00000000..edd298f9
+--- /dev/null
++++ b/config/initializers/fleexa_manager_filter_parameter_logging.rb
+@@ -0,0 +1,18 @@
++Rails.application.config.filter_parameters += [
++  :authorization,
++  :api_access_token,
++  :password,
++  :password_confirmation,
++  :x_fleexa_booking_token,
++  :x_booking_service_token,
++  :x_fleexa_booking_signature,
++  :x_booking_signature,
++  :booking_client_id,
++  :booking_client_name,
++  :booking_client_phone,
++  :communication_phone,
++  /authorization/i,
++  /x[-_]?fleexa[-_]?booking[-_]?(token|signature)/i,
++  /x[-_]?booking[-_]?(service[-_]?)?token/i,
++  /webhook[-_]?signature/i
++]
+diff --git a/spec/requests/api/fleexa_manager/v1/security_rate_limits_spec.rb b/spec/requests/api/fleexa_manager/v1/security_rate_limits_spec.rb
+new file mode 100644
+index 00000000..6b031d02
+--- /dev/null
++++ b/spec/requests/api/fleexa_manager/v1/security_rate_limits_spec.rb
+@@ -0,0 +1,324 @@
++require 'rails_helper'
++
++RSpec.describe 'Fleexa Manager security and rate limits', type: :request do
++  let(:account) { create(:account) }
++  let(:other_account) { create(:account) }
++  let(:user) { create(:user) }
++  let!(:account_user) { create(:account_user, account: account, user: user, role: :administrator) }
++  let(:access_token) { create(:access_token, owner: user) }
++  let(:headers) { { 'api_access_token' => access_token.token } }
++  let(:inbox) { create(:inbox, account: account) }
++  let(:contact) { create(:contact, account: account) }
++  let(:contact_inbox) { create(:contact_inbox, contact: contact, inbox: inbox) }
++  let!(:conversation) do
++    create(:conversation, account: account, inbox: inbox, contact: contact, contact_inbox: contact_inbox)
++  end
++
++  def with_env(overrides)
++    previous = overrides.keys.index_with { |key| ENV.fetch(key, nil) }
++    overrides.each { |key, value| ENV[key] = value }
++    yield
++  ensure
++    previous.each do |key, value|
++      value.nil? ? ENV.delete(key) : ENV[key] = value
++    end
++  end
++
++  def json_response
++    response.parsed_body
++  end
++
++  def booking_headers(token)
++    { 'X-Fleexa-Booking-Token' => token }
++  end
++
++  def create_booking_credential(account:, token:, scopes:)
++    FleexaManagerBookingCredential.create!(
++      account: account,
++      fleexa_company_id: "fleexa_company_#{account.id}",
++      token_digest: FleexaManagerBookingCredential.digest_token(token),
++      scopes: scopes,
++      active: true
++    )
++  end
++
++  def enable_booking_receiver!(target_account = account)
++    target_account.update!(
++      settings: (target_account.settings || {}).merge(
++        'fleexa_booking_pipeline_sync' => {
++          'receiver_enabled' => true
++        }
++      )
++    )
++  end
++
++  def booking_stage(target_account = account)
++    CrmPipelineStage.create!(
++      account: target_account,
++      slug: "reserved_#{SecureRandom.hex(3)}",
++      name: 'Booking',
++      color: '#0EA5A0',
++      position: 1,
++      fleet_status_trigger: 'reserved'
++    )
++  end
++
++  def sync_path(target_account = account)
++    "/api/fleexa-manager/v1/accounts/acc_#{target_account.id}/bookings/sync"
++  end
++
++  def relink_path(booking_id = 'order_1001', target_account = account)
++    "/api/fleexa-manager/v1/accounts/acc_#{target_account.id}/bookings/#{booking_id}/relink-deal"
++  end
++
++  def sync_payload(overrides = {})
++    {
++      booking_id: "order_#{SecureRandom.hex(4)}",
++      booking_number: "BK-#{SecureRandom.hex(3)}",
++      booking_client_id: "booking_contact_#{SecureRandom.hex(3)}",
++      booking_client_name: 'Mina Patel',
++      booking_client_phone: '+971501112233',
++      booking_version: 7,
++      source_updated_at: '2026-07-18T10:00:00Z',
++      event_id: SecureRandom.uuid,
++      vehicle: {
++        vehicle_id: 'vehicle_77',
++        vehicle_name: 'Range Rover Sport'
++      },
++      rental_start: '2026-07-20T10:00:00Z',
++      rental_end: '2026-07-22T10:00:00Z',
++      amount: '1800.00',
++      currency: 'AED',
++      booking_status: 'reserved'
++    }.deep_merge(overrides)
++  end
++
++  before do
++    allow_any_instance_of(Conversation).to receive(:can_reply?).and_return(true)
++    FleexaManager::V1::RateLimiter.reset_local! if defined?(FleexaManager::V1::RateLimiter)
++  end
++
++  it 'denies missing auth and invalid auth without leaking internals' do
++    get '/api/fleexa-manager/v1/session/current'
++
++    expect(response).to have_http_status(:unauthorized)
++    expect(json_response['error']).to include('code' => 'unauthenticated')
++    expect(json_response['error']).not_to include('exception', 'trace')
++
++    get '/api/fleexa-manager/v1/session/current', headers: { 'Authorization' => 'Bearer invalid-token-stage4b' }
++
++    expect(response).to have_http_status(:unauthorized)
++    expect(json_response['error']).to include('code' => 'unauthenticated')
++    expect(json_response['error']).not_to include('exception', 'trace')
++  end
++
++  it 'maps operator and owner permissions without granting deal permissions to operators' do
++    operator = create(:user)
++    create(:account_user, account: account, user: operator, role: :agent)
++    operator_token = create(:access_token, owner: operator)
++
++    get '/api/fleexa-manager/v1/session/current', headers: { 'api_access_token' => operator_token.token }
++
++    expect(response).to have_http_status(:ok)
++    operator_membership = json_response['memberships'].find { |membership| membership['accountId'] == "acc_#{account.id}" }
++    expect(operator_membership).to include('role' => 'operator')
++    expect(json_response['permissions']).to include('session:read', 'conversations:read', 'messages:send')
++    expect(json_response['permissions']).not_to include('deals:read', 'deals:update', 'pipeline:read', 'settings:write')
++
++    get '/api/fleexa-manager/v1/session/current', headers: headers
++
++    expect(response).to have_http_status(:ok)
++    owner_membership = json_response['memberships'].find { |membership| membership['accountId'] == "acc_#{account.id}" }
++    expect(owner_membership).to include('role' => 'owner')
++    expect(json_response['permissions']).to include('deals:read', 'deals:update', 'deals:update_stage', 'pipeline:read', 'settings:write')
++  end
++
++  it 'denies wrong account and foreign conversation access' do
++    other_inbox = create(:inbox, account: other_account)
++    other_contact = create(:contact, account: other_account)
++    other_contact_inbox = create(:contact_inbox, contact: other_contact, inbox: other_inbox)
++    other_conversation = create(:conversation, account: other_account, inbox: other_inbox, contact: other_contact, contact_inbox: other_contact_inbox)
++
++    get "/api/fleexa-manager/v1/accounts/acc_#{other_account.id}/conversations", headers: headers
++
++    expect(response).to have_http_status(:forbidden)
++    expect(json_response['error']['code']).to eq('forbidden')
++
++    get "/api/fleexa-manager/v1/accounts/acc_#{account.id}/conversations/conv_#{other_conversation.id}", headers: headers
++
++    expect(response).to have_http_status(:not_found)
++    expect(json_response['error']['code']).to eq('not_found')
++  end
++
++  it 'denies foreign deals and foreign pipeline stages' do
++    stage = booking_stage(account)
++    other_stage = booking_stage(other_account)
++    deal = CrmDeal.create!(account: account, conversation: conversation, contact: contact, stage: stage, title: 'Current deal')
++    foreign_deal = CrmDeal.create!(account: other_account, stage: other_stage, title: 'Foreign deal')
++
++    patch "/api/fleexa-manager/v1/accounts/acc_#{account.id}/deals/deal_#{foreign_deal.id}",
++          params: { deal: { title: 'Cross-account edit' } },
++          headers: headers
++
++    expect(response).to have_http_status(:not_found)
++    expect(json_response['error']['code']).to eq('not_found')
++    expect(foreign_deal.reload.title).to eq('Foreign deal')
++
++    patch "/api/fleexa-manager/v1/accounts/acc_#{account.id}/deals/deal_#{deal.id}/stage",
++          params: { stageId: "stage_#{other_stage.id}", clientMutationId: SecureRandom.uuid },
++          headers: headers
++
++    expect(response).to have_http_status(:unprocessable_entity)
++    expect(json_response['error']['code']).to eq('validation_failed')
++    expect(response.body).not_to include(other_stage.name)
++    expect(deal.reload.stage_id).to eq(stage.id)
++  end
++
++  it 'denies disabled or deactivated users' do
++    user.update_column(:confirmed_at, nil)
++
++    get '/api/fleexa-manager/v1/session/current', headers: headers
++
++    expect(response).to have_http_status(:unauthorized)
++    expect(json_response['error']['code']).to eq('unauthenticated')
++  end
++
++  it 'denies Booking service tokens for the wrong account and missing scope' do
++    wrong_account_token = "booking-token-wrong-account-#{SecureRandom.hex(4)}"
++    missing_scope_token = "booking-token-missing-scope-#{SecureRandom.hex(4)}"
++    create_booking_credential(account: other_account, token: wrong_account_token, scopes: ['booking:sync'])
++    create_booking_credential(account: account, token: missing_scope_token, scopes: ['booking:relink'])
++
++    post sync_path, params: sync_payload, headers: booking_headers(wrong_account_token), as: :json
++
++    expect(response).to have_http_status(:forbidden)
++    expect(json_response['error']['code']).to eq('service_auth_account_mismatch')
++
++    post sync_path, params: sync_payload, headers: booking_headers(missing_scope_token), as: :json
++
++    expect(response).to have_http_status(:forbidden)
++    expect(json_response['error']['code']).to eq('service_auth_scope_missing')
++  end
++
++  it 'rate limits login attempts before another credential check' do
++    password = 'FleexaStage4BLogin!2026'
++    user.update!(password: password, password_confirmation: password)
++
++    with_env(
++      'FLEEXA_MANAGER_LOGIN_RATE_LIMIT' => '2',
++      'FLEEXA_MANAGER_LOGIN_RATE_LIMIT_WINDOW' => '60'
++    ) do
++      2.times do
++        post '/api/fleexa-manager/v1/session', params: { email: user.email, password: 'wrong-password' }
++        expect(response).to have_http_status(:unauthorized)
++      end
++
++      post '/api/fleexa-manager/v1/session', params: { email: user.email, password: 'wrong-password' }
++    end
++
++    expect(response).to have_http_status(:too_many_requests)
++    expect(response.headers['Retry-After']).to be_present
++    expect(json_response['error']['code']).to eq('rate_limited')
++    expect(json_response).not_to include('accessToken')
++  end
++
++  it 'rate limits message send without creating another message' do
++    with_env(
++      'FLEEXA_MANAGER_MESSAGE_SEND_RATE_LIMIT' => '1',
++      'FLEEXA_MANAGER_MESSAGE_SEND_RATE_LIMIT_WINDOW' => '60'
++    ) do
++      post "/api/fleexa-manager/v1/accounts/acc_#{account.id}/conversations/conv_#{conversation.id}/messages/text",
++           params: { text: 'First reply', clientMessageId: SecureRandom.uuid },
++           headers: headers,
++           as: :json
++
++      expect(response).to have_http_status(:created)
++
++      expect do
++        post "/api/fleexa-manager/v1/accounts/acc_#{account.id}/conversations/conv_#{conversation.id}/messages/text",
++             params: { text: 'Second reply', clientMessageId: SecureRandom.uuid },
++             headers: headers,
++             as: :json
++      end.not_to change { conversation.messages.count }
++    end
++
++    expect(response).to have_http_status(:too_many_requests)
++    expect(response.headers['Retry-After']).to be_present
++    expect(json_response['error']['code']).to eq('rate_limited')
++  end
++
++  it 'rate limits Booking sync without writing another deal' do
++    service_token = "booking-sync-rate-token-#{SecureRandom.hex(4)}"
++    enable_booking_receiver!
++    create_booking_credential(account: account, token: service_token, scopes: ['booking:sync'])
++    booking_stage(account)
++
++    with_env(
++      'FLEEXA_MANAGER_BOOKING_SYNC_RATE_LIMIT' => '1',
++      'FLEEXA_MANAGER_BOOKING_SYNC_RATE_LIMIT_WINDOW' => '60'
++    ) do
++      post sync_path, params: sync_payload, headers: booking_headers(service_token), as: :json
++      expect(response).to have_http_status(:ok)
++
++      expect do
++        post sync_path, params: sync_payload, headers: booking_headers(service_token), as: :json
++      end.not_to change { CrmDeal.for_account(account.id).count }
++    end
++
++    expect(response).to have_http_status(:too_many_requests)
++    expect(json_response['error']['code']).to eq('rate_limited')
++  end
++
++  it 'rate limits Booking relink without changing another link' do
++    service_token = "booking-relink-rate-token-#{SecureRandom.hex(4)}"
++    enable_booking_receiver!
++    create_booking_credential(account: account, token: service_token, scopes: %w[booking:sync booking:relink])
++    stage = booking_stage(account)
++    old_deal = CrmDeal.create!(account: account, stage: stage, title: 'Old link', booking_id: 'order_1001')
++    new_deal = CrmDeal.create!(account: account, stage: stage, title: 'New link')
++
++    with_env(
++      'FLEEXA_MANAGER_BOOKING_RELINK_RATE_LIMIT' => '1',
++      'FLEEXA_MANAGER_BOOKING_RELINK_RATE_LIMIT_WINDOW' => '60'
++    ) do
++      post relink_path,
++           params: { new_pipeline_deal_id: new_deal.id.to_s, reason: 'Manager selected correct deal' },
++           headers: booking_headers(service_token),
++           as: :json
++
++      expect(response).to have_http_status(:ok)
++      expect(old_deal.reload.booking_id).to be_nil
++
++      expect do
++        post relink_path('order_1002'),
++             params: { new_pipeline_deal_id: old_deal.id.to_s, reason: 'Should be rate limited first' },
++             headers: booking_headers(service_token),
++             as: :json
++      end.not_to change { CrmDealActivity.where(account_id: account.id).count }
++    end
++
++    expect(response).to have_http_status(:too_many_requests)
++    expect(json_response['error']['code']).to eq('rate_limited')
++    expect(new_deal.reload.booking_id).to eq('order_1001')
++  end
++
++  it 'filters Manager auth, service token, signature, and booking PII log parameters' do
++    filters = Rails.application.config.filter_parameters.map(&:to_s)
++
++    expect(filters).to include(
++      'authorization',
++      'api_access_token',
++      'password',
++      'password_confirmation',
++      'x_fleexa_booking_token',
++      'x_booking_service_token',
++      'x_fleexa_booking_signature',
++      'booking_client_id',
++      'booking_client_name',
++      'booking_client_phone',
++      'communication_phone'
++    )
++    expect(filters.join(' ')).to include('webhook')
++    expect(filters.join(' ')).to include('signature')
++  end
++end

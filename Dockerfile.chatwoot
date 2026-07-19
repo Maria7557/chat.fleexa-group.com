@@ -116,6 +116,7 @@ COPY chatwoot-patches/fleexa-manager-linked-deal-backend.patch /tmp/fleexa-manag
 COPY chatwoot-patches/fleexa-manager-pipeline-api-backend.patch /tmp/fleexa-manager-pipeline-api-backend.patch
 COPY chatwoot-patches/fleexa-manager-booking-sync-foundation-backend.patch /tmp/fleexa-manager-booking-sync-foundation-backend.patch
 COPY chatwoot-patches/fleexa-manager-booking-sync-logic-backend.patch /tmp/fleexa-manager-booking-sync-logic-backend.patch
+COPY chatwoot-patches/fleexa-manager-security-rate-limits-backend.patch /tmp/fleexa-manager-security-rate-limits-backend.patch
 COPY chatwoot-patches/fleexa-manager-booking-sync-foundation.sql /tmp/fleexa-manager-booking-sync-foundation.sql
 COPY chatwoot-patches/crm-pipeline-vue.patch /tmp/crm-pipeline-vue.patch
 COPY chatwoot-patches/crm-deal-workspace-vue.patch /tmp/crm-deal-workspace-vue.patch
@@ -183,6 +184,7 @@ RUN cd /app && \
     git apply /tmp/fleexa-manager-pipeline-api-backend.patch && \
     git apply /tmp/fleexa-manager-booking-sync-foundation-backend.patch && \
     git apply /tmp/fleexa-manager-booking-sync-logic-backend.patch && \
+    git apply /tmp/fleexa-manager-security-rate-limits-backend.patch && \
     git apply /tmp/crm-pipeline-vue.patch && \
     git apply /tmp/crm-deal-workspace-vue.patch && \
     git apply /tmp/crm-deal-fields-vue.patch && \

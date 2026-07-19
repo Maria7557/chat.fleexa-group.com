@@ -176,6 +176,7 @@ crm-copy-patches: ensure-env
 	$(COMPOSE) cp chatwoot-patches/fleexa-manager-pipeline-api-backend.patch rails:/tmp/fleexa-manager-pipeline-api-backend.patch
 	$(COMPOSE) cp chatwoot-patches/fleexa-manager-booking-sync-foundation-backend.patch rails:/tmp/fleexa-manager-booking-sync-foundation-backend.patch
 	$(COMPOSE) cp chatwoot-patches/fleexa-manager-booking-sync-logic-backend.patch rails:/tmp/fleexa-manager-booking-sync-logic-backend.patch
+	$(COMPOSE) cp chatwoot-patches/fleexa-manager-security-rate-limits-backend.patch rails:/tmp/fleexa-manager-security-rate-limits-backend.patch
 	@echo "CRM patch files copied to Rails container"
 
 crm-patch-check: crm-copy-patches
@@ -206,6 +207,7 @@ crm-patch-check: crm-copy-patches
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply --check /tmp/fleexa-manager-pipeline-api-backend.patch"
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply --check /tmp/fleexa-manager-booking-sync-foundation-backend.patch"
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply --check /tmp/fleexa-manager-booking-sync-logic-backend.patch"
+	$(COMPOSE) exec rails sh -lc "cd /app && git apply --check /tmp/fleexa-manager-security-rate-limits-backend.patch"
 	@echo "CRM patches validated"
 
 crm-patch:
@@ -236,6 +238,7 @@ crm-patch:
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply /tmp/fleexa-manager-pipeline-api-backend.patch"
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply /tmp/fleexa-manager-booking-sync-foundation-backend.patch"
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply /tmp/fleexa-manager-booking-sync-logic-backend.patch"
+	$(COMPOSE) exec rails sh -lc "cd /app && git apply /tmp/fleexa-manager-security-rate-limits-backend.patch"
 	@echo "CRM patches applied to Rails container"
 
 crm-install: crm-copy-patches crm-patch
@@ -398,6 +401,7 @@ crm-assets-build-host:
 	git apply "$(CURDIR)/chatwoot-patches/fleexa-manager-pipeline-api-backend.patch"; \
 	git apply "$(CURDIR)/chatwoot-patches/fleexa-manager-booking-sync-foundation-backend.patch"; \
 	git apply "$(CURDIR)/chatwoot-patches/fleexa-manager-booking-sync-logic-backend.patch"; \
+	git apply "$(CURDIR)/chatwoot-patches/fleexa-manager-security-rate-limits-backend.patch"; \
 	git apply "$(CURDIR)/chatwoot-patches/crm-pipeline-vue.patch"; \
 	git apply "$(CURDIR)/chatwoot-patches/crm-deal-workspace-vue.patch"; \
 	git apply "$(CURDIR)/chatwoot-patches/crm-deal-fields-vue.patch"; \
@@ -589,6 +593,7 @@ crm-assets-install-local: ensure-env
 	docker cp "$(CRM_ASSETS_BUILD_DIR)/app/views/super_admin/application/_navigation.html.erb" "$$install_container:/app/app/views/super_admin/application/_navigation.html.erb"; \
 	docker cp "$(CRM_ASSETS_BUILD_DIR)/app/views/super_admin/devise/sessions/new.html.erb" "$$install_container:/app/app/views/super_admin/devise/sessions/new.html.erb"; \
 	docker cp "$(CRM_ASSETS_BUILD_DIR)/app/views/super_admin/settings/show.html.erb" "$$install_container:/app/app/views/super_admin/settings/show.html.erb"; \
+	docker cp "$(CRM_ASSETS_BUILD_DIR)/config/initializers/fleexa_manager_filter_parameter_logging.rb" "$$install_container:/app/config/initializers/fleexa_manager_filter_parameter_logging.rb"; \
 	docker cp "$(CRM_ASSETS_BUILD_DIR)/app/assets/stylesheets/administrate/library/_variables.scss" "$$install_container:/app/app/assets/stylesheets/administrate/library/_variables.scss"; \
 	docker cp "$(CRM_ASSETS_BUILD_DIR)/app/assets/stylesheets/administrate/utilities/_variables.scss" "$$install_container:/app/app/assets/stylesheets/administrate/utilities/_variables.scss"; \
 	docker cp "$(CRM_ASSETS_BUILD_DIR)/public/manifest.json" "$$install_container:/app/public/manifest.json"; \
