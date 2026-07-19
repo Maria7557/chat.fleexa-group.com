@@ -15,53 +15,56 @@ explicit API permission model that works for Expo web and iPhone clients.
 
 ## Authentication
 
-Stage 3 keeps the accepted Stage 2 Option B strategy: temporary existing
-Chatwoot authentication through the Fleexa Manager namespace. The manager-facing
-UX no longer asks users to paste tokens. Instead, Expo calls
-`POST /api/fleexa-manager/v1/session` with email, password, and an optional
-workspace hint.
+Stage 4 replaces the temporary Stage 2/3 token behavior with Manager-owned
+sessions while still validating credentials through Chatwoot Devise. The
+manager-facing UX never asks users to paste tokens. Expo calls
+`POST /api/fleexa-manager/v1/session` with email, password, optional workspace
+hint, and `clientPlatform`.
 
-The login endpoint is a narrow adapter over Chatwoot credentials:
+The login endpoint verifies Chatwoot credentials, then creates a Manager session
+record:
 
 - It verifies the Chatwoot user email/password with Devise.
 - It denies inactive, unconfirmed, or otherwise non-authenticatable users.
 - It denies users without an active account membership.
-- It returns a normalized Manager session DTO and a temporary Chatwoot user
-  access token for internal client storage.
+- It stores only an HMAC digest of the Manager session token.
+- It sets `expires_at` and supports server-side revoke through logout.
 - It does not log passwords or tokens.
 - It does not expose raw Chatwoot auth responses to Expo.
 
 Accepted authentication inputs:
 
-- `POST /session` with `email`, `password`, and optional `accountHint`
-- `Authorization: Bearer <chatwoot_user_access_token>`
-- `api_access_token: <chatwoot_user_access_token>`
-- existing same-origin Chatwoot Rails session cookie for Expo web when the app
-  is served from the same authenticated Chatwoot origin
+- `POST /session` with `email`, `password`, optional `accountHint`, and
+  `clientPlatform`
+- web: HttpOnly `fleexa_manager_session` cookie
+- iOS/native: `Authorization: Bearer <manager_session_token>` stored in Expo
+  SecureStore
+- legacy compatibility: `api_access_token: <chatwoot_user_access_token>` may
+  remain for local/backoffice compatibility, but it is not the production
+  Fleexa Manager session path
 
 The Manager API must still return Manager DTOs from `/api/fleexa-manager/v1`.
 Production live mode must not call raw Chatwoot `/api/v1` routes directly.
 
-Expo credential storage for Stage 3:
+Expo credential storage:
 
-- iPhone/native stores the returned Chatwoot user access token through the
+- iPhone/native stores the returned Manager session token through the
   SecureStore abstraction.
-- Expo web stores the returned token through the same storage abstraction using
-  session-scoped browser storage with a memory fallback for non-browser render
-  contexts.
+- Expo web does not store bearer tokens in `localStorage` or `sessionStorage`;
+  it restores through the HttpOnly cookie and `GET /session/current`.
 - The token must never be rendered in the UI, copied by the manager, logged, or
   committed.
 - Mock mode can store mock credentials only for UI development and cannot
   satisfy production acceptance.
 
-Refresh and revoke limitations:
+Expiration, refresh, and revoke:
 
-- Stage 3 has `POST /session` only.
-- No dedicated Manager `POST /session/refresh` or `DELETE /session` endpoints
-  exist yet.
-- Token refresh depends on Chatwoot's existing token/session lifecycle.
-- Sign out clears local Expo storage but cannot revoke the upstream Chatwoot
-  user access token by itself.
+- Stage 4 has no refresh endpoint by ADR 0006.
+- `FLEEXA_MANAGER_SESSION_TTL_SECONDS` controls fixed session TTL; default is
+  12 hours.
+- Expired sessions return `401 unauthenticated`.
+- `DELETE /session` revokes the Manager session server-side and clears the web
+  cookie.
 - Permission changes are detected by `GET /session/current` and future realtime
   session events, not by Manager refresh-token rotation.
 
@@ -77,11 +80,9 @@ Stage 3 expired or invalid session behavior:
 - Auth tokens must never be logged, embedded in docs, or committed in local env
   files. Local development must use untracked `.env` files only.
 
-This remains temporary because Chatwoot tokens are not the final Manager auth
-boundary. Before production beta, replace this with Manager-owned credentials,
-short-lived access tokens, refresh-token rotation, server-side revoke,
-device/session inventory, MFA support, and audit coverage for login, refresh,
-and logout.
+Before broader production beta, add device/session inventory, MFA session
+binding, richer audit coverage, and evaluate whether refresh-token rotation is
+needed for longer-lived native sessions.
 
 Future Manager auth requirements:
 

@@ -115,6 +115,7 @@ export interface ListDealsParams {
 
 export interface FleexaApiClient {
   login(params: LoginSessionRequest): Promise<LoginSessionResponse>;
+  logout(): Promise<void>;
   getCurrentSession(activeAccountId?: string): Promise<CurrentSessionResponse>;
   listConversations(params: ListConversationsParams): Promise<ConversationListResponse>;
   getConversationDetail(accountId: string, conversationId: string): Promise<ConversationDetailResponse>;
@@ -651,6 +652,10 @@ export class ChatwootFleexaApiClient implements FleexaApiClient {
     });
   }
 
+  async logout(): Promise<void> {
+    return Promise.resolve();
+  }
+
   async getCurrentSession(activeAccountId?: string): Promise<CurrentSessionResponse> {
     const profile = recordFrom(await this.request('/profile'));
     const rawAccounts = arrayFrom(profile.accounts);
@@ -967,8 +972,13 @@ export class ManagerApiClient implements FleexaApiClient {
         email: params.email,
         password: params.password,
         accountHint: params.accountHint ?? null,
+        clientPlatform: params.clientPlatform ?? 'web',
       },
     });
+  }
+
+  async logout(): Promise<void> {
+    await this.request('/session', { method: 'DELETE' });
   }
 
   async getCurrentSession(activeAccountId?: string): Promise<CurrentSessionResponse> {
@@ -1131,6 +1141,7 @@ export class ManagerApiClient implements FleexaApiClient {
     const init: RequestInit = {
       method: options.method ?? 'GET',
       headers,
+      credentials: 'include',
     };
 
     if (options.body !== undefined) {
@@ -1310,8 +1321,17 @@ export class MockFleexaApiClient implements FleexaApiClient {
     return {
       accessToken: 'mock-development-token',
       tokenType: 'Bearer',
+      auth: {
+        transport: 'bearer_token',
+        expiresAt: new Date(Date.parse(now) + 12 * 60 * 60 * 1000).toISOString(),
+        refresh: 'none',
+      },
       session: mockSession,
     };
+  }
+
+  async logout(): Promise<void> {
+    return Promise.resolve();
   }
 
   async getCurrentSession(): Promise<CurrentSessionResponse> {

@@ -55,11 +55,19 @@ export interface LoginSessionRequest {
   email: string;
   password: string;
   accountHint?: string | null;
+  clientPlatform?: 'web' | 'ios' | 'native';
+}
+
+export interface LoginSessionAuth {
+  transport: 'http_only_cookie' | 'bearer_token';
+  expiresAt: IsoDateTime;
+  refresh: 'none';
 }
 
 export interface LoginSessionResponse {
-  accessToken: string;
-  tokenType: 'Bearer';
+  accessToken?: string | null;
+  tokenType?: 'Bearer';
+  auth: LoginSessionAuth;
   session: CurrentSessionResponse;
 }
 

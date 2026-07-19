@@ -59,6 +59,7 @@ describe('@fleexa/api-client', () => {
     expect(fetchImpl).toHaveBeenCalledWith(
       'https://api.example.com/api/fleexa-manager/v1/session/current?activeAccountId=acc_1',
       expect.objectContaining({
+        credentials: 'include',
         headers: expect.objectContaining({
           Authorization: 'Bearer access-token',
           Accept: 'application/json',
@@ -73,6 +74,11 @@ describe('@fleexa/api-client', () => {
         JSON.stringify({
           accessToken: 'manager-session-token',
           tokenType: 'Bearer',
+          auth: {
+            transport: 'bearer_token',
+            expiresAt: '2026-07-18T21:00:00Z',
+            refresh: 'none',
+          },
           session: {
             user: { id: 'user_1', name: 'Manager', email: 'manager@example.com' },
             activeAccountId: 'acc_1',
@@ -112,11 +118,33 @@ describe('@fleexa/api-client', () => {
           email: 'manager@example.com',
           password: 'password',
           accountHint: 'acc_1',
+          clientPlatform: 'web',
         }),
+        credentials: 'include',
       })
     );
     expect(result.accessToken).toBe('manager-session-token');
+    expect(result.auth.transport).toBe('bearer_token');
     expect(result.session.activeAccountId).toBe('acc_1');
+  });
+
+  it('logs out through the Manager API session endpoint with cookie credentials', async () => {
+    const fetchImpl = vi.fn(async () => new Response(null, { status: 204 }));
+    const client = new ManagerApiClient({
+      baseUrl: 'https://api.example.com/api/fleexa-manager/v1/',
+      tokenProvider: () => null,
+      fetchImpl,
+    });
+
+    await client.logout();
+
+    expect(fetchImpl).toHaveBeenCalledWith(
+      'https://api.example.com/api/fleexa-manager/v1/session',
+      expect.objectContaining({
+        method: 'DELETE',
+        credentials: 'include',
+      })
+    );
   });
 
   it('maps API error envelopes into typed client errors', async () => {
@@ -233,6 +261,7 @@ describe('@fleexa/api-client', () => {
     const counters = await client.getManagerCounters('acc_mock_fleexa');
 
     expect(login.accessToken).toContain('mock');
+    expect(login.auth.refresh).toBe('none');
     expect(session.apiVersion).toContain('mock');
     expect(conversations.data[0]?.linkedDeal).toMatchObject({
       id: expect.stringMatching(/^deal_/),

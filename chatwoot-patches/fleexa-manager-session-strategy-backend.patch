@@ -1,0 +1,455 @@
+diff --git a/app/controllers/api/fleexa_manager/v1/base_controller.rb b/app/controllers/api/fleexa_manager/v1/base_controller.rb
+index c1ac427..e6d97e0 100644
+--- a/app/controllers/api/fleexa_manager/v1/base_controller.rb
++++ b/app/controllers/api/fleexa_manager/v1/base_controller.rb
+@@ -3,6 +3,7 @@ require 'json'
+ 
+ class Api::FleexaManager::V1::BaseController < Api::BaseController
+   MANAGER_API_VERSION = '2026-07-18.stage2'.freeze
++  MANAGER_SESSION_COOKIE = 'fleexa_manager_session'.freeze
+   READ_PERMISSIONS = %w[session:read conversations:read counters:read].freeze
+   WRITE_PERMISSIONS = %w[messages:send].freeze
+   OWNER_EXTRA_PERMISSIONS = %w[deals:read deals:update deals:update_stage pipeline:read bookings:read settings:read settings:write].freeze
+@@ -12,7 +13,7 @@ class Api::FleexaManager::V1::BaseController < Api::BaseController
+     http://localhost:8082
+     http://127.0.0.1:8082
+   ].freeze
+-  FLEEXA_MANAGER_CORS_ALLOWED_HEADERS = 'Authorization, Content-Type, Accept, Idempotency-Key, api_access_token'.freeze
++  FLEEXA_MANAGER_CORS_ALLOWED_HEADERS = 'Authorization, Content-Type, Accept, Idempotency-Key, X-Fleexa-Client-Platform, api_access_token'.freeze
+   FLEEXA_MANAGER_CORS_ALLOWED_METHODS = 'GET, POST, PATCH, DELETE, OPTIONS'.freeze
+ 
+   prepend_before_action :handle_fleexa_manager_preflight
+@@ -68,6 +69,18 @@ class Api::FleexaManager::V1::BaseController < Api::BaseController
+     request.headers['HTTP_API_ACCESS_TOKEN'] = token
+   end
+ 
++  def authenticate_by_access_token?
++    manager_session_token.present? || super
++  end
++
++  def authenticate_access_token!
++    if manager_session_token.present?
++      return authenticate_fleexa_manager_session!
++    end
++
++    super
++  end
++
+   def authenticate_user!(*)
+     return if current_user.present?
+ 
+@@ -103,6 +116,55 @@ class Api::FleexaManager::V1::BaseController < Api::BaseController
+     Current.user || current_user
+   end
+ 
++  def current_fleexa_manager_session
++    @current_fleexa_manager_session
++  end
++
++  def manager_session_token
++    @manager_session_token ||= manager_bearer_token.presence || cookies.encrypted[MANAGER_SESSION_COOKIE].presence
++  end
++
++  def manager_bearer_token
++    authorization = request.headers['Authorization'].to_s
++    authorization.match(/\ABearer\s+(.+)\z/i)&.[](1)&.strip
++  end
++
++  def authenticate_fleexa_manager_session!
++    session = FleexaManagerSession.authenticate(manager_session_token)
++    if session.blank?
++      expire_fleexa_manager_session_cookie
++      return render_manager_error('unauthenticated', 'Manager session is invalid or expired.', status: :unauthorized)
++    end
++
++    @current_fleexa_manager_session = session
++    Current.user = session.user
++    Current.account = session.account if session.account&.active?
++  end
++
++  def set_fleexa_manager_session_cookie(raw_token, expires_at:)
++    cookies.encrypted[MANAGER_SESSION_COOKIE] = {
++      value: raw_token,
++      expires: expires_at,
++      httponly: true,
++      secure: fleexa_manager_secure_cookie?,
++      same_site: :lax
++    }
++  end
++
++  def expire_fleexa_manager_session_cookie
++    cookies.delete(
++      MANAGER_SESSION_COOKIE,
++      secure: fleexa_manager_secure_cookie?,
++      same_site: :lax
++    )
++  end
++
++  def fleexa_manager_secure_cookie?
++    return ActiveModel::Type::Boolean.new.cast(ENV.fetch('FLEEXA_MANAGER_SESSION_COOKIE_SECURE')) if ENV.key?('FLEEXA_MANAGER_SESSION_COOKIE_SECURE')
++
++    Rails.env.production? || request.ssl?
++  end
++
+   def enforce_manager_rate_limit!(bucket:, identity:, limit:, window:, message:)
+     result = FleexaManager::V1::RateLimiter.check!(
+       bucket: bucket,
+diff --git a/app/controllers/api/fleexa_manager/v1/session_controller.rb b/app/controllers/api/fleexa_manager/v1/session_controller.rb
+index 431dd76..e101760 100644
+--- a/app/controllers/api/fleexa_manager/v1/session_controller.rb
++++ b/app/controllers/api/fleexa_manager/v1/session_controller.rb
+@@ -31,13 +31,19 @@ class Api::FleexaManager::V1::SessionController < Api::FleexaManager::V1::BaseCo
+     Current.account = active_membership.account
+     Current.account_user = active_membership
+ 
+-    access_token = user.access_token || AccessToken.create!(owner: user)
++    manager_session, raw_token = FleexaManagerSession.issue!(
++      user: user,
++      account: active_membership.account,
++      client_platform: client_platform,
++      user_agent: request.user_agent,
++      remote_ip: rate_limit_remote_ip
++    )
+ 
+-    render json: {
+-      accessToken: access_token.token,
+-      tokenType: 'Bearer',
++    render json: login_response(
++      raw_token: raw_token,
++      manager_session: manager_session,
+       session: session_dto(user: user, memberships: memberships, active_membership: active_membership)
+-    }, status: :created
++    ), status: :created
+   end
+ 
+   def current
+@@ -48,8 +54,49 @@ class Api::FleexaManager::V1::SessionController < Api::FleexaManager::V1::BaseCo
+     render json: session_dto(user: current_manager_user, memberships: memberships, active_membership: active_membership)
+   end
+ 
++  def destroy
++    current_fleexa_manager_session&.revoke!
++    expire_fleexa_manager_session_cookie
++
++    head :no_content
++  end
++
+   private
+ 
++  def login_response(raw_token:, manager_session:, session:)
++    if web_client?
++      set_fleexa_manager_session_cookie(raw_token, expires_at: manager_session.expires_at)
++      return {
++        auth: {
++          transport: 'http_only_cookie',
++          expiresAt: manager_session.expires_at.utc.iso8601,
++          refresh: 'none'
++        },
++        session: session
++      }
++    end
++
++    {
++      accessToken: raw_token,
++      tokenType: 'Bearer',
++      auth: {
++        transport: 'bearer_token',
++        expiresAt: manager_session.expires_at.utc.iso8601,
++        refresh: 'none'
++      },
++      session: session
++    }
++  end
++
++  def client_platform
++    platform = request.headers['X-Fleexa-Client-Platform'].presence || params[:clientPlatform].presence || params[:client_platform].presence
++    FleexaManagerSession.normalize_client_platform(platform)
++  end
++
++  def web_client?
++    client_platform == 'web'
++  end
++
+   def session_dto(user:, memberships:, active_membership:)
+     FleexaManager::V1::DtoSerializer.current_session(
+       user: user,
+diff --git a/app/models/fleexa_manager_session.rb b/app/models/fleexa_manager_session.rb
+new file mode 100644
+index 0000000..b8ae5e7
+--- /dev/null
++++ b/app/models/fleexa_manager_session.rb
+@@ -0,0 +1,89 @@
++require 'digest'
++require 'openssl'
++
++class FleexaManagerSession < ApplicationRecord
++  TOKEN_BYTES = 48
++  DEFAULT_TTL_SECONDS = 12.hours.to_i
++  MAX_TTL_SECONDS = 30.days.to_i
++  CLIENT_PLATFORMS = %w[web ios native].freeze
++
++  belongs_to :user
++  belongs_to :account, optional: true
++
++  validates :token_digest, presence: true, uniqueness: true
++  validates :client_platform, presence: true, inclusion: { in: CLIENT_PLATFORMS }
++  validates :expires_at, presence: true
++
++  scope :active, -> { where(revoked_at: nil).where('expires_at > ?', Time.current) }
++
++  class << self
++    def issue!(user:, account:, client_platform:, user_agent:, remote_ip:)
++      raw_token = SecureRandom.urlsafe_base64(TOKEN_BYTES)
++      session = create!(
++        user: user,
++        account: account,
++        client_platform: normalize_client_platform(client_platform),
++        token_digest: digest_token(raw_token),
++        user_agent_hash: digest_metadata(user_agent),
++        ip_hash: digest_metadata(remote_ip),
++        expires_at: session_ttl.seconds.from_now,
++        last_used_at: Time.current
++      )
++
++      [session, raw_token]
++    end
++
++    def authenticate(raw_token)
++      return if raw_token.blank?
++
++      session = active.includes(:user, :account).find_by(token_digest: digest_token(raw_token))
++      return if session.blank?
++      return unless session.user.respond_to?(:active_for_authentication?)
++      return unless session.user.active_for_authentication?
++
++      session.touch_usage!
++      session
++    end
++
++    def digest_token(raw_token)
++      OpenSSL::HMAC.hexdigest('SHA256', digest_secret, raw_token.to_s)
++    end
++
++    def normalize_client_platform(value)
++      platform = value.to_s.downcase
++      return platform if CLIENT_PLATFORMS.include?(platform)
++
++      'web'
++    end
++
++    def session_ttl
++      Integer(ENV.fetch('FLEEXA_MANAGER_SESSION_TTL_SECONDS', DEFAULT_TTL_SECONDS)).clamp(300, MAX_TTL_SECONDS)
++    rescue ArgumentError, TypeError
++      DEFAULT_TTL_SECONDS
++    end
++
++    private
++
++    def digest_metadata(value)
++      return if value.blank?
++
++      Digest::SHA256.hexdigest(value.to_s)
++    end
++
++    def digest_secret
++      Rails.application.secret_key_base.presence || ENV.fetch('SECRET_KEY_BASE')
++    end
++  end
++
++  def active?
++    revoked_at.blank? && expires_at.future?
++  end
++
++  def revoke!
++    update!(revoked_at: Time.current)
++  end
++
++  def touch_usage!
++    update_columns(last_used_at: Time.current, updated_at: Time.current)
++  end
++end
+diff --git a/config/routes.rb b/config/routes.rb
+index d9760ac..3765ca6 100644
+--- a/config/routes.rb
++++ b/config/routes.rb
+@@ -45,6 +45,7 @@ Rails.application.routes.draw do
+       namespace :v1 do
+         match '*path', to: 'base#preflight', via: :options
+         post 'session', to: 'session#create'
++        delete 'session', to: 'session#destroy'
+         get 'session/current', to: 'session#current'
+ 
+         scope 'accounts/:account_id', module: :accounts do
+diff --git a/spec/requests/api/fleexa_manager/v1/chat_api_spec.rb b/spec/requests/api/fleexa_manager/v1/chat_api_spec.rb
+index 3babbc6..0d6d07c 100644
+--- a/spec/requests/api/fleexa_manager/v1/chat_api_spec.rb
++++ b/spec/requests/api/fleexa_manager/v1/chat_api_spec.rb
+@@ -53,25 +53,27 @@ RSpec.describe 'Fleexa Manager chat API', type: :request do
+       user.update!(password: password, password_confirmation: password)
+     end
+ 
+-    it 'exchanges valid Chatwoot credentials for a Manager session DTO' do
++    it 'exchanges valid credentials for a web cookie Manager session DTO' do
+       post '/api/fleexa-manager/v1/session',
+-           params: { email: user.email.upcase, password: password, accountHint: "acc_#{account.id}" }
++           params: { email: user.email.upcase, password: password, accountHint: "acc_#{account.id}", clientPlatform: 'web' }
+ 
+       expect(response).to have_http_status(:created)
+-      expect(json_response['accessToken']).to eq(user.reload.access_token.token)
+-      expect(json_response['tokenType']).to eq('Bearer')
++      expect(json_response).not_to include('accessToken')
++      expect(json_response['auth']).to include('transport' => 'http_only_cookie', 'refresh' => 'none')
++      expect(response.headers['Set-Cookie']).to include('fleexa_manager_session')
++      expect(response.headers['Set-Cookie'].downcase).to include('httponly')
++      expect(response.headers['Set-Cookie'].downcase).to include('samesite=lax')
+       expect(json_response['session']['user']['id']).to eq("user_#{user.id}")
+       expect(json_response['session']['activeAccountId']).to eq("acc_#{account.id}")
+       expect(json_response['session']['memberships'].first['accountId']).to eq("acc_#{account.id}")
+       expect(json_response).not_to include('password')
+     end
+ 
+-    it 'allows the returned token to read the current session' do
++    it 'allows the web cookie session to read the current session' do
+       post '/api/fleexa-manager/v1/session',
+-           params: { email: user.email, password: password, accountHint: account.name }
+-      token = json_response['accessToken']
++           params: { email: user.email, password: password, accountHint: account.name, clientPlatform: 'web' }
+ 
+-      get '/api/fleexa-manager/v1/session/current', headers: { 'Authorization' => "Bearer #{token}" }
++      get '/api/fleexa-manager/v1/session/current'
+ 
+       expect(response).to have_http_status(:ok)
+       expect(json_response['activeAccountId']).to eq("acc_#{account.id}")
+diff --git a/spec/requests/api/fleexa_manager/v1/session_strategy_spec.rb b/spec/requests/api/fleexa_manager/v1/session_strategy_spec.rb
+new file mode 100644
+index 0000000..b5910ab
+--- /dev/null
++++ b/spec/requests/api/fleexa_manager/v1/session_strategy_spec.rb
+@@ -0,0 +1,127 @@
++require 'rails_helper'
++
++RSpec.describe 'Fleexa Manager session strategy', type: :request do
++  let(:account) { create(:account) }
++  let(:user) { create(:user) }
++  let!(:account_user) { create(:account_user, account: account, user: user, role: :administrator) }
++  let(:password) { 'FleexaSessionStrategy!2026' }
++
++  before do
++    user.update!(password: password, password_confirmation: password)
++    FleexaManager::V1::RateLimiter.reset_local! if defined?(FleexaManager::V1::RateLimiter)
++  end
++
++  def login_web
++    post '/api/fleexa-manager/v1/session',
++         params: { email: user.email, password: password, accountHint: "acc_#{account.id}", clientPlatform: 'web' },
++         as: :json
++  end
++
++  def login_ios
++    post '/api/fleexa-manager/v1/session',
++         params: { email: user.email, password: password, accountHint: "acc_#{account.id}", clientPlatform: 'ios' },
++         as: :json
++  end
++
++  it 'creates a web session using an HttpOnly SameSite cookie without returning a bearer token' do
++    login_web
++
++    expect(response).to have_http_status(:created)
++    expect(json_response).not_to include('accessToken')
++    expect(json_response['auth']).to include('transport' => 'http_only_cookie', 'refresh' => 'none')
++    expect(json_response['auth']['expiresAt']).to be_present
++    expect(response.headers['Set-Cookie']).to include('fleexa_manager_session')
++    expect(response.headers['Set-Cookie'].downcase).to include('httponly')
++    expect(response.headers['Set-Cookie'].downcase).to include('samesite=lax')
++    expect(FleexaManagerSession.count).to eq(1)
++    expect(FleexaManagerSession.first.token_digest).to be_present
++  end
++
++  it 'creates an iOS session using a bearer token for SecureStore storage' do
++    login_ios
++
++    expect(response).to have_http_status(:created)
++    token = json_response['accessToken']
++    expect(token).to be_present
++    expect(json_response['tokenType']).to eq('Bearer')
++    expect(json_response['auth']).to include('transport' => 'bearer_token', 'refresh' => 'none')
++    expect(FleexaManagerSession.find_by(token_digest: FleexaManagerSession.digest_token(token))).to be_present
++
++    get '/api/fleexa-manager/v1/session/current', headers: { 'Authorization' => "Bearer #{token}" }
++
++    expect(response).to have_http_status(:ok)
++    expect(json_response['activeAccountId']).to eq("acc_#{account.id}")
++  end
++
++  it 'denies wrong passwords without creating a session' do
++    post '/api/fleexa-manager/v1/session',
++         params: { email: user.email, password: 'wrong-password', clientPlatform: 'web' },
++         as: :json
++
++    expect(response).to have_http_status(:unauthorized)
++    expect(json_response['error']['code']).to eq('invalid_credentials')
++    expect(json_response).not_to include('accessToken')
++    expect(FleexaManagerSession.count).to eq(0)
++  end
++
++  it 'restores the current session from the web cookie' do
++    login_web
++
++    get '/api/fleexa-manager/v1/session/current'
++
++    expect(response).to have_http_status(:ok)
++    expect(json_response['user']['id']).to eq("user_#{user.id}")
++  end
++
++  it 'logs out by revoking the server session and clearing the web cookie' do
++    login_web
++    manager_session = FleexaManagerSession.first
++
++    delete '/api/fleexa-manager/v1/session'
++
++    expect(response).to have_http_status(:no_content)
++    expect(manager_session.reload.revoked_at).to be_present
++    expect(response.headers['Set-Cookie']).to include('fleexa_manager_session')
++    expect(response.headers['Set-Cookie']).to include('max-age=0')
++
++    get '/api/fleexa-manager/v1/session/current'
++
++    expect(response).to have_http_status(:unauthorized)
++    expect(json_response['error']['code']).to eq('unauthenticated')
++  end
++
++  it 'denies expired or invalid sessions' do
++    login_ios
++    token = json_response['accessToken']
++    FleexaManagerSession.first.update!(expires_at: 1.minute.ago)
++
++    get '/api/fleexa-manager/v1/session/current', headers: { 'Authorization' => "Bearer #{token}" }
++
++    expect(response).to have_http_status(:unauthorized)
++    expect(json_response['error']['code']).to eq('unauthenticated')
++
++    get '/api/fleexa-manager/v1/session/current', headers: { 'Authorization' => 'Bearer invalid-manager-session' }
++
++    expect(response).to have_http_status(:unauthorized)
++    expect(json_response['error']['code']).to eq('unauthenticated')
++  end
++
++  it 'denies revoked or disabled users' do
++    login_ios
++    token = json_response['accessToken']
++    FleexaManagerSession.first.revoke!
++
++    get '/api/fleexa-manager/v1/session/current', headers: { 'Authorization' => "Bearer #{token}" }
++
++    expect(response).to have_http_status(:unauthorized)
++
++    login_ios
++    fresh_token = json_response['accessToken']
++    user.update_column(:confirmed_at, nil)
++
++    get '/api/fleexa-manager/v1/session/current', headers: { 'Authorization' => "Bearer #{fresh_token}" }
++
++    expect(response).to have_http_status(:unauthorized)
++    expect(json_response['error']['code']).to eq('unauthenticated')
++  end
++end

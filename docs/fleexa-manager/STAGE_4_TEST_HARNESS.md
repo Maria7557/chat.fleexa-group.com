@@ -51,6 +51,7 @@ bundle exec rspec \
   spec/requests/api/fleexa_manager/v1/booking_sync_foundation_spec.rb \
   spec/requests/api/fleexa_manager/v1/booking_sync_logic_spec.rb \
   spec/requests/api/fleexa_manager/v1/security_rate_limits_spec.rb \
+  spec/requests/api/fleexa_manager/v1/session_strategy_spec.rb \
   --format documentation
 ```
 
@@ -72,6 +73,9 @@ bundle exec rspec \
 - Stage 4B security hardening: added executable specs for auth denial,
   role/permission mapping, tenant isolation, disabled users, Booking service
   scope/account denial, rate limiting, and sensitive log filtering.
+- Stage 4C session hardening: added executable specs for web HttpOnly cookie
+  sessions, iOS bearer sessions, logout revoke, expired/invalid sessions, and
+  disabled-user denial.
 
 ## Latest Result
 
@@ -84,7 +88,7 @@ make fleexa-manager-rspec
 Result:
 
 ```text
-85 examples, 0 failures
+92 examples, 0 failures
 ```
 
 ## Stage 4 Verification Run
@@ -96,7 +100,7 @@ Checked on 2026-07-19:
 | `git fetch origin main --prune` | Pass, `main`, `origin/main`, and branch base are `6af8928`. |
 | OpenAPI YAML parse | Pass. |
 | Ruby syntax for patched Manager API files | Pass from the RSpec image against `/tmp/fleexa-chatwoot-rspec-app`. |
-| `make fleexa-manager-rspec` | Pass, `85 examples, 0 failures`. |
+| `make fleexa-manager-rspec` | Pass, `92 examples, 0 failures`. |
 | `make crm-assets-build-host` | Pass, `CRM host assets built`. |
 | `git diff --check` | Pass. |
 

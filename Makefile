@@ -6,7 +6,7 @@ CHATWOOT_BASE_IMAGE := chatwoot/chatwoot:v4.14.2
 CHATWOOT_LOCAL_IMAGE := fleexa-chatwoot:v4.14.2-patch1
 CRM_ASSETS_BUILD_DIR := /tmp/fleexa-chatwoot-app-build
 
-.PHONY: setup up down logs migrate seed shell verify-patch ensure-env crm-apply crm-migrate crm-seed crm-autocreate-backfill crm-marketing-spend-migrate crm-marketing-spend-demo crm-marketing-spend-rebuild crm-marketing-demo-seed crm-marketing-google-airbyte-migrate crm-marketing-google-airbyte-seed crm-marketing-google-airbyte-normalize crm-marketing-google-airbyte-clear crm-marketing-meta-airbyte-migrate crm-marketing-meta-airbyte-seed crm-marketing-meta-airbyte-normalize crm-marketing-meta-airbyte-clear crm-marketing-source-mapping-migrate crm-marketing-source-mapping-seed fleexa-manager-booking-sync-migrate fleexa-manager-rspec crm-copy-patches crm-patch-check crm-patch crm-install crm-vue-copy crm-vue-check crm-vue-patch crm-assets-build-host crm-assets-install-local crm-assets-refresh-local
+.PHONY: setup up down logs migrate seed shell verify-patch ensure-env crm-apply crm-migrate crm-seed crm-autocreate-backfill crm-marketing-spend-migrate crm-marketing-spend-demo crm-marketing-spend-rebuild crm-marketing-demo-seed crm-marketing-google-airbyte-migrate crm-marketing-google-airbyte-seed crm-marketing-google-airbyte-normalize crm-marketing-google-airbyte-clear crm-marketing-meta-airbyte-migrate crm-marketing-meta-airbyte-seed crm-marketing-meta-airbyte-normalize crm-marketing-meta-airbyte-clear crm-marketing-source-mapping-migrate crm-marketing-source-mapping-seed fleexa-manager-booking-sync-migrate fleexa-manager-session-migrate fleexa-manager-rspec crm-copy-patches crm-patch-check crm-patch crm-install crm-vue-copy crm-vue-check crm-vue-patch crm-assets-build-host crm-assets-install-local crm-assets-refresh-local
 
 ensure-env:
 	@test -f $(ENV_FILE) || (echo "$(ENV_FILE) is missing. Run: make setup"; exit 1)
@@ -43,12 +43,14 @@ crm-apply: ensure-env
 	$(COMPOSE) cp chatwoot-patches/crm-marketing-meta-airbyte-migration.sql postgres:/tmp/crm-marketing-meta-airbyte-migration.sql
 	$(COMPOSE) cp chatwoot-patches/crm-marketing-source-mapping-migration.sql postgres:/tmp/crm-marketing-source-mapping-migration.sql
 	$(COMPOSE) cp chatwoot-patches/fleexa-manager-booking-sync-foundation.sql postgres:/tmp/fleexa-manager-booking-sync-foundation.sql
+	$(COMPOSE) cp chatwoot-patches/fleexa-manager-sessions.sql postgres:/tmp/fleexa-manager-sessions.sql
 	$(COMPOSE) exec postgres psql -U chatwoot -d chatwoot_production -f /tmp/crm-pipeline-migration.sql
 	$(COMPOSE) exec postgres psql -U chatwoot -d chatwoot_production -f /tmp/crm-marketing-spend-migration.sql
 	$(COMPOSE) exec postgres psql -U chatwoot -d chatwoot_production -f /tmp/crm-marketing-google-airbyte-migration.sql
 	$(COMPOSE) exec postgres psql -U chatwoot -d chatwoot_production -f /tmp/crm-marketing-meta-airbyte-migration.sql
 	$(COMPOSE) exec postgres psql -U chatwoot -d chatwoot_production -f /tmp/crm-marketing-source-mapping-migration.sql
 	$(COMPOSE) exec postgres psql -U chatwoot -d chatwoot_production -f /tmp/fleexa-manager-booking-sync-foundation.sql
+	$(COMPOSE) exec postgres psql -U chatwoot -d chatwoot_production -f /tmp/fleexa-manager-sessions.sql
 	@echo "CRM tables applied"
 
 crm-migrate: ensure-env
@@ -58,12 +60,14 @@ crm-migrate: ensure-env
 	$(COMPOSE) cp chatwoot-patches/crm-marketing-meta-airbyte-migration.sql postgres:/tmp/crm-marketing-meta-airbyte-migration.sql
 	$(COMPOSE) cp chatwoot-patches/crm-marketing-source-mapping-migration.sql postgres:/tmp/crm-marketing-source-mapping-migration.sql
 	$(COMPOSE) cp chatwoot-patches/fleexa-manager-booking-sync-foundation.sql postgres:/tmp/fleexa-manager-booking-sync-foundation.sql
+	$(COMPOSE) cp chatwoot-patches/fleexa-manager-sessions.sql postgres:/tmp/fleexa-manager-sessions.sql
 	$(COMPOSE) exec postgres psql -U chatwoot -d chatwoot_production -f /tmp/crm-pipeline-migration.sql
 	$(COMPOSE) exec postgres psql -U chatwoot -d chatwoot_production -f /tmp/crm-marketing-spend-migration.sql
 	$(COMPOSE) exec postgres psql -U chatwoot -d chatwoot_production -f /tmp/crm-marketing-google-airbyte-migration.sql
 	$(COMPOSE) exec postgres psql -U chatwoot -d chatwoot_production -f /tmp/crm-marketing-meta-airbyte-migration.sql
 	$(COMPOSE) exec postgres psql -U chatwoot -d chatwoot_production -f /tmp/crm-marketing-source-mapping-migration.sql
 	$(COMPOSE) exec postgres psql -U chatwoot -d chatwoot_production -f /tmp/fleexa-manager-booking-sync-foundation.sql
+	$(COMPOSE) exec postgres psql -U chatwoot -d chatwoot_production -f /tmp/fleexa-manager-sessions.sql
 	@echo "CRM migration complete"
 
 crm-seed:
@@ -141,6 +145,11 @@ fleexa-manager-booking-sync-migrate: ensure-env
 	$(COMPOSE) exec postgres psql -U chatwoot -d chatwoot_production -f /tmp/fleexa-manager-booking-sync-foundation.sql
 	@echo "Fleexa Manager booking sync foundation migration complete"
 
+fleexa-manager-session-migrate: ensure-env
+	$(COMPOSE) cp chatwoot-patches/fleexa-manager-sessions.sql postgres:/tmp/fleexa-manager-sessions.sql
+	$(COMPOSE) exec postgres psql -U chatwoot -d chatwoot_production -f /tmp/fleexa-manager-sessions.sql
+	@echo "Fleexa Manager session tables applied"
+
 fleexa-manager-rspec: ensure-env
 	sh scripts/fleexa-manager-rspec.sh
 
@@ -177,6 +186,7 @@ crm-copy-patches: ensure-env
 	$(COMPOSE) cp chatwoot-patches/fleexa-manager-booking-sync-foundation-backend.patch rails:/tmp/fleexa-manager-booking-sync-foundation-backend.patch
 	$(COMPOSE) cp chatwoot-patches/fleexa-manager-booking-sync-logic-backend.patch rails:/tmp/fleexa-manager-booking-sync-logic-backend.patch
 	$(COMPOSE) cp chatwoot-patches/fleexa-manager-security-rate-limits-backend.patch rails:/tmp/fleexa-manager-security-rate-limits-backend.patch
+	$(COMPOSE) cp chatwoot-patches/fleexa-manager-session-strategy-backend.patch rails:/tmp/fleexa-manager-session-strategy-backend.patch
 	@echo "CRM patch files copied to Rails container"
 
 crm-patch-check: crm-copy-patches
@@ -208,6 +218,7 @@ crm-patch-check: crm-copy-patches
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply --check /tmp/fleexa-manager-booking-sync-foundation-backend.patch"
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply --check /tmp/fleexa-manager-booking-sync-logic-backend.patch"
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply --check /tmp/fleexa-manager-security-rate-limits-backend.patch"
+	$(COMPOSE) exec rails sh -lc "cd /app && git apply --check /tmp/fleexa-manager-session-strategy-backend.patch"
 	@echo "CRM patches validated"
 
 crm-patch:
@@ -239,6 +250,7 @@ crm-patch:
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply /tmp/fleexa-manager-booking-sync-foundation-backend.patch"
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply /tmp/fleexa-manager-booking-sync-logic-backend.patch"
 	$(COMPOSE) exec rails sh -lc "cd /app && git apply /tmp/fleexa-manager-security-rate-limits-backend.patch"
+	$(COMPOSE) exec rails sh -lc "cd /app && git apply /tmp/fleexa-manager-session-strategy-backend.patch"
 	@echo "CRM patches applied to Rails container"
 
 crm-install: crm-copy-patches crm-patch
@@ -402,6 +414,7 @@ crm-assets-build-host:
 	git apply "$(CURDIR)/chatwoot-patches/fleexa-manager-booking-sync-foundation-backend.patch"; \
 	git apply "$(CURDIR)/chatwoot-patches/fleexa-manager-booking-sync-logic-backend.patch"; \
 	git apply "$(CURDIR)/chatwoot-patches/fleexa-manager-security-rate-limits-backend.patch"; \
+	git apply "$(CURDIR)/chatwoot-patches/fleexa-manager-session-strategy-backend.patch"; \
 	git apply "$(CURDIR)/chatwoot-patches/crm-pipeline-vue.patch"; \
 	git apply "$(CURDIR)/chatwoot-patches/crm-deal-workspace-vue.patch"; \
 	git apply "$(CURDIR)/chatwoot-patches/crm-deal-fields-vue.patch"; \
@@ -558,6 +571,7 @@ crm-assets-install-local: ensure-env
 	docker cp "$(CRM_ASSETS_BUILD_DIR)/app/models/airbyte_google_ads_daily_spend_mock.rb" "$$install_container:/app/app/models/airbyte_google_ads_daily_spend_mock.rb"; \
 	docker cp "$(CRM_ASSETS_BUILD_DIR)/app/models/airbyte_meta_ads_daily_spend_mock.rb" "$$install_container:/app/app/models/airbyte_meta_ads_daily_spend_mock.rb"; \
 	docker cp "$(CRM_ASSETS_BUILD_DIR)/app/models/marketing_source_mapping.rb" "$$install_container:/app/app/models/marketing_source_mapping.rb"; \
+	docker cp "$(CRM_ASSETS_BUILD_DIR)/app/models/fleexa_manager_session.rb" "$$install_container:/app/app/models/fleexa_manager_session.rb"; \
 	docker cp "$(CRM_ASSETS_BUILD_DIR)/app/models/portal.rb" "$$install_container:/app/app/models/portal.rb"; \
 	docker cp "$(CRM_ASSETS_BUILD_DIR)/config/routes.rb" "$$install_container:/app/config/routes.rb"; \
 	docker cp "$(CRM_ASSETS_BUILD_DIR)/config/locales/en.yml" "$$install_container:/app/config/locales/en.yml"; \

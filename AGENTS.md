@@ -83,3 +83,4 @@ Use these Fleexa Manager architecture docs as the current source map:
 - `docs/fleexa-manager/adr/0002-business-logic-backend-first.md`
 - `docs/fleexa-manager/adr/0003-chatwoot-as-backoffice.md`
 - `docs/fleexa-manager/adr/0004-manager-api-layer-placement.md`
+- `docs/fleexa-manager/adr/0006-manager-session-transport-and-refresh.md`

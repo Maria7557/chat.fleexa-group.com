@@ -9,6 +9,7 @@ import {
   type MutableRefObject,
   type ReactNode,
 } from 'react';
+import { Platform } from 'react-native';
 import { useQueryClient } from '@tanstack/react-query';
 
 import { FleexaApiError, type FleexaApiClient } from '@fleexa/api-client';
@@ -18,12 +19,13 @@ import type { CurrentSessionResponse, LoginSessionRequest } from '@fleexa/domain
 import { ApiClientProvider, useFleexaApiClient } from '@/src/api/client';
 import { createSecureValueStore } from '@/src/storage/secureStore';
 
-const TOKEN_KEY = 'fleexa.manager.accessToken';
+const TOKEN_KEY = 'fleexa.manager.sessionToken';
 
 interface AuthContextValue {
   isReady: boolean;
   isAuthenticated: boolean;
   accessToken: string | null;
+  session: CurrentSessionResponse | null;
   signIn(credentials: LoginSessionRequest): Promise<void>;
   signOut(): Promise<void>;
   tokenProvider(): string | null;
@@ -33,14 +35,16 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 
 interface AuthStateProviderProps {
   children: ReactNode;
+  config: FleexaRuntimeConfig;
   tokenRef: MutableRefObject<string | null>;
 }
 
-const AuthStateProvider = ({ children, tokenRef }: AuthStateProviderProps) => {
+const AuthStateProvider = ({ children, config, tokenRef }: AuthStateProviderProps) => {
   const client = useFleexaApiClient();
   const queryClient = useQueryClient();
   const tokenStore = useMemo(() => createSecureValueStore(), []);
   const [accessToken, setAccessToken] = useState<string | null>(null);
+  const [session, setSession] = useState<CurrentSessionResponse | null>(null);
   const [isReady, setIsReady] = useState(false);
 
   useEffect(() => {
@@ -50,18 +54,19 @@ const AuthStateProvider = ({ children, tokenRef }: AuthStateProviderProps) => {
       const token = await tokenStore.getItem(TOKEN_KEY);
       if (!mounted) return;
 
-      if (!token) {
+      if (!token && (Platform.OS !== 'web' || config.apiMode === 'mock')) {
         if (mounted) setIsReady(true);
         return;
       }
 
-      tokenRef.current = token;
+      tokenRef.current = token ?? null;
 
       try {
-        const session = await verifySession(client);
+        const restoredSession = await verifySession(client);
         if (!mounted) return;
-        queryClient.setQueryData(['session', 'current'], session);
-        setAccessToken(token);
+        queryClient.setQueryData(['session', 'current'], restoredSession);
+        setAccessToken(token ?? null);
+        setSession(restoredSession);
       } catch (error) {
         if (!mounted) return;
 
@@ -70,8 +75,9 @@ const AuthStateProvider = ({ children, tokenRef }: AuthStateProviderProps) => {
           await tokenStore.deleteItem(TOKEN_KEY);
           queryClient.clear();
           setAccessToken(null);
+          setSession(null);
         } else {
-          setAccessToken(token);
+          setAccessToken(token ?? null);
         }
       } finally {
         if (mounted) setIsReady(true);
@@ -83,7 +89,7 @@ const AuthStateProvider = ({ children, tokenRef }: AuthStateProviderProps) => {
     return () => {
       mounted = false;
     };
-  }, [client, queryClient, tokenRef, tokenStore]);
+  }, [client, config.apiMode, queryClient, tokenRef, tokenStore]);
 
   const tokenProvider = useCallback(() => tokenRef.current, [tokenRef]);
 
@@ -97,14 +103,19 @@ const AuthStateProvider = ({ children, tokenRef }: AuthStateProviderProps) => {
       const previousToken = tokenRef.current;
 
       try {
-        const login = await client.login({ email, password, accountHint });
-        const normalizedToken = login.accessToken.trim();
-        if (!normalizedToken) throw new Error('Session could not be created');
+        const login = await client.login({ email, password, accountHint, clientPlatform: managerClientPlatform() });
+        const normalizedToken = login.accessToken?.trim() ?? null;
+        if (login.auth.transport === 'bearer_token' && !normalizedToken) throw new Error('Session could not be created');
 
         tokenRef.current = normalizedToken;
-        await tokenStore.setItem(TOKEN_KEY, normalizedToken);
+        if (normalizedToken) {
+          await tokenStore.setItem(TOKEN_KEY, normalizedToken);
+        } else {
+          await tokenStore.deleteItem(TOKEN_KEY);
+        }
         queryClient.setQueryData(['session', 'current'], login.session);
         setAccessToken(normalizedToken);
+        setSession(login.session);
       } catch (error) {
         tokenRef.current = previousToken;
         throw error;
@@ -114,22 +125,30 @@ const AuthStateProvider = ({ children, tokenRef }: AuthStateProviderProps) => {
   );
 
   const signOut = useCallback(async () => {
-    tokenRef.current = null;
-    await tokenStore.deleteItem(TOKEN_KEY);
-    queryClient.clear();
-    setAccessToken(null);
-  }, [queryClient, tokenRef, tokenStore]);
+    try {
+      await client.logout();
+    } catch (error) {
+      if (!shouldClearStoredSession(error)) throw error;
+    } finally {
+      tokenRef.current = null;
+      await tokenStore.deleteItem(TOKEN_KEY);
+      queryClient.clear();
+      setAccessToken(null);
+      setSession(null);
+    }
+  }, [client, queryClient, tokenRef, tokenStore]);
 
   const value = useMemo(
     () => ({
       isReady,
-      isAuthenticated: Boolean(accessToken),
+      isAuthenticated: Boolean(session),
       accessToken,
+      session,
       signIn,
       signOut,
       tokenProvider,
     }),
-    [accessToken, isReady, signIn, signOut, tokenProvider]
+    [accessToken, isReady, session, signIn, signOut, tokenProvider]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
@@ -137,6 +156,12 @@ const AuthStateProvider = ({ children, tokenRef }: AuthStateProviderProps) => {
 
 const verifySession = async (client: FleexaApiClient): Promise<CurrentSessionResponse> => {
   return client.getCurrentSession();
+};
+
+const managerClientPlatform = (): NonNullable<LoginSessionRequest['clientPlatform']> => {
+  if (Platform.OS === 'web') return 'web';
+  if (Platform.OS === 'ios') return 'ios';
+  return 'native';
 };
 
 const shouldClearStoredSession = (error: unknown): boolean => {
@@ -155,7 +180,9 @@ export const AuthProvider = ({ children, config }: AuthProviderProps) => {
 
   return (
     <ApiClientProvider config={config} tokenProvider={tokenProvider}>
-      <AuthStateProvider tokenRef={tokenRef}>{children}</AuthStateProvider>
+      <AuthStateProvider config={config} tokenRef={tokenRef}>
+        {children}
+      </AuthStateProvider>
     </ApiClientProvider>
   );
 };
