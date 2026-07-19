@@ -76,7 +76,7 @@ export interface UpdateDealStageParams {
   dealId: string;
   stageId: string;
   clientMutationId: string;
-  expectedVersion?: number | null;
+  expectedVersion: number;
   note?: string | null;
   lostReason?: { key: string; label: string } | null;
   lostReasonKey?: string;
@@ -1044,6 +1044,7 @@ export class ManagerApiClient implements FleexaApiClient {
     return this.request(`/accounts/${params.accountId}/deals/${params.dealId}`, {
       method: 'PATCH',
       body: {
+        expectedVersion: params.expectedVersion,
         deal: params.deal,
       },
     });
@@ -1056,7 +1057,7 @@ export class ManagerApiClient implements FleexaApiClient {
       body: {
         stageId: params.stageId,
         clientMutationId: params.clientMutationId,
-        expectedVersion: params.expectedVersion ?? null,
+        expectedVersion: params.expectedVersion,
         note: params.note ?? null,
         lostReason: params.lostReason ?? null,
         lostReasonKey: params.lostReasonKey,
@@ -1301,6 +1302,7 @@ const mockDeal: DealSummary = {
   assignee: { id: 'user_mock_manager', displayName: 'Fleexa Manager', type: 'user' },
   lastActivityAt: now,
   lastMessageAt: now,
+  version: 1,
   createdAt: now,
   updatedAt: now,
   permissions: ['deals:read', 'deals:update', 'deals:update_stage'],
@@ -1500,6 +1502,7 @@ export class MockFleexaApiClient implements FleexaApiClient {
         stageKey: stage.key,
         stageLabel: stage.name,
         qualificationStatus: params.deal.qualificationStatus ?? mockDeal.qualificationStatus,
+        version: mockDeal.version + 1,
       },
     };
   }
@@ -1514,6 +1517,7 @@ export class MockFleexaApiClient implements FleexaApiClient {
         stageId: stage.id,
         stageKey: stage.key,
         stageLabel: stage.name,
+        version: mockDeal.version + 1,
       },
       transition: {
         fromStage: mockDeal.stage,

@@ -109,7 +109,7 @@ export const ConversationScreen = ({ conversationId }: { conversationId: string 
       onRefresh={() => {
         void linkedDeal.refetch();
       }}
-      onUpdate={(dealId, deal) => updateDeal.mutate({ dealId, deal })}
+      onUpdate={(dealId, deal, expectedVersion) => updateDeal.mutate({ dealId, deal, expectedVersion })}
       stages={pipelineStages.data?.data ?? []}
       stagesError={pipelineStages.error}
       updateError={updateDeal.error}
@@ -395,7 +395,7 @@ const DealPanel = ({
   loadError: unknown;
   onCreate: () => void;
   onRefresh: () => void;
-  onUpdate: (dealId: string, deal: DealDraft) => void;
+  onUpdate: (dealId: string, deal: DealDraft, expectedVersion: number) => void;
   stages: PipelineStage[];
   stagesError: unknown;
   updateError: unknown;
@@ -415,7 +415,7 @@ const DealPanel = ({
 
   const updateCurrentDeal = (draft: DealDraft) => {
     if (!deal || !canUpdate) return;
-    onUpdate(deal.id, draft);
+    onUpdate(deal.id, draft, deal.version);
   };
 
   const toggleEditing = () => {

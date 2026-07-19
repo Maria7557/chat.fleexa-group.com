@@ -71,6 +71,7 @@ fleexa-manager-booking-sync-foundation-backend.patch
 fleexa-manager-booking-sync-logic-backend.patch
 fleexa-manager-security-rate-limits-backend.patch
 fleexa-manager-session-strategy-backend.patch
+fleexa-manager-concurrency-safety-backend.patch
 "
 
 for patch_file in $PATCHES; do
@@ -113,6 +114,7 @@ bundle exec rails db:drop db:create db:schema:load
 PGPASSWORD="$POSTGRES_PASSWORD" psql -h "$POSTGRES_HOST" -p "$POSTGRES_PORT" -U "$POSTGRES_USERNAME" -d "$POSTGRES_DB" -f /workspace/chatwoot-patches/crm-pipeline-migration.sql >/tmp/crm-pipeline-migration.log
 PGPASSWORD="$POSTGRES_PASSWORD" psql -h "$POSTGRES_HOST" -p "$POSTGRES_PORT" -U "$POSTGRES_USERNAME" -d "$POSTGRES_DB" -f /workspace/chatwoot-patches/fleexa-manager-booking-sync-foundation.sql >/tmp/fleexa-manager-booking-sync-foundation.log
 PGPASSWORD="$POSTGRES_PASSWORD" psql -h "$POSTGRES_HOST" -p "$POSTGRES_PORT" -U "$POSTGRES_USERNAME" -d "$POSTGRES_DB" -f /workspace/chatwoot-patches/fleexa-manager-sessions.sql >/tmp/fleexa-manager-sessions.log
+PGPASSWORD="$POSTGRES_PASSWORD" psql -h "$POSTGRES_HOST" -p "$POSTGRES_PORT" -U "$POSTGRES_USERNAME" -d "$POSTGRES_DB" -f /workspace/chatwoot-patches/fleexa-manager-concurrency-safety.sql >/tmp/fleexa-manager-concurrency-safety.log
 bundle exec rspec \
   spec/requests/api/fleexa_manager/v1/chat_api_spec.rb \
   spec/requests/api/fleexa_manager/v1/booking_sync_foundation_spec.rb \

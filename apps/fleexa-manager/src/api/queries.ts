@@ -189,10 +189,11 @@ export const useUpdateDeal = (accountId: string | null, conversationId: string |
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ dealId, deal }: { dealId: string; deal: DealDraft }) => {
+    mutationFn: ({ dealId, deal, expectedVersion }: { dealId: string; deal: DealDraft; expectedVersion: number }) => {
       return client.updateDeal({
         accountId: accountId ?? '',
         dealId,
+        expectedVersion,
         deal,
       });
     },
@@ -215,8 +216,10 @@ export const useMoveDealStage = (accountId: string | null) => {
       dealId,
       lostReasonLabel,
       stageId,
+      expectedVersion,
     }: {
       dealId: string;
+      expectedVersion: number;
       lostReasonLabel?: string | null;
       stageId: string;
     }) => {
@@ -226,6 +229,7 @@ export const useMoveDealStage = (accountId: string | null) => {
         dealId,
         stageId,
         clientMutationId,
+        expectedVersion,
         idempotencyKey: `stage-move-${clientMutationId}`,
       };
       const trimmedLostReason = lostReasonLabel?.trim();

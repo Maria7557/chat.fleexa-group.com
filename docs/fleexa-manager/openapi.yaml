@@ -325,7 +325,9 @@ paths:
         Creates a deal from the conversation when none exists. If the
         conversation already has a linked deal, the existing deal is returned
         without creating a duplicate. Stage, source, lead origin, and assignment
-        are validated backend-side against account-owned data.
+        are validated backend-side against account-owned data. The backend uses
+        account-scoped unique link protection so concurrent create requests
+        either return the same linked deal or a stable conflict.
       x-account-isolation: required
       x-permission: deals:update
       parameters:
@@ -358,6 +360,8 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
         "422":
           $ref: "#/components/responses/UnprocessableEntity"
 
@@ -370,7 +374,8 @@ paths:
       description: |
         Updates the minimal deal fields needed by Fleexa Manager. The backend
         owns validation for stage, qualification, source attribution, lead
-        origin, lost reason, assignment, and tenant isolation.
+        origin, lost reason, assignment, tenant isolation, and optimistic
+        concurrency through `expectedVersion`.
       x-account-isolation: required
       x-permission: deals:update
       parameters:
@@ -397,6 +402,8 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
         "422":
           $ref: "#/components/responses/UnprocessableEntity"
 
@@ -409,7 +416,8 @@ paths:
       description: |
         Stage movement rules are enforced by the backend. The client must not
         infer required fields, terminal-stage semantics, or blocked transitions
-        from UI state alone.
+        from UI state alone. Repeating a move to the already-current stage is
+        accepted as a no-op; stale moves to a different stage return 409.
       x-account-isolation: required
       x-permission: deals:update_stage
       parameters:
@@ -1124,7 +1132,11 @@ components:
           schema:
             $ref: "#/components/schemas/ErrorResponse"
     Conflict:
-      description: Version conflict, duplicate mutation, or idempotency key reuse with different payload.
+      description: |
+        Version conflict, duplicate mutation, or idempotency key reuse with
+        different payload. Deal concurrency conflicts use error code
+        `version_conflict` and include `expectedVersion` and `currentVersion`
+        in `error.details`.
       content:
         application/json:
           schema:
@@ -1419,6 +1431,7 @@ components:
       required:
         - id
         - accountId
+        - version
         - title
         - status
         - channel
@@ -1865,6 +1878,10 @@ components:
           type: string
         accountId:
           type: string
+        version:
+          type: integer
+          minimum: 0
+          description: Optimistic concurrency version for Manager deal mutations.
         conversationId:
           description: Stable Manager conversation id when the deal is linked to a conversation.
           oneOf:
@@ -2038,8 +2055,13 @@ components:
       type: object
       additionalProperties: false
       required:
+        - expectedVersion
         - deal
       properties:
+        expectedVersion:
+          type: integer
+          minimum: 0
+          description: Must match the current `DealSummary.version`; stale values return 409.
         deal:
           $ref: "#/components/schemas/DealDraft"
 
@@ -2070,6 +2092,7 @@ components:
       required:
         - stageId
         - clientMutationId
+        - expectedVersion
       properties:
         stageId:
           type: string
@@ -2077,9 +2100,9 @@ components:
           type: string
           format: uuid
         expectedVersion:
-          type:
-            - integer
-            - "null"
+          type: integer
+          minimum: 0
+          description: Must match the current `DealSummary.version`; stale values return 409 unless the requested stage is already current.
         note:
           type:
             - string

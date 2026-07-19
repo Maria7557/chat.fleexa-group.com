@@ -1,0 +1,527 @@
+diff --git a/app/controllers/api/fleexa_manager/v1/accounts/conversations/deals_controller.rb b/app/controllers/api/fleexa_manager/v1/accounts/conversations/deals_controller.rb
+index a1303d8..5fd3471 100644
+--- a/app/controllers/api/fleexa_manager/v1/accounts/conversations/deals_controller.rb
++++ b/app/controllers/api/fleexa_manager/v1/accounts/conversations/deals_controller.rb
+@@ -21,6 +21,8 @@ class Api::FleexaManager::V1::Accounts::Conversations::DealsController < Api::Fl
+     render json: linked_deal_response(result.deal), status: result.created ? :created : :ok
+   rescue FleexaManager::V1::DealMutationService::InvalidPayload => e
+     render_manager_error('validation_failed', e.message, status: :unprocessable_entity, details: e.details)
++  rescue ActiveRecord::RecordNotUnique
++    render_manager_error('conflict', 'Deal link already exists. Refresh and retry.', status: :conflict, details: { retryable: true })
+   rescue ActiveRecord::RecordInvalid => e
+     render_manager_error('validation_failed', e.record.errors.full_messages.join(', '), status: :unprocessable_entity)
+   end
+diff --git a/app/controllers/api/fleexa_manager/v1/accounts/deals_controller.rb b/app/controllers/api/fleexa_manager/v1/accounts/deals_controller.rb
+index b2a7c75..1338613 100644
+--- a/app/controllers/api/fleexa_manager/v1/accounts/deals_controller.rb
++++ b/app/controllers/api/fleexa_manager/v1/accounts/deals_controller.rb
+@@ -15,6 +15,8 @@ class Api::FleexaManager::V1::Accounts::DealsController < Api::FleexaManager::V1
+     }
+   rescue FleexaManager::V1::DealMutationService::InvalidPayload => e
+     render_manager_error('validation_failed', e.message, status: :unprocessable_entity, details: e.details)
++  rescue FleexaManager::V1::DealMutationService::VersionConflict => e
++    render_manager_error('version_conflict', e.message, status: :conflict, details: e.details)
+   rescue ActiveRecord::RecordInvalid => e
+     render_manager_error('validation_failed', e.record.errors.full_messages.join(', '), status: :unprocessable_entity)
+   end
+@@ -41,6 +43,8 @@ class Api::FleexaManager::V1::Accounts::DealsController < Api::FleexaManager::V1
+     }
+   rescue FleexaManager::V1::DealMutationService::InvalidPayload => e
+     render_manager_error('validation_failed', e.message, status: :unprocessable_entity, details: e.details)
++  rescue FleexaManager::V1::DealMutationService::VersionConflict => e
++    render_manager_error('version_conflict', e.message, status: :conflict, details: e.details)
+   rescue ActiveRecord::RecordInvalid => e
+     render_manager_error('validation_failed', e.record.errors.full_messages.join(', '), status: :unprocessable_entity)
+   end
+@@ -93,7 +97,8 @@ class Api::FleexaManager::V1::Accounts::DealsController < Api::FleexaManager::V1
+         stageKey: params[:stageKey],
+         lostReason: params[:lostReason],
+         lostReasonKey: params[:lostReasonKey],
+-        lostReasonLabel: params[:lostReasonLabel]
++        lostReasonLabel: params[:lostReasonLabel],
++        expectedVersion: params[:expectedVersion]
+       }.compact
+     }
+   end
+diff --git a/app/services/fleexa_manager/v1/deal_mutation_service.rb b/app/services/fleexa_manager/v1/deal_mutation_service.rb
+index bd1b3b6..2a4ab49 100644
+--- a/app/services/fleexa_manager/v1/deal_mutation_service.rb
++++ b/app/services/fleexa_manager/v1/deal_mutation_service.rb
+@@ -14,6 +14,19 @@ module FleexaManager
+         end
+       end
+ 
++      class VersionConflict < StandardError
++        attr_reader :details
++
++        def initialize(expected:, current:)
++          @details = {
++            expectedVersion: expected,
++            currentVersion: current,
++            retryable: false
++          }
++          super('Deal was updated by another request. Refresh and retry.')
++        end
++      end
++
+       Result = Struct.new(:deal, :created, keyword_init: true)
+ 
+       def initialize(account:, user:)
+@@ -30,7 +43,15 @@ module FleexaManager
+         raise InvalidPayload, 'Pipeline stage is required.' if stage.blank?
+ 
+         deal = nil
++        created = false
+         ActiveRecord::Base.transaction do
++          conversation.lock!
++          existing_deal = linked_deal_for(conversation)
++          if existing_deal.present?
++            deal = existing_deal
++            next
++          end
++
+           deal = CrmDeal.create!(
+             account: @account,
+             conversation: conversation,
+@@ -42,13 +63,20 @@ module FleexaManager
+             custom_attributes: custom_attributes_for({}, normalized_payload, defaults: { 'qualification_status' => 'pending' })
+           )
+           create_activity(deal, 'created', to_stage: stage)
++          created = true
+         end
+ 
+-        Result.new(deal: deal.reload, created: true)
++        Result.new(deal: deal.reload, created: created)
++      rescue ActiveRecord::RecordNotUnique
++        existing_deal = linked_deal_for(conversation)
++        return Result.new(deal: existing_deal, created: false) if existing_deal.present?
++
++        raise
+       end
+ 
+       def update(deal:, payload:)
+         normalized_payload = payload_hash(payload)
++        expected_version = expected_version!(normalized_payload)
+         attrs = {}
+ 
+         if key_present?(normalized_payload, 'title', 'clientName', 'client_name')
+@@ -67,13 +95,28 @@ module FleexaManager
+         validate_lost_reason_for_stage!(stage, attrs[:custom_attributes] || deal.custom_attributes || {}, normalized_payload) if stage.present?
+ 
+         old_stage = deal.stage
++        result = nil
+         ActiveRecord::Base.transaction do
++          deal.lock!
++          if expected_version != deal.lock_version.to_i
++            if safe_stage_repeat?(deal, attrs)
++              result = Result.new(deal: deal.reload, created: false)
++              next
++            end
++
++            raise VersionConflict.new(expected: expected_version, current: deal.lock_version.to_i)
++          end
++
+           deal.update!(attrs)
+           create_activity(deal, 'stage_changed', from_stage: old_stage, to_stage: deal.stage) if attrs.key?(:stage) && old_stage.id != deal.stage_id
+           create_activity(deal, 'updated') unless attrs.key?(:stage)
++          result = Result.new(deal: deal.reload, created: false)
+         end
+ 
+-        Result.new(deal: deal.reload, created: false)
++        result
++      rescue ActiveRecord::StaleObjectError
++        deal.reload
++        raise VersionConflict.new(expected: expected_version, current: deal.lock_version.to_i)
+       end
+ 
+       private
+@@ -94,11 +137,31 @@ module FleexaManager
+                       else
+                         {}
+                       end
+-        raw_payload = raw_payload['deal'] || raw_payload[:deal] if (raw_payload['deal'] || raw_payload[:deal]).is_a?(Hash)
++        raw_payload = raw_payload.deep_stringify_keys
++        if raw_payload['deal'].is_a?(Hash)
++          deal_payload = raw_payload['deal'].deep_stringify_keys
++          %w[expectedVersion expected_version].each do |key|
++            deal_payload[key] = raw_payload[key] if raw_payload.key?(key)
++          end
++          raw_payload = deal_payload
++        end
+ 
+         raw_payload.deep_stringify_keys
+       end
+ 
++      def expected_version!(payload)
++        raise InvalidPayload.new('expectedVersion is required.', { missingFields: ['expectedVersion'] }) unless key_present?(payload, 'expectedVersion', 'expected_version')
++
++        raw = string_value(payload, 'expectedVersion', 'expected_version')
++        Integer(raw)
++      rescue ArgumentError, TypeError
++        raise InvalidPayload, 'expectedVersion must be an integer.'
++      end
++
++      def safe_stage_repeat?(deal, attrs)
++        attrs.keys == [:stage] && attrs[:stage].id == deal.stage_id
++      end
++
+       def default_stage
+         CrmPipelineStage.for_account(@account.id).ordered.first
+       end
+diff --git a/app/services/fleexa_manager/v1/dto_serializer.rb b/app/services/fleexa_manager/v1/dto_serializer.rb
+index da1dda8..468f017 100644
+--- a/app/services/fleexa_manager/v1/dto_serializer.rb
++++ b/app/services/fleexa_manager/v1/dto_serializer.rb
+@@ -99,6 +99,7 @@ module FleexaManager
+           {
+             id: deal_id(deal),
+             accountId: account_id(deal.account),
++            version: deal.lock_version.to_i,
+             conversationId: deal.conversation.present? ? conversation_id(deal.conversation) : nil,
+             title: deal.title.to_s,
+             clientName: deal.contact&.name.presence || deal.title.to_s,
+diff --git a/spec/requests/api/fleexa_manager/v1/booking_sync_foundation_spec.rb b/spec/requests/api/fleexa_manager/v1/booking_sync_foundation_spec.rb
+index 36812ef..78d08d5 100644
+--- a/spec/requests/api/fleexa_manager/v1/booking_sync_foundation_spec.rb
++++ b/spec/requests/api/fleexa_manager/v1/booking_sync_foundation_spec.rb
+@@ -261,6 +261,45 @@ RSpec.describe 'Fleexa Manager Booking sync foundation API', type: :request do
+       expect(index.where).to include("booking_id")
+     end
+ 
++    it 'has unique conversation-link protection for account-scoped crm_deals' do
++      index = ActiveRecord::Base.connection.indexes(:crm_deals).find do |candidate|
++        candidate.name == 'uq_crm_deals_account_conversation_id_nonempty'
++      end
++
++      expect(index).to be_present
++      expect(index.unique).to be(true)
++      expect(index.columns).to eq(%w[account_id conversation_id])
++      expect(index.where).to include("conversation_id IS NOT NULL")
++    end
++
++    it 'uses lock_version for optimistic deal concurrency' do
++      column = CrmDeal.columns_hash['lock_version']
++
++      expect(column).to be_present
++      expect(column.default.to_i).to eq(0)
++      expect(column.null).to be(false)
++    end
++
++    it 'enforces one linked deal per account conversation at the database layer' do
++      stage = CrmPipelineStage.create!(
++        account: account,
++        slug: 'reserved',
++        name: 'Booking',
++        color: '#0EA5A0',
++        position: 1,
++        fleet_status_trigger: 'reserved'
++      )
++      inbox = create(:inbox, account: account)
++      contact = create(:contact, account: account)
++      contact_inbox = create(:contact_inbox, contact: contact, inbox: inbox)
++      conversation = create(:conversation, account: account, inbox: inbox, contact: contact, contact_inbox: contact_inbox)
++      CrmDeal.create!(account: account, stage: stage, conversation: conversation, title: 'First linked deal')
++
++      expect do
++        CrmDeal.create!(account: account, stage: stage, conversation: conversation, title: 'Duplicate linked deal')
++      end.to raise_error(ActiveRecord::RecordNotUnique)
++    end
++
+     it 'indexes contacts.custom_attributes booking_client_id for lookup without phone merges' do
+       index = ActiveRecord::Base.connection.indexes(:contacts).find do |candidate|
+         candidate.name == 'idx_contacts_booking_client_id_custom_attributes'
+diff --git a/spec/requests/api/fleexa_manager/v1/booking_sync_logic_spec.rb b/spec/requests/api/fleexa_manager/v1/booking_sync_logic_spec.rb
+index 7b830cb..a8c1003 100644
+--- a/spec/requests/api/fleexa_manager/v1/booking_sync_logic_spec.rb
++++ b/spec/requests/api/fleexa_manager/v1/booking_sync_logic_spec.rb
+@@ -356,6 +356,25 @@ RSpec.describe 'Fleexa Manager Booking sync logic API', type: :request do
+     expect(json_response['pipelineDealId']).to eq(first_deal_id)
+   end
+ 
++  it 'does not duplicate Booking sync when the same Idempotency-Key is retried' do
++    idempotency_headers = booking_headers.merge('Idempotency-Key' => 'booking-sync-order-1001-v7')
++    payload = sync_payload.except(:event_id)
++
++    post sync_path, params: payload, headers: idempotency_headers, as: :json
++    first_deal_id = json_response['pipelineDealId']
++
++    expect do
++      post sync_path, params: payload, headers: idempotency_headers, as: :json
++    end.not_to change { CrmDeal.for_account(account.id).count }
++
++    expect(response).to have_http_status(:ok)
++    expect(json_response).to include(
++      'status' => 'SYNCED',
++      'pipelineDealId' => first_deal_id
++    )
++    expect(CrmDeal.find(first_deal_id).custom_attributes['last_booking_event_id']).to eq('booking-sync-order-1001-v7')
++  end
++
+   it 'does not merge people by phone when booking_client_id differs' do
+     existing_contact = booking_contact(booking_client_id: 'booking_contact_old', phone: '+971501112233', name: 'Existing Phone Owner')
+ 
+@@ -426,6 +445,10 @@ RSpec.describe 'Fleexa Manager Booking sync logic API', type: :request do
+     deal.reload
+     expect(deal.car_model).to eq('Old model')
+     expect(deal.amount).to eq(BigDecimal('1000.0'))
++    expect(deal.custom_attributes).to include(
++      'booking_version' => 9,
++      'booking_status' => 'reserved'
++    )
+   end
+ 
+   it 'maps cancel through fleet_status_trigger cancel instead of assuming lost' do
+diff --git a/spec/requests/api/fleexa_manager/v1/chat_api_spec.rb b/spec/requests/api/fleexa_manager/v1/chat_api_spec.rb
+index 0d6d07c..807b482 100644
+--- a/spec/requests/api/fleexa_manager/v1/chat_api_spec.rb
++++ b/spec/requests/api/fleexa_manager/v1/chat_api_spec.rb
+@@ -465,6 +465,19 @@ RSpec.describe 'Fleexa Manager chat API', type: :request do
+       expect(json_response['idempotency']).to include('duplicate' => true, 'originalMessageId' => first_message_id)
+     end
+ 
++    it 'does not duplicate a repeated request when only clientMessageId is supplied' do
++      post message_path, params: payload, headers: headers
++      first_message_id = json_response['data']['id']
++
++      expect do
++        post message_path, params: payload, headers: headers
++      end.not_to change { conversation.messages.count }
++
++      expect(response).to have_http_status(:created)
++      expect(json_response['data']['id']).to eq(first_message_id)
++      expect(json_response['idempotency']).to include('key' => client_message_id, 'duplicate' => true)
++    end
++
+     it 'rejects key reuse with a different payload' do
+       post message_path, params: payload, headers: idempotent_headers
+ 
+@@ -537,6 +550,7 @@ RSpec.describe 'Fleexa Manager chat API', type: :request do
+       expect(json_response['linkState']).to eq('linked')
+       expect(json_response['deal']).to include(
+         'id' => "deal_#{deal.id}",
++        'version' => deal.lock_version,
+         'title' => 'Range Rover weekly rental',
+         'clientName' => contact.name,
+         'currency' => 'AED',
+@@ -589,6 +603,7 @@ RSpec.describe 'Fleexa Manager chat API', type: :request do
+       expect(json_response['deal']).to include(
+         'id' => "deal_#{deal.id}",
+         'accountId' => "acc_#{account.id}",
++        'version' => deal.lock_version,
+         'stageKey' => 'new',
+         'currency' => 'AED'
+       )
+@@ -612,6 +627,19 @@ RSpec.describe 'Fleexa Manager chat API', type: :request do
+       expect(json_response['deal']['id']).to eq("deal_#{existing_deal.id}")
+     end
+ 
++    it 'serializes linked deal creation with a conversation row lock before insert' do
++      expect_any_instance_of(Conversation).to receive(:lock!).and_call_original
++
++      expect do
++        post deal_path,
++             params: { deal: { title: 'Locked create request', stageKey: 'new' } },
++             headers: headers
++      end.to change { CrmDeal.for_account(account.id).where(conversation_id: conversation.id).count }.by(1)
++
++      expect(response).to have_http_status(:created)
++      expect(json_response['deal']).to include('title' => 'Locked create request')
++    end
++
+     it 'updates deal fields through the Manager deal endpoint' do
+       deal = CrmDeal.create!(
+         account: account,
+@@ -625,6 +653,7 @@ RSpec.describe 'Fleexa Manager chat API', type: :request do
+ 
+       patch "/api/fleexa-manager/v1/accounts/acc_#{account.id}/deals/deal_#{deal.id}",
+             params: {
++              expectedVersion: deal.lock_version,
+               deal: {
+                 title: 'Updated rental',
+                 amount: { amount: '18000', currency: 'AED' },
+@@ -651,12 +680,59 @@ RSpec.describe 'Fleexa Manager chat API', type: :request do
+       )
+       expect(json_response['data']).to include(
+         'id' => "deal_#{deal.id}",
++        'version' => 1,
+         'stageKey' => 'won',
+         'qualificationStatus' => 'qualified'
+       )
+       expect(json_response['data']).not_to include('custom_attributes', 'stage_id', 'conversation_id')
+     end
+ 
++    it 'requires expectedVersion for deal updates' do
++      deal = CrmDeal.create!(
++        account: account,
++        conversation: conversation,
++        contact: contact,
++        stage: stage,
++        title: 'Version protected deal'
++      )
++
++      patch "/api/fleexa-manager/v1/accounts/acc_#{account.id}/deals/deal_#{deal.id}",
++            params: { deal: { title: 'Missing version update' } },
++            headers: headers
++
++      expect(response).to have_http_status(:unprocessable_entity)
++      expect(json_response['error']['code']).to eq('validation_failed')
++      expect(json_response['error']['details']['missingFields']).to include('expectedVersion')
++      expect(deal.reload.title).to eq('Version protected deal')
++    end
++
++    it 'returns a conflict when a deal update uses a stale expectedVersion' do
++      deal = CrmDeal.create!(
++        account: account,
++        conversation: conversation,
++        contact: contact,
++        stage: stage,
++        title: 'Original title'
++      )
++      stale_version = deal.lock_version
++      deal.update!(title: 'Updated elsewhere')
++
++      patch "/api/fleexa-manager/v1/accounts/acc_#{account.id}/deals/deal_#{deal.id}",
++            params: {
++              expectedVersion: stale_version,
++              deal: { title: 'Stale update' }
++            },
++            headers: headers
++
++      expect(response).to have_http_status(:conflict)
++      expect(json_response['error']['code']).to eq('version_conflict')
++      expect(json_response['error']['details']).to include(
++        'expectedVersion' => stale_version,
++        'currentVersion' => deal.reload.lock_version
++      )
++      expect(deal.title).to eq('Updated elsewhere')
++    end
++
+     it 'denies inaccessible accounts and conversation-account mismatches' do
+       other_inbox = create(:inbox, account: other_account)
+       other_contact = create(:contact, account: other_account)
+@@ -693,7 +769,7 @@ RSpec.describe 'Fleexa Manager chat API', type: :request do
+       )
+ 
+       patch "/api/fleexa-manager/v1/accounts/acc_#{other_account.id}/deals/deal_#{deal.id}",
+-            params: { deal: { title: 'Wrong account update' } },
++            params: { expectedVersion: deal.lock_version, deal: { title: 'Wrong account update' } },
+             headers: headers
+ 
+       expect(response).to have_http_status(:forbidden)
+@@ -855,6 +931,7 @@ RSpec.describe 'Fleexa Manager chat API', type: :request do
+       patch "/api/fleexa-manager/v1/accounts/acc_#{account.id}/deals/deal_#{deal.id}/stage",
+             params: {
+               stageId: "stage_#{active_stage.id}",
++              expectedVersion: deal.lock_version,
+               clientMutationId: SecureRandom.uuid
+             },
+             headers: headers
+@@ -863,6 +940,7 @@ RSpec.describe 'Fleexa Manager chat API', type: :request do
+       expect(deal.reload.stage_id).to eq(active_stage.id)
+       expect(json_response['data']).to include(
+         'id' => "deal_#{deal.id}",
++        'version' => 1,
+         'stageId' => "stage_#{active_stage.id}",
+         'stageKey' => 'in_progress',
+         'stageLabel' => 'In progress'
+@@ -888,6 +966,7 @@ RSpec.describe 'Fleexa Manager chat API', type: :request do
+       patch "/api/fleexa-manager/v1/accounts/acc_#{account.id}/deals/deal_#{deal.id}/stage",
+             params: {
+               stageId: "stage_#{lost_stage.id}",
++              expectedVersion: deal.lock_version,
+               clientMutationId: SecureRandom.uuid
+             },
+             headers: headers
+@@ -899,6 +978,7 @@ RSpec.describe 'Fleexa Manager chat API', type: :request do
+       patch "/api/fleexa-manager/v1/accounts/acc_#{account.id}/deals/deal_#{deal.id}/stage",
+             params: {
+               stageId: "stage_#{lost_stage.id}",
++              expectedVersion: deal.reload.lock_version,
+               clientMutationId: SecureRandom.uuid,
+               lostReasonLabel: 'No reply'
+             },
+@@ -924,6 +1004,7 @@ RSpec.describe 'Fleexa Manager chat API', type: :request do
+       patch "/api/fleexa-manager/v1/accounts/acc_#{account.id}/deals/deal_#{deal.id}/stage",
+             params: {
+               stageId: 'stage_999999',
++              expectedVersion: deal.lock_version,
+               clientMutationId: SecureRandom.uuid
+             },
+             headers: headers
+@@ -934,6 +1015,7 @@ RSpec.describe 'Fleexa Manager chat API', type: :request do
+       patch "/api/fleexa-manager/v1/accounts/acc_#{other_account.id}/deals/deal_#{deal.id}/stage",
+             params: {
+               stageId: "stage_#{active_stage.id}",
++              expectedVersion: deal.lock_version,
+               clientMutationId: SecureRandom.uuid
+             },
+             headers: headers
+@@ -943,6 +1025,68 @@ RSpec.describe 'Fleexa Manager chat API', type: :request do
+       expect(deal.reload.stage_id).to eq(intake_stage.id)
+     end
+ 
++    it 'treats a repeated stage move to the current stage as a safe no-op' do
++      deal = CrmDeal.create!(
++        account: account,
++        conversation: conversation,
++        contact: contact,
++        stage: intake_stage,
++        title: 'Retry-safe move'
++      )
++      stale_version = deal.lock_version
++      payload = {
++        stageId: "stage_#{active_stage.id}",
++        expectedVersion: stale_version,
++        clientMutationId: SecureRandom.uuid
++      }
++
++      expect do
++        patch "/api/fleexa-manager/v1/accounts/acc_#{account.id}/deals/deal_#{deal.id}/stage",
++              params: payload,
++              headers: headers
++      end.to change { CrmDealActivity.where(account_id: account.id, deal_id: deal.id, activity_type: 'stage_changed').count }.by(1)
++
++      expect(response).to have_http_status(:ok)
++      expect(deal.reload.stage_id).to eq(active_stage.id)
++
++      expect do
++        patch "/api/fleexa-manager/v1/accounts/acc_#{account.id}/deals/deal_#{deal.id}/stage",
++              params: payload,
++              headers: headers
++      end.not_to change { CrmDealActivity.where(account_id: account.id, deal_id: deal.id, activity_type: 'stage_changed').count }
++
++      expect(response).to have_http_status(:ok)
++      expect(json_response['data']).to include(
++        'id' => "deal_#{deal.id}",
++        'version' => deal.reload.lock_version,
++        'stageId' => "stage_#{active_stage.id}"
++      )
++    end
++
++    it 'returns a conflict when a stage move uses a stale expectedVersion for a different stage' do
++      deal = CrmDeal.create!(
++        account: account,
++        conversation: conversation,
++        contact: contact,
++        stage: intake_stage,
++        title: 'Stale move'
++      )
++      stale_version = deal.lock_version
++      deal.update!(title: 'Touched elsewhere')
++
++      patch "/api/fleexa-manager/v1/accounts/acc_#{account.id}/deals/deal_#{deal.id}/stage",
++            params: {
++              stageId: "stage_#{active_stage.id}",
++              expectedVersion: stale_version,
++              clientMutationId: SecureRandom.uuid
++            },
++            headers: headers
++
++      expect(response).to have_http_status(:conflict)
++      expect(json_response['error']['code']).to eq('version_conflict')
++      expect(deal.reload.stage_id).to eq(intake_stage.id)
++    end
++
+     it 'denies pipeline access without deal permissions' do
+       operator = create(:user)
+       create(:account_user, account: account, user: operator, role: :agent)

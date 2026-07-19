@@ -34,8 +34,10 @@ RSpec. The harness therefore builds a separate test path:
   test bundle with `bundle config set without ""` and `bundle install`.
 - Starts local `postgres` and `redis` only.
 - Uses isolated test database `chatwoot_test`.
-- Loads `crm-pipeline-migration.sql` and
-  `fleexa-manager-booking-sync-foundation.sql`.
+- Loads `crm-pipeline-migration.sql`,
+  `fleexa-manager-booking-sync-foundation.sql`,
+  `fleexa-manager-sessions.sql`, and
+  `fleexa-manager-concurrency-safety.sql`.
 
 The first run needs network access for the sparse upstream clone and the test
 bundle image build. Later runs reuse the cached clone and Docker image unless
@@ -76,6 +78,10 @@ bundle exec rspec \
 - Stage 4C session hardening: added executable specs for web HttpOnly cookie
   sessions, iOS bearer sessions, logout revoke, expired/invalid sessions, and
   disabled-user denial.
+- Stage 4D concurrency hardening: added executable specs for Manager message
+  retry safety, Booking idempotency retry safety, linked-deal uniqueness, deal
+  optimistic concurrency conflicts, repeated stage move no-ops, and stale
+  Booking event no-overwrite behavior.
 
 ## Latest Result
 
@@ -88,7 +94,7 @@ make fleexa-manager-rspec
 Result:
 
 ```text
-92 examples, 0 failures
+102 examples, 0 failures
 ```
 
 ## Stage 4 Verification Run
@@ -100,7 +106,7 @@ Checked on 2026-07-19:
 | `git fetch origin main --prune` | Pass, `main`, `origin/main`, and branch base are `6af8928`. |
 | OpenAPI YAML parse | Pass. |
 | Ruby syntax for patched Manager API files | Pass from the RSpec image against `/tmp/fleexa-chatwoot-rspec-app`. |
-| `make fleexa-manager-rspec` | Pass, `92 examples, 0 failures`. |
+| `make fleexa-manager-rspec` | Pass, `102 examples, 0 failures`. |
 | `make crm-assets-build-host` | Pass, `CRM host assets built`. |
 | `git diff --check` | Pass. |
 

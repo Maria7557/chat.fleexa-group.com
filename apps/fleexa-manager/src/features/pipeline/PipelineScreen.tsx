@@ -117,6 +117,7 @@ export const PipelineScreen = ({ accountId }: { accountId: string | null }) => {
     moveDealStage.mutate(
       {
         dealId: selectedDeal.id,
+        expectedVersion: selectedDeal.version,
         lostReasonLabel: stage.kind === 'lost' ? lostReasonDraft : null,
         stageId: stage.id,
       },

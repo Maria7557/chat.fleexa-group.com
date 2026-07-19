@@ -350,6 +350,7 @@ describe('@fleexa/api-client', () => {
     const managerDeal = {
       id: 'deal_9',
       accountId: 'acc_1',
+      version: 3,
       title: 'Range Rover rental',
       clientName: 'Amina Noor',
       amount: { amount: '14000', currency: 'AED' },
@@ -405,6 +406,7 @@ describe('@fleexa/api-client', () => {
     const updatedDeal = await client.updateDeal({
       accountId: 'acc_1',
       dealId: 'deal_9',
+      expectedVersion: 3,
       deal: {
         title: 'Updated rental',
         qualificationStatus: 'qualified',
@@ -441,6 +443,7 @@ describe('@fleexa/api-client', () => {
       expect.objectContaining({
         method: 'PATCH',
         body: JSON.stringify({
+          expectedVersion: 3,
           deal: {
             title: 'Updated rental',
             qualificationStatus: 'qualified',
@@ -457,6 +460,7 @@ describe('@fleexa/api-client', () => {
     const managerDeal = {
       id: 'deal_9',
       accountId: 'acc_1',
+      version: 4,
       title: 'Range Rover rental',
       clientName: 'Amina Noor',
       amount: { amount: '14000', currency: 'AED' },
@@ -539,6 +543,7 @@ describe('@fleexa/api-client', () => {
       dealId: 'deal_9',
       stageId: 'stage_lost',
       clientMutationId: '4f236d7a-7054-4ad2-a592-2a9bd5ac3051',
+      expectedVersion: 4,
       lostReasonLabel: 'No reply',
       idempotencyKey: 'stage-move-4f236d7a-7054-4ad2-a592-2a9bd5ac3051',
     });
@@ -565,7 +570,7 @@ describe('@fleexa/api-client', () => {
         body: JSON.stringify({
           stageId: 'stage_lost',
           clientMutationId: '4f236d7a-7054-4ad2-a592-2a9bd5ac3051',
-          expectedVersion: null,
+          expectedVersion: 4,
           note: null,
           lostReason: null,
           lostReasonLabel: 'No reply',

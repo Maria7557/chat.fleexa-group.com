@@ -159,6 +159,7 @@ export interface BookingRef {
 export interface DealSummary {
   id: string;
   accountId: string;
+  version: number;
   conversationId?: string | null;
   title: string;
   clientName: string | null;
@@ -357,6 +358,7 @@ export interface CreateConversationDealRequest {
 }
 
 export interface UpdateDealRequest {
+  expectedVersion: number;
   deal: DealDraft;
 }
 
