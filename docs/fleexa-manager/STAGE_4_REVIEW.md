@@ -2,29 +2,47 @@
 
 Date: 2026-07-19
 Branch: `codex/fleexa-manager-stage-4-hardening`
-Reviewed commit before this gate: `4ebe450`
+Reviewed candidate: `27ce468`
 
-## Current Readiness
+## Final Decision
 
-Current readiness: **84%**
+**NO_GO for controlled beta**
 
-Stage 4 is now shaped like a controlled beta gate instead of a collection of
-manual checks. The Manager API path has request specs, rate-limit specs,
-session specs, concurrency specs, realtime specs, and an isolated controlled
-beta API E2E smoke. Expo web exports cleanly, and production/live config is
-guarded against mock mode and raw Chatwoot API usage.
+Final score: **70/100**
 
-## Controlled Beta Decision
+Stage 4 is strong as a local code and backend safety gate, but it is not a
+controlled beta release gate yet. The required operational proofs are missing:
+real remote staging, iOS Simulator smoke, Sentry event delivery, remote browser
+E2E, staging backup/restore, and staging rollback.
 
-Decision: **NO-GO for controlled beta until the remaining operational blockers
-below are closed.**
+GO_FOR_CONTROLLED_BETA is not allowed because the docs for those gates still
+record `DO_NOT_CONTINUE` or are missing.
 
-The technical gate is CI-ready, but controlled beta should not start yet because
-iOS Simulator smoke is still blocked by missing full Xcode/`simctl`, backup and
-restore have not been drilled on a beta-like environment, and Sentry event
-delivery has not been verified against real web/iOS/backend projects.
+## Proof Summary
 
-## What Is Production-Shaped
+| Gate | Status | Evidence |
+| --- | --- | --- |
+| Manager API specs | Passed | `make fleexa-manager-rspec`, 113 examples / 0 failures |
+| API E2E smoke | Passed locally | `npm run smoke:e2e`, 1 example / 0 failures in isolated RSpec DB |
+| Expo web export | Passed | `npm run smoke:web` |
+| Chatwoot asset build | Passed | `make crm-assets-build-host` |
+| OpenAPI parse | Passed | `npm run openapi:check` |
+| Health check | Passed locally | `npm run health:manager` against local Manager API |
+| Clean checkout reproduction | Passed for committed candidate | clean worktree at `27ce468` ran `npm ci`, lint, typecheck, tests, OpenAPI parse |
+| Patch-chain reproduction | Passed locally | RSpec harness and `crm-assets-build-host` applied patch chain |
+| Secret scan | Passed | high-risk token/key scan across 195 git-visible files |
+| Migration idempotency | Passed locally | Stage 4 SQL re-applied to isolated `chatwoot_test` DB |
+| Booking receiver default-off | Passed locally | request specs prove `SYNC_DISABLED` when receiver flag is absent |
+| Remote staging | Missing | `STAGING_RUNBOOK.md` records no staging URL/runtime |
+| iOS smoke | Missing | `STAGE_4_IOS_SMOKE.md` is absent; `simctl` unavailable in observed toolchain |
+| Sentry delivery | Missing | `OBSERVABILITY_RUNBOOK.md` records no real event IDs |
+| Remote browser E2E | Missing | `STAGING_E2E_RESULTS.md` records not run, no staging URL |
+| ActionCable reconnect smoke | Missing remotely | specs exist, but no staging `/cable` reconnect proof |
+| E2E test-data cleanup | Not applicable | no remote E2E writes were made because staging is missing |
+| Backup/restore drill | Missing | `BACKUP_RESTORE_DRILL.md` records not run, no staging DB |
+| Rollback drill | Missing | `ROLLBACK_DRILL.md` records only source artifact simulation |
+
+## Production-Shaped Parts
 
 - Expo production/live mode uses `ManagerApiClient` and
   `/api/fleexa-manager/v1`.
@@ -38,61 +56,46 @@ delivery has not been verified against real web/iOS/backend projects.
 - Deal update optimistic concurrency and repeated stage move safety are covered
   by specs.
 - Realtime has ActionCable channel and broadcaster specs.
-- Patch-chain build has a documented command.
-- CI-ready workflow and local `npm run ci:fleexa-manager` gate exist.
+- Booking receiver is default-off and returns `SYNC_DISABLED` unless explicitly
+  enabled in account settings.
 
-## What Is Still Demo-Only Or Not Yet Beta-Proven
+## NO-GO Blockers
 
-- iOS Simulator smoke is not verified on this machine.
-- Browser UI E2E is not automated yet; current controlled beta smoke is API E2E
-  in the patched Rails test app.
-- Booking receiver remains guarded; Booking production enablement is not part of
-  this gate.
-- Sentry event delivery is configured but not proven against real projects.
-- Backup/restore and rollback are documented but not drilled.
-- Production health checks need a deployed beta environment and monitor user.
-- Push notifications, deep links, files, and production mobile background
-  behavior remain outside this gate.
+1. No real remote staging URL or isolated staging runtime exists.
+2. No isolated staging PostgreSQL/Redis/ActionCable proof exists.
+3. iOS Simulator smoke is not proven and `STAGE_4_IOS_SMOKE.md` is missing.
+4. Sentry web/iOS/backend delivery is not proven with real event IDs.
+5. Remote browser E2E is not run.
+6. ActionCable reconnect/de-duplication is not proven against staging.
+7. Backup/restore is documented only, not executed against staging.
+8. Rollback is simulated with source artifacts only, not executed against
+   staging.
+9. Current working tree contains uncommitted no-go documentation and
+   observability additions, so exact current-tree CI reproduction is not a clean
+   committed artifact.
 
-## Remaining Blockers Before First Paid Client
-
-1. Install/select full Xcode and run real iOS Simulator smoke:
-   login, conversations, filters, chat, send, linked deal, pipeline, move stage.
-2. Add browser automation against a seeded staging/beta environment.
-3. Verify Sentry event delivery for web, iOS, and backend with source maps.
-4. Complete a backup/restore drill and record evidence.
-5. Define production monitor credentials and authenticated health checks.
-6. Run rollback drill for Chatwoot image, Expo web build, and env rollback.
-7. Confirm production Booking sync/relink enablement plan before exposing
-   Booking to beta users.
-
-## Exact Checks
+## Exact Checks From Final Regression
 
 | Check | Result |
 | --- | --- |
 | `npm run lint` | Pass |
 | `npm run typecheck` | Pass |
-| `npm test` | Pass, 29 tests |
-| `make fleexa-manager-rspec` | Pass, 109 examples / 0 failures |
+| `npm test` | Pass, 5 files / 31 tests |
+| `make fleexa-manager-rspec` | Pass, 113 examples / 0 failures |
 | `npm run smoke:web` | Pass, Expo web export |
 | `npm run smoke:e2e` | Pass, 1 example / 0 failures |
 | `npm run openapi:check` | Pass, OpenAPI YAML parsed |
-| `npm run health:manager` | Pass, CORS preflight and stable unauthenticated health |
-| `git diff --check` | Pass |
+| `npm run health:manager` | Pass, local CORS preflight and unauthenticated session check |
 | `make crm-assets-build-host` | Pass, CRM host assets built |
+| `git diff --check` | Pass |
+| secret scan | Pass, high-risk token/key scan across 195 git-visible files |
+| clean checkout reproduction | Pass for committed `27ce468` |
+| migration idempotency | Pass against isolated local `chatwoot_test` DB |
 
-## Controlled Beta Gate Files
+## Merge Readiness
 
-- `.github/workflows/fleexa-manager-stage4.yml`
-- `docs/fleexa-manager/CONTROLLED_BETA_GATE.md`
-- `docs/fleexa-manager/OPERATIONS_RUNBOOK.md`
-- `scripts/fleexa-manager-health-check.sh`
-- `chatwoot-patches/fleexa-manager-controlled-beta-smoke-backend.patch`
+**DO_NOT_MERGE**
 
-## Score
-
-Stage 4 score: **8/10**
-
-The architecture and automated backend safety net are strong. The score is not
-higher because controlled beta still needs real iOS smoke, browser UI E2E,
-Sentry event proof, and backup/restore evidence.
+The branch is useful as a hardening checkpoint, but it should not be merged as a
+controlled-beta foundation until the operational gates above are proven on a
+real remote staging environment.

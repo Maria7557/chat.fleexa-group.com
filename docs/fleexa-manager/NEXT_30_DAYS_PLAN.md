@@ -1,157 +1,117 @@
 # Fleexa Manager Next 30 Days Plan
 
-Date: 2026-07-18
-Branch: `codex/fleexa-manager-core-stage-3`
-Starting point: Stage 3 local product review is demonstrable, but not
-production beta-ready.
+Date: 2026-07-19
+Branch: `codex/fleexa-manager-stage-4-hardening`
 
 ## Goal
 
-Turn the current local-review foundation into a paid-client-ready beta path
-without drifting back into Chatwoot/Vue as the manager frontend.
-
-Expo Manager remains the primary manager surface. Chatwoot remains the
-backoffice/admin/legacy shell and patched data source. New product behavior must
-continue through `/api/fleexa-manager/v1`, typed domain contracts, and
-backend-owned business rules.
+Turn the Stage 4 local hardening checkpoint into a controlled-beta-ready release.
+Do not start new product features until remote staging, iOS, observability,
+browser E2E, backup/restore, and rollback are proven.
 
 ## Non-Negotiables
 
+- Do not merge to `main` until the controlled beta gate is green.
+- Do not deploy production from this branch.
 - Do not use mock mode for production acceptance.
 - Do not call raw Chatwoot APIs from Expo live mode.
-- Do not expose raw Chatwoot or CRM model objects to the UI.
-- Do not put business logic into Expo screens.
 - Keep Chatwoot/Rails changes patch-only through `chatwoot-patches/`.
-- Do not add booking, pipeline, source, or reply-state UI unless the backend is
-  the source of truth.
-- Do not onboard a paid client until backend specs, auth, realtime, and iOS
-  gates are addressed.
+- Do not enable Booking receiver in production during this plan.
+- Do not onboard a paid client until remote staging and rollback are proven.
 
-## Days 1-5: Test And Contract Gate
-
-Priority: make the current foundation provable.
+## Days 1-4: Remote Staging First
 
 Deliverables:
 
-- Make backend request specs executable in a local or CI Chatwoot test image.
-- Run Stage 2 and Stage 3 request specs for:
-  - auth/session
-  - tenant isolation
-  - conversation filters
-  - reply state
-  - message send idempotency
-  - linked deal access and mutations
-  - pipeline stages/deals/stage moves
-- Reconcile response envelope drift:
-  - either wrap `session/current` and linked-deal responses consistently
-  - or document top-level DTOs explicitly in OpenAPI and client tests
-- Add contract smoke tests that compare OpenAPI examples to TypeScript domain
-  DTOs where practical.
+- Provision a real HTTPS staging URL.
+- Provision isolated staging PostgreSQL and Redis.
+- Serve Manager web in live Manager API mode.
+- Run Chat/Rails backend from immutable staging image or existing staging deploy
+  mechanism.
+- Document staging deployment metadata:
+  - commit SHA
+  - backend image tag
+  - Manager web artifact
+  - database name
+  - Redis target
+  - deployment time
 
 Exit criteria:
 
-- Backend specs run and pass.
-- OpenAPI, `@fleexa/domain`, `@fleexa/api-client`, and Manager API responses
-  agree.
-- No new feature work starts until this gate is green.
+- `STAGING_RUNBOOK.md` names the real staging URL.
+- Backend health passes remotely.
+- Manager web health passes remotely.
+- Database isolation proof is recorded.
+- Booking receiver is confirmed disabled by default.
 
-## Days 4-10: Production Auth And Session Safety
-
-Priority: stop treating local Chatwoot token auth as beta-ready.
+## Days 3-7: Remote Browser E2E
 
 Deliverables:
 
-- Decide the minimum beta auth plan:
-  - Manager-owned session endpoints with refresh/revoke
-  - or a strictly time-boxed hardened Chatwoot-token bridge
-- Add server-side logout/revoke behavior.
-- Add session expiry behavior that is consistent in API and Expo.
-- Add login/send throttles.
-- Add audit events for login, logout, revoke, send, deal update, and stage move.
-- Ensure no bearer tokens, passwords, or raw backend errors appear in logs.
+- Add/run browser E2E against staging only:
+  - login
+  - conversations
+  - filters
+  - open chat
+  - send message
+  - verify message appears once
+  - linked deal
+  - pipeline
+  - move stage
+  - verify persisted stage
+  - logout
+- Add test-data ownership and cleanup rules.
+- Save safe screenshots/traces only when they help diagnose failures.
 
 Exit criteria:
 
-- Expired/invalid session paths are tested.
-- Logout clears local state and invalidates server-side state when available.
-- Production abuse guard is implemented, not only documented.
+- `STAGING_E2E_RESULTS.md` records a passing remote run.
+- Cleanup proof is countable and repeatable.
+- No E2E writes appear in production.
 
-## Days 7-14: Realtime Chat Foundation
-
-Priority: replace polling before beta.
+## Days 5-9: ActionCable Reconnect Proof
 
 Deliverables:
 
-- Add account-scoped realtime event stream for:
-  - `conversation.updated`
-  - `message.created`
-  - `message.updated`
-  - `deal.updated`
-  - `pipeline.stage_changed`
-- Use ActionCable if it can be safely scoped to Manager auth; otherwise add a
-  small Manager-owned SSE/WebSocket adapter.
-- Include reconnect cursor semantics and event ordering notes.
-- Keep polling as fallback only.
+- Run staging WebSocket smoke:
+  - connect
+  - receive same-account event
+  - disconnect/reconnect
+  - prove no duplicate messages/events
+  - prove wrong-account subscription is rejected
+- Keep polling only as fallback.
 
 Exit criteria:
 
-- New customer message changes `replyState` without waiting for the next poll.
-- Sent manager message appears once and remains idempotent on retry.
-- Cross-account events are not delivered.
+- Reconnect proof is recorded against staging `/cable`.
+- Client de-duplication evidence is tied to real event IDs/cursors.
 
-## Days 10-17: Deal And Pipeline Hardening
-
-Priority: turn demo-ready deal/pipeline into manager-ready workflow.
+## Days 7-11: Sentry Delivery Proof
 
 Deliverables:
 
-- Add backend query params for pipeline source filtering and, if needed,
-  qualification/stage filtering.
-- Add backend-owned validation for qualification transitions and lost reasons.
-- Add stronger deal mutation audit records.
-- Keep stage colors/order/terminal semantics backend-owned.
-- Add UI empty/error/loading states for large account data and pagination.
-- Add deep link from pipeline deal back to the linked conversation.
+- Configure staging-only Sentry DSNs in secret store.
+- Prove event delivery for:
+  - Manager web
+  - iOS
+  - Chat/Rails backend
+- Verify source-map upload path where applicable.
+- Confirm no PII, raw tokens, webhook signatures, passwords, or message text in
+  smoke events.
 
 Exit criteria:
 
-- Source filtering is account-wide, not only a client filter over the loaded
-  page.
-- Moving a deal to lost/cancelled enforces lost reason with tests.
-- Deal detail and chat deal panel stay consistent after mutation/realtime
-  refresh.
+- `OBSERVABILITY_RUNBOOK.md` records real event IDs.
+- Backend smoke endpoint remains disabled by default and protected.
+- `DISABLE_SENTRY_PII=true` and `SENTRY_SEND_DEFAULT_PII=false` are set in
+  staging.
 
-## Days 14-22: Booking Read Integration
-
-Priority: show booking only from a real source.
+## Days 9-14: iOS Smoke
 
 Deliverables:
 
-- Identify the booking source of truth.
-- Add `GET /api/fleexa-manager/v1/accounts/:account_id/deals/:deal_id/booking`
-  only after the source is confirmed.
-- Return booking link states:
-  - `linked`
-  - `missing`
-  - `inaccessible`
-  - `conflict`
-- Display booking read-only in chat/deal context when linked.
-- Do not add booking writes from Expo in this window.
-
-Exit criteria:
-
-- Booking display is real or explicitly blocked with the missing source named.
-- No fake booking placeholders ship to beta.
-
-## Days 18-24: iOS And Native Readiness
-
-Priority: prove the Expo codebase is actually portable.
-
-Deliverables:
-
-- Restore `simctl`/Xcode command line tooling or run on an available iOS
-  simulator host.
-- Smoke:
+- Run on a machine with full Xcode and `simctl`.
+- Verify:
   - login
   - session restore
   - logout
@@ -160,71 +120,88 @@ Deliverables:
   - send and retry
   - linked deal panel
   - pipeline open and stage move
-- Validate SecureStore on native.
-- Check safe-area, keyboard, tap targets, and mobile navigation.
-- Define push/deep-link routes even if production push is not enabled yet.
+  - safe areas
+  - keyboard
+  - scrolling
+  - background/foreground restore
 
 Exit criteria:
 
-- iOS smoke is not blocked.
-- Native auth storage and logout are proven.
-- No layout overlap on iPhone-sized screens.
+- `STAGE_4_IOS_SMOKE.md` exists and records simulator/device, commands, and
+  results.
+- Native SecureStore auth path is proven.
 
-## Days 22-30: Beta Release Gate
-
-Priority: prepare a small paid-client-ready release instead of adding breadth.
+## Days 12-18: Backup, Restore, Rollback
 
 Deliverables:
 
-- Staging deployment with production-shaped env validation.
-- Sentry enabled through env vars, no committed secrets.
-- Operational runbook:
-  - deploy
-  - rollback
-  - patch-chain verification
-  - seed/demo reset for non-production only
-  - backup/restore notes
-- Data access checklist for first account.
-- Security review of Manager API auth, account scoping, DTO shape, logging, and
-  idempotency.
-- Product review checklist for manager workflows:
-  - conversation queue
-  - waiting-for-reply handling
-  - linked deal context
-  - pipeline movement
-  - lost reason handling
-  - source visibility
+- Run staging backup with `pg_dump`.
+- Restore into isolated restore DB/container.
+- Verify count-only data:
+  - accounts
+  - users
+  - conversations
+  - messages
+  - crm_deals
+  - booking credential rows without exposing `token_digest`
+- Execute staging rollback to previous known-good backend/web artifacts.
+- Verify rollback smoke.
+- Restore forward to current candidate.
+- Verify forward smoke.
 
 Exit criteria:
 
-- Green backend specs.
-- Green Expo lint/typecheck/tests.
-- Green web and iOS smoke.
-- Staging smoke passes against real data.
-- Product owner signs off on the reduced beta scope.
+- `BACKUP_RESTORE_DRILL.md` records executed commands and count output.
+- `ROLLBACK_DRILL.md` records previous/current versions and passing smoke.
+- Restore DB/container is cleaned up.
 
-## Explicitly Not In The Next 30 Days
+## Days 18-24: Clean CI And Release Candidate
 
+Deliverables:
+
+- Convert the local gate into CI or CI-ready commands:
+  - lint
+  - typecheck
+  - tests
+  - Rails specs
+  - OpenAPI parse
+  - patch-chain build
+  - secret scan
+  - browser E2E
+- Reproduce from a clean checkout of the release candidate commit.
+- Keep exact release candidate artifacts immutable.
+
+Exit criteria:
+
+- Clean checkout runs the release gate from committed files only.
+- No required proof depends on uncommitted workspace state.
+
+## Days 24-30: Controlled Beta Decision
+
+Deliverables:
+
+- Re-run final Stage 4 regression.
+- Update `STAGE_4_REVIEW.md` with final score and GO/NO-GO.
+- Freeze the beta scope to:
+  - login/session
+  - conversations and filters
+  - chat send/retry
+  - linked deal panel
+  - pipeline view/stage move
+  - realtime updates
+- Prepare account-level access checklist for the first beta customer.
+
+Exit criteria:
+
+- Final decision is `GO_FOR_CONTROLLED_BETA`.
+- Merge readiness is explicitly approved.
+
+## Explicitly Deferred
+
+- New pipeline features.
+- Booking writes from Expo.
 - Broad analytics rebuild.
 - CSV/export expansion.
-- Chatwoot/Vue manager feature expansion.
-- Booking writes from Expo.
-- Production push notification rollout before auth/device/permission review.
+- Push notification production rollout.
 - Offline-first behavior.
-- Multi-account switching beyond the current session membership model unless it
-  is needed for the first beta account.
-
-## First Paid Client Gate
-
-Do not onboard the first paid client until all of these are true:
-
-- Backend request specs are executable and passing.
-- Auth/session lifecycle has a production-safe revoke/expiry path.
-- Message send idempotency is covered by backend tests and live smoke.
-- Tenant isolation is covered by backend tests and live smoke.
-- Expo live mode uses only the Manager API.
-- iOS simulator/device smoke passes.
-- Realtime or an explicitly accepted temporary polling SLA is signed off.
-- Sentry and operational runbooks are in place.
-- Booking UI is either real or absent.
-- Demo data scripts are clearly local-only and never run against production.
+- Chatwoot/Vue manager feature expansion.
